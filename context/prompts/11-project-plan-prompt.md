@@ -1,6 +1,6 @@
 # 11: Project Plan Prompt
 
-**Create a comprehensive phased project plan for Databricks Medallion Architecture implementations**
+**Create a comprehensive phased project plan for Databricks solutions (starting from Use Cases after Gold layer is complete)**
 
 ---
 
@@ -9,17 +9,17 @@
 ### Fast Track: Create Your Project Plan
 
 ```bash
-# 1. Understand your scope
-#    - How many Bronze/Silver/Gold tables?
-#    - What analytics use cases?
-#    - What stakeholders need access?
+# 1. Verify prerequisites are complete:
+#    - Bronze ingestion ✅
+#    - Silver DLT streaming ✅
+#    - Gold dimensional model ✅
 
 # 2. Run this prompt with your project info:
 "Create a phased project plan for {project_name} with:
-- {n} Bronze tables from {source_system}
-- {m} Gold tables (dimensions + facts)
+- Gold tables: {n} tables ({d} dimensions + {f} facts)
 - Use cases: {revenue analysis, marketing, operations, etc.}
-- Target audience: {executives, analysts, data scientists}"
+- Target audience: {executives, analysts, data scientists}
+- Agent domains: {cost, security, performance, reliability, quality}"
 
 # 3. Output: Complete plan structure in plans/ folder
 ```
@@ -29,8 +29,9 @@
 | Decision | Options | Your Choice |
 |----------|---------|-------------|
 | Agent Domains | Define 4-6 business domains | __________ |
-| Phase 4 Addendums | TVFs, Metric Views, Dashboards, Monitoring, Genie, Alerts, ML | __________ |
-| Phase 5 Scope | AI Agents (optional) or skip | __________ |
+| Phase 1 Addendums | TVFs, Metric Views, Dashboards, Monitoring, Genie, Alerts, ML | __________ |
+| Phase 2 Scope | AI Agents (optional) or skip | __________ |
+| Phase 3 Scope | Frontend App (optional) or skip | __________ |
 | Artifact Counts | Min per domain: TVFs (4+), Alerts (4+), etc. | __________ |
 
 ---
@@ -46,14 +47,14 @@
 | Primary Use Cases | {revenue tracking, customer analytics, operations, etc.} |
 | Target Stakeholders | {executives, analysts, data scientists, operations} |
 
-### Data Layer Scope
+### Prerequisites (Must Be Complete)
 
 | Layer | Count | Status |
 |-------|-------|--------|
-| Bronze Tables | {n} | {✅ Complete / 🔧 In Progress / 📋 Planned} |
-| Silver Tables | {m} | {status} |
-| Gold Dimensions | {d} | {status} |
-| Gold Facts | {f} | {status} |
+| Bronze Tables | {n} | ✅ Complete |
+| Silver Tables | {m} | ✅ Complete |
+| Gold Dimensions | {d} | ✅ Complete |
+| Gold Facts | {f} | ✅ Complete |
 
 ### Agent Domain Framework
 
@@ -77,19 +78,19 @@ Define your business domains (typically 4-6):
 | Finance | 💰 Revenue, 🔒 Risk, 📊 Compliance, 👤 Customer, ⚡ Operations |
 | SaaS | 💰 Revenue, 📊 Product, 👤 Customer, ⚡ Performance, 🔒 Security |
 
-### Phase 4 Addendum Selection
+### Phase 1 Addendum Selection
 
 Select which addendums to include:
 
 | # | Addendum | Include? | Artifact Count |
 |---|----------|----------|----------------|
-| 4.1 | ML Models | {Yes/No} | {count} |
-| 4.2 | Table-Valued Functions | {Yes/No} | {count} |
-| 4.3 | Metric Views | {Yes/No} | {count} |
-| 4.4 | Lakehouse Monitoring | {Yes/No} | {count} |
-| 4.5 | AI/BI Dashboards | {Yes/No} | {count} |
-| 4.6 | Genie Spaces | {Yes/No} | {count} |
-| 4.7 | Alerting Framework | {Yes/No} | {count} |
+| 1.1 | ML Models | {Yes/No} | {count} |
+| 1.2 | Table-Valued Functions | {Yes/No} | {count} |
+| 1.3 | Metric Views | {Yes/No} | {count} |
+| 1.4 | Lakehouse Monitoring | {Yes/No} | {count} |
+| 1.5 | AI/BI Dashboards | {Yes/No} | {count} |
+| 1.6 | Genie Spaces | {Yes/No} | {count} |
+| 1.7 | Alerting Framework | {Yes/No} | {count} |
 
 ### Key Business Questions by Domain
 
@@ -118,267 +119,93 @@ A complete project plan follows this structure:
 ```
 plans/
 ├── README.md                              # Index and overview
-├── phase1-bronze-ingestion.md             # Data ingestion layer
-├── phase2-silver-layer.md                 # DLT streaming + DQ
-├── phase3-gold-layer.md                   # Dimensional model
-├── phase4-use-cases.md                    # Analytics artifacts (master)
-│   ├── phase4-addendum-4.1-ml-models.md
-│   ├── phase4-addendum-4.2-tvfs.md
-│   ├── phase4-addendum-4.3-metric-views.md
-│   ├── phase4-addendum-4.4-lakehouse-monitoring.md
-│   ├── phase4-addendum-4.5-aibi-dashboards.md
-│   ├── phase4-addendum-4.6-genie-spaces.md
-│   └── phase4-addendum-4.7-alerting.md
-└── phase5-ai-agents.md                    # AI agent framework (optional)
+├── prerequisites.md                       # Bronze/Silver/Gold summary (optional)
+├── phase1-use-cases.md                    # Analytics artifacts (master)
+│   ├── phase1-addendum-1.1-ml-models.md
+│   ├── phase1-addendum-1.2-tvfs.md
+│   ├── phase1-addendum-1.3-metric-views.md
+│   ├── phase1-addendum-1.4-lakehouse-monitoring.md
+│   ├── phase1-addendum-1.5-aibi-dashboards.md
+│   ├── phase1-addendum-1.6-genie-spaces.md
+│   └── phase1-addendum-1.7-alerting.md
+├── phase2-agent-framework.md              # AI agent framework
+└── phase3-frontend-app.md                 # User interface (optional)
 ```
 
 ### Phase Dependencies
 
 ```
-Phase 1 (Bronze) → Phase 2 (Silver) → Phase 3 (Gold) → Phase 4 (Use Cases) → Phase 5 (Agents)
-                                                              ↓
-                                                        All Addendums
+Prerequisites (Bronze → Silver → Gold) → Phase 1 (Use Cases) → Phase 2 (Agents) → Phase 3 (Frontend)
+         [COMPLETE]                               ↓
+                                           All Addendums
 ```
 
 ---
 
 ## Phase Document Templates
 
-### Phase 1: Bronze Layer Template
+### Prerequisites Summary Template (Optional)
 
 ```markdown
-# Phase 1: Bronze Layer - Raw Data Ingestion
+# Prerequisites: Data Layer Summary
 
 ## Overview
 
-**Status:** {✅ Complete / 🔧 In Progress / 📋 Planned}
-**Schema:** `{project}_bronze` or `{project}`
+**Status:** ✅ Complete
+**Description:** Summary of completed Bronze, Silver, and Gold layers
+
+---
+
+## Bronze Layer
+
+**Schema:** `{project}_bronze`
 **Tables:** {n}
-**Dependencies:** None (source layer)
+
+| Category | Tables |
+|----------|--------|
+| {Category 1} | {table_1}, {table_2} |
+| {Category 2} | {table_3} |
 
 ---
 
-## Purpose
+## Silver Layer
 
-{2-3 sentences explaining the Bronze layer's role}
-
----
-
-## Bronze Tables Summary
-
-### {Category 1} ({count} tables)
-
-| Table | Primary Key | Description |
-|-------|-------------|-------------|
-| {table_1} | {pk} | {description} |
-| {table_2} | {pk} | {description} |
-
-### {Category 2} ({count} tables)
-
-| Table | Primary Key | Description |
-|-------|-------------|-------------|
-| {table_3} | {pk} | {description} |
-
----
-
-## Table Properties
-
-All Bronze tables include:
-
-```sql
-TBLPROPERTIES (
-    'delta.enableChangeDataFeed' = 'true',
-    'delta.autoOptimize.optimizeWrite' = 'true',
-    'delta.autoOptimize.autoCompact' = 'true',
-    'layer' = 'bronze',
-    'source_system' = '{source_system}',
-    'domain' = '{domain}'
-)
-CLUSTER BY AUTO
-```
-
----
-
-## Implementation Checklist
-
-- [ ] Create schema with Predictive Optimization
-- [ ] Create all Bronze tables
-- [ ] Enable Change Data Feed
-- [ ] Enable automatic liquid clustering
-- [ ] Apply governance tags
-- [ ] Initial data load complete
-
----
-
-## Next Phase
-
-**→ [Phase 2: Silver Layer](./phase2-silver-layer.md)**
-```
-
-### Phase 2: Silver Layer Template
-
-```markdown
-# Phase 2: Silver Layer - DLT Streaming & Data Quality
-
-## Overview
-
-**Status:** {status}
 **Schema:** `{project}_silver`
-**Tables:** {n} streaming tables
-**Dependencies:** Phase 1 (Bronze Layer)
+**Tables:** {m} streaming tables
+
+| Type | Tables |
+|------|--------|
+| Dimensions | silver_{entity}_dim |
+| Facts | silver_{entity} |
 
 ---
 
-## Purpose
+## Gold Layer
 
-{Explain DLT streaming, DQ expectations, quarantine pattern}
-
----
-
-## Silver Tables Architecture
-
-### Dimension Tables ({count})
-
-| Silver Table | Source Bronze | DQ Expectations | Quarantine |
-|-------------|---------------|-----------------|------------|
-| silver_{entity}_dim | {entity} | {n}+ | Yes/No |
-
-### Fact Tables ({count})
-
-| Silver Table | Source Bronze | DQ Expectations | Quarantine |
-|-------------|---------------|-----------------|------------|
-| silver_{entity} | {entity} | {n}+ | Yes/No |
-
----
-
-## Data Quality Expectations by Domain
-
-### {Domain 1}: silver_{entity}
-
-| Expectation | Rule | Action |
-|-------------|------|--------|
-| valid_{column} | `{column} IS NOT NULL` | DROP/QUARANTINE/WARN |
-
----
-
-## DLT Pipeline Configuration
-
-```yaml
-resources:
-  pipelines:
-    silver_dlt_pipeline:
-      name: "[${bundle.target}] {Project} Silver Pipeline"
-      catalog: ${var.catalog}
-      schema: ${var.silver_schema}
-      root_path: ../src/{project}_silver
-      serverless: true
-      photon: true
-      edition: ADVANCED
-```
-
----
-
-## Implementation Checklist
-
-- [ ] Create DLT pipeline configuration
-- [ ] Implement dimension streaming tables
-- [ ] Implement fact streaming tables
-- [ ] Configure DQ expectations
-- [ ] Setup quarantine tables
-- [ ] Create validation jobs
-
----
-
-## Next Phase
-
-**→ [Phase 3: Gold Layer](./phase3-gold-layer.md)**
-```
-
-### Phase 3: Gold Layer Template
-
-```markdown
-# Phase 3: Gold Layer - Dimensional Model Implementation
-
-## Overview
-
-**Status:** {status}
 **Schema:** `{project}_gold`
 **Tables:** {n} ({d} dimensions + {f} facts)
-**Dependencies:** Phase 2 (Silver Layer)
 
----
-
-## Purpose
-
-{Explain star schema, SCD Type 2, business-ready aggregates}
-
----
-
-## Dimensional Model Summary
-
-### Dimensions ({d})
-
-| # | Table | SCD Type | Business Key | PII | Domain |
-|---|-------|----------|--------------|-----|--------|
-| 1 | dim_{entity} | Type 1/2 | {key} | Yes/No | {domain} |
-
-### Facts ({f})
-
-| # | Table | Grain | Domain |
-|---|-------|-------|--------|
-| 1 | fact_{entity} | {grain description} | {domain} |
-
----
-
-## ERD Overview
-
-```
-{Include Mermaid ERD or link to ERD file}
-```
-
----
-
-## Implementation Approach
-
-Gold tables are created dynamically from YAML schema definitions:
-
-```
-gold_layer_design/yaml/
-├── {domain1}/
-│   ├── dim_{entity}.yaml
-│   └── fact_{entity}.yaml
-├── {domain2}/
-│   └── ...
-```
-
----
-
-## Implementation Checklist
-
-- [ ] Create schema with Predictive Optimization
-- [ ] Create all dimension tables
-- [ ] Create all fact tables
-- [ ] Apply PRIMARY KEY constraints
-- [ ] Apply FOREIGN KEY constraints
-- [ ] Implement MERGE scripts
-- [ ] Validate data population
+| Type | Tables |
+|------|--------|
+| Dimensions | dim_{entity} |
+| Facts | fact_{entity} |
 
 ---
 
 ## Next Phase
 
-**→ [Phase 4: Use Cases](./phase4-use-cases.md)**
+**→ [Phase 1: Use Cases](./phase1-use-cases.md)**
 ```
 
-### Phase 4: Use Cases Master Template
+### Phase 1: Use Cases Master Template
 
 ```markdown
-# Phase 4: Use Cases - Analytics Artifacts
+# Phase 1: Use Cases - Analytics Artifacts
 
 ## Overview
 
 **Status:** {status}
-**Dependencies:** Phase 3 (Gold Layer)
+**Dependencies:** Prerequisites (Gold Layer) ✅ Complete
 **Estimated Effort:** {weeks}
 
 ---
@@ -401,13 +228,13 @@ gold_layer_design/yaml/
 
 | # | Addendum | Status | Artifacts |
 |---|----------|--------|-----------|
-| 4.1 | ML Models | {status} | {count} |
-| 4.2 | TVFs | {status} | {count} |
-| 4.3 | Metric Views | {status} | {count} |
-| 4.4 | Lakehouse Monitoring | {status} | {count} |
-| 4.5 | AI/BI Dashboards | {status} | {count} |
-| 4.6 | Genie Spaces | {status} | {count} |
-| 4.7 | Alerting | {status} | {count} |
+| 1.1 | ML Models | {status} | {count} |
+| 1.2 | TVFs | {status} | {count} |
+| 1.3 | Metric Views | {status} | {count} |
+| 1.4 | Lakehouse Monitoring | {status} | {count} |
+| 1.5 | AI/BI Dashboards | {status} | {count} |
+| 1.6 | Genie Spaces | {status} | {count} |
+| 1.7 | Alerting | {status} | {count} |
 
 ---
 
@@ -440,24 +267,23 @@ gold_layer_design/yaml/
 ## Implementation Order
 
 ### Week 1: Foundation
-1. Deploy Gold layer tables
-2. Create TVFs (all domains)
-3. Create Metric Views
+1. Create TVFs (all domains)
+2. Create Metric Views
 
 ### Week 2: Monitoring
-4. Setup Lakehouse Monitors
-5. Create Alerting Framework
-6. Validate data quality baselines
+3. Setup Lakehouse Monitors
+4. Create Alerting Framework
+5. Validate data quality baselines
 
 ### Week 3: Visualization
-7. Build AI/BI Dashboards
-8. Configure Genie Spaces
-9. Document business usage guides
+6. Build AI/BI Dashboards
+7. Configure Genie Spaces
+8. Document business usage guides
 
 ### Week 4: Intelligence
-10. Train ML Models
-11. Deploy model endpoints
-12. Integrate predictions
+9. Train ML Models
+10. Deploy model endpoints
+11. Integrate predictions
 
 ---
 
@@ -471,21 +297,27 @@ gold_layer_design/yaml/
 | Monitors with baselines | {count} |
 | Alerts configured | {count} |
 | Genie Spaces responding | {count} |
+
+---
+
+## Next Phase
+
+**→ [Phase 2: Agent Framework](./phase2-agent-framework.md)**
 ```
 
 ---
 
 ## Addendum Templates
 
-### Phase 4 Addendum 4.2: TVFs Template
+### Phase 1 Addendum 1.2: TVFs Template
 
 ```markdown
-# Phase 4 Addendum 4.2: Table-Valued Functions (TVFs)
+# Phase 1 Addendum 1.2: Table-Valued Functions (TVFs)
 
 ## Overview
 
 **Status:** {status}
-**Dependencies:** Phase 3 (Gold Layer)
+**Dependencies:** Prerequisites (Gold Layer) ✅ Complete
 **Artifact Count:** {n} TVFs
 
 ---
@@ -559,15 +391,15 @@ Example questions: "[Question 1]" "[Question 2]"'
 - [ ] get_top_{entities}_by_{metric}
 ```
 
-### Phase 4 Addendum 4.7: Alerting Template
+### Phase 1 Addendum 1.7: Alerting Template
 
 ```markdown
-# Phase 4 Addendum 4.7: Alerting Framework
+# Phase 1 Addendum 1.7: Alerting Framework
 
 ## Overview
 
 **Status:** {status}
-**Dependencies:** Phase 3 (Gold Layer), 4.4 (Lakehouse Monitoring)
+**Dependencies:** Prerequisites (Gold Layer), 1.4 (Lakehouse Monitoring)
 **Artifact Count:** {n} SQL Alerts
 
 ---
@@ -624,6 +456,102 @@ WHERE {condition}
 - [ ] {DOM}-003-INFO: {Alert Name}
 ```
 
+### Phase 2: Agent Framework Template
+
+```markdown
+# Phase 2: Agent Framework - AI Agents
+
+## Overview
+
+**Status:** {status}
+**Dependencies:** Phase 1 (Use Cases)
+**Estimated Effort:** {weeks}
+
+---
+
+## Purpose
+
+{Explain AI agents, natural language interfaces, automated workflows}
+
+---
+
+## Agent Summary by Domain
+
+| Domain | Icon | Agent Name | Capabilities |
+|--------|------|------------|--------------|
+| {Domain 1} | {emoji} | {Domain} Agent | {capabilities} |
+
+---
+
+## Agent Architecture
+
+### {Domain 1} Agent
+
+**Name:** {Domain} Intelligence Agent
+**Focus:** {focus area}
+**Gold Tables:** {tables}
+**TVFs Used:** `get_{metric}_by_{dimension}`, ...
+**Genie Space:** {Domain} Intelligence
+
+**Capabilities:**
+- Answer {domain}-related questions
+- Execute {domain} TVFs
+- Generate {domain} insights
+- Create {domain} reports
+
+---
+
+## Implementation Checklist
+
+- [ ] Define agent capabilities
+- [ ] Configure agent tools (TVFs)
+- [ ] Test natural language queries
+- [ ] Deploy to production
+
+---
+
+## Next Phase
+
+**→ [Phase 3: Frontend App](./phase3-frontend-app.md)**
+```
+
+### Phase 3: Frontend App Template
+
+```markdown
+# Phase 3: Frontend App - User Interface
+
+## Overview
+
+**Status:** {status}
+**Dependencies:** Phase 2 (Agent Framework)
+**Estimated Effort:** {weeks}
+
+---
+
+## Purpose
+
+{Explain frontend application, user interface, self-service analytics}
+
+---
+
+## Application Architecture
+
+### Pages/Views
+
+| Page | Purpose | Agents Used |
+|------|---------|-------------|
+| {Page 1} | {purpose} | {agents} |
+
+---
+
+## Implementation Checklist
+
+- [ ] Design UI mockups
+- [ ] Implement frontend framework
+- [ ] Integrate with agents
+- [ ] Deploy application
+```
+
 ---
 
 ## README.md Template
@@ -637,23 +565,33 @@ WHERE {condition}
 
 ## 📋 Plan Index
 
-### Core Phases
+### Prerequisites (Complete)
+
+| Layer | Document | Status | Description |
+|-------|----------|--------|-------------|
+| Bronze | [Prerequisites](./prerequisites.md) | ✅ Complete | Raw data ingestion ({n} tables) |
+| Silver | [Prerequisites](./prerequisites.md) | ✅ Complete | DLT streaming with DQ |
+| Gold | [Prerequisites](./prerequisites.md) | ✅ Complete | Dimensional model ({n} tables) |
+
+### Project Phases
 
 | Phase | Document | Status | Description |
 |-------|----------|--------|-------------|
-| 1 | [Phase 1: Bronze Layer](./phase1-bronze-ingestion.md) | {status} | Raw data ingestion ({n} tables) |
-| 2 | [Phase 2: Silver Layer](./phase2-silver-layer.md) | {status} | DLT streaming with DQ |
-| 3 | [Phase 3: Gold Layer](./phase3-gold-layer.md) | {status} | Dimensional model ({n} tables) |
-| 4 | [Phase 4: Use Cases](./phase4-use-cases.md) | {status} | Analytics artifacts |
-| 5 | [Phase 5: AI Agents](./phase5-ai-agents.md) | {status} | Natural language agents |
+| 1 | [Phase 1: Use Cases](./phase1-use-cases.md) | {status} | Analytics artifacts |
+| 2 | [Phase 2: Agent Framework](./phase2-agent-framework.md) | {status} | AI agents |
+| 3 | [Phase 3: Frontend App](./phase3-frontend-app.md) | {status} | User interface |
 
-### Phase 4 Addendums
+### Phase 1 Addendums
 
 | # | Addendum | Status | Artifacts |
 |---|----------|--------|-----------|
-| 4.1 | [ML Models](./phase4-addendum-4.1-ml-models.md) | {status} | {count} |
-| 4.2 | [TVFs](./phase4-addendum-4.2-tvfs.md) | {status} | {count} |
-...
+| 1.1 | [ML Models](./phase1-addendum-1.1-ml-models.md) | {status} | {count} |
+| 1.2 | [TVFs](./phase1-addendum-1.2-tvfs.md) | {status} | {count} |
+| 1.3 | [Metric Views](./phase1-addendum-1.3-metric-views.md) | {status} | {count} |
+| 1.4 | [Lakehouse Monitoring](./phase1-addendum-1.4-lakehouse-monitoring.md) | {status} | {count} |
+| 1.5 | [AI/BI Dashboards](./phase1-addendum-1.5-aibi-dashboards.md) | {status} | {count} |
+| 1.6 | [Genie Spaces](./phase1-addendum-1.6-genie-spaces.md) | {status} | {count} |
+| 1.7 | [Alerting](./phase1-addendum-1.7-alerting.md) | {status} | {count} |
 
 ---
 
@@ -667,13 +605,25 @@ WHERE {condition}
 
 ## 📊 Project Scope Summary
 
-### Data Layers
+### Prerequisites (Data Layers)
 
 | Layer | Schema | Tables | Status |
 |-------|--------|--------|--------|
-| Bronze | `{schema}` | {n} | {status} |
-| Silver | `{schema}` | {n} | {status} |
-| Gold | `{schema}` | {n} | {status} |
+| Bronze | `{schema}` | {n} | ✅ Complete |
+| Silver | `{schema}` | {n} | ✅ Complete |
+| Gold | `{schema}` | {n} | ✅ Complete |
+
+### Phase 1 (Use Cases)
+
+| Artifact Type | Count |
+|---------------|-------|
+| TVFs | {n}+ |
+| Metric Views | {n} |
+| Dashboards | {n} |
+| Monitors | {n} |
+| Alerts | {n} |
+| ML Models | {n} |
+| Genie Spaces | {n} |
 
 ---
 
@@ -681,10 +631,10 @@ WHERE {condition}
 
 | Phase | Criteria | Target |
 |-------|----------|--------|
-| Silver | DQ expectations passing | >95% |
-| Gold | All tables deployed | {n} tables |
 | Use Cases | TVFs deployed | {n}+ |
 | Use Cases | Dashboards created | {n}+ |
+| Agents | Agents responding | {n}+ |
+| Frontend | App deployed | 1 |
 ```
 
 ---
@@ -693,8 +643,9 @@ WHERE {condition}
 
 ### Plan Structure
 - [ ] README.md with index and overview
-- [ ] Phase 1-5 documents created
-- [ ] All Phase 4 addendums included
+- [ ] Prerequisites section documents completed layers
+- [ ] Phase 1-3 documents created
+- [ ] All Phase 1 addendums included
 - [ ] Cross-references between documents
 
 ### Content Quality
@@ -730,7 +681,7 @@ WHERE {condition}
 
 | Artifact Type | Count |
 |--------------|-------|
-| Gold Tables | 8 |
+| Gold Tables (Prerequisite) | 8 |
 | TVFs | 25+ |
 | Metric Views | 5 |
 | Dashboards | 5 |
@@ -765,4 +716,3 @@ WHERE {condition}
 - [Lakehouse Monitoring](https://docs.databricks.com/lakehouse-monitoring/)
 - [Metric Views](https://docs.databricks.com/metric-views/)
 - [Genie Spaces](https://docs.databricks.com/genie/)
-

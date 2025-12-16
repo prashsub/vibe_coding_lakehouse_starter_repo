@@ -41,10 +41,15 @@ RETURNS TABLE (
   cancellation_rate DECIMAL(5,2) COMMENT 'Percentage of bookings cancelled',
   host_performance_score DECIMAL(10,2) COMMENT 'Composite host quality score'
 )
-COMMENT 'LLM: Returns comprehensive host performance metrics including revenue, bookings, and quality indicators.
-Use this for: Host quality analysis, partner management, commission calculations, host comparison.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional host_id_filter (NULL for all hosts).
-Example questions: "Who are top performing hosts?" "Show host KPIs" "Host performance metrics"'
+COMMENT '
+• PURPOSE: Comprehensive host performance metrics with accurate revenue from booking transactions
+• BEST FOR: "Top performing hosts" | "Impact of verification on performance" | "Host KPIs" | "Revenue by host"
+• PREFERRED OVER: host_analytics_metrics (which has join limitations)
+• RETURNS: Individual host rows (host_id, host_name, is_verified, rating, property_count, total_bookings, total_revenue, host_performance_score)
+• PARAMS: start_date, end_date, top_n (default: 100)
+• SYNTAX: SELECT * FROM get_host_performance(''2020-01-01'', ''2024-12-31'')
+• NOTE: Returns ACCURATE revenue totals (~$40M) vs metric view (~$10M)
+'
 RETURN
   WITH host_metrics AS (
     SELECT 
@@ -111,10 +116,13 @@ RETURNS TABLE (
   cancellation_by_host_rate DECIMAL(5,2) COMMENT 'Host-initiated cancellation rate (%)',
   quality_score DECIMAL(10,2) COMMENT 'Composite quality score'
 )
-COMMENT 'LLM: Returns top N hosts ranked by quality metrics (rating, verification, reliability).
-Use this for: Host quality assessment, partner certification, identifying top hosts, quality benchmarking.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional top_n (default: 20).
-Example questions: "Top quality hosts" "Best rated hosts" "Most reliable hosts"'
+COMMENT '
+• PURPOSE: Top hosts ranked by quality metrics (rating, verification, reliability)
+• BEST FOR: "Top quality hosts" | "Best rated hosts" | "Most reliable hosts"
+• RETURNS: Individual host rows (rank, host_id, host_name, rating, verification, quality_score)
+• PARAMS: start_date, end_date, top_n (default: 20)
+• SYNTAX: SELECT * FROM get_top_quality_hosts(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH host_quality AS (
     SELECT 
@@ -181,10 +189,13 @@ RETURNS TABLE (
   avg_revenue_per_host DECIMAL(18,2) COMMENT 'Average revenue per host',
   avg_rating DECIMAL(3,2) COMMENT 'Average host rating'
 )
-COMMENT 'LLM: Returns host retention and activity analysis (active vs inactive hosts).
-Use this for: Host retention tracking, churn analysis, host engagement strategies, partner lifecycle management.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "Active vs inactive hosts" "Host retention metrics" "Host churn analysis"'
+COMMENT '
+• PURPOSE: Host retention and activity analysis (active vs inactive)
+• BEST FOR: "Active vs inactive hosts" | "Host retention" | "Host churn analysis"
+• RETURNS: PRE-AGGREGATED rows (activity_status, host_count, avg_days_since_last_booking)
+• PARAMS: start_date, end_date (format: YYYY-MM-DD)
+• SYNTAX: SELECT * FROM get_host_retention_analysis(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH host_activity AS (
     SELECT 
@@ -249,10 +260,13 @@ RETURNS TABLE (
   avg_rating DECIMAL(3,2) COMMENT 'Average host rating',
   avg_revenue_per_host DECIMAL(18,2) COMMENT 'Average revenue per host'
 )
-COMMENT 'LLM: Returns host geographic distribution and performance by country.
-Use this for: Geographic host analysis, market expansion planning, regional partner strategies, international growth.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional top_n (default: 20).
-Example questions: "Hosts by country" "Geographic host distribution" "Which countries have most hosts?"'
+COMMENT '
+• PURPOSE: Host geographic distribution and performance by country
+• BEST FOR: "Hosts by country" | "Host distribution" | "Which countries have most hosts?"
+• RETURNS: PRE-AGGREGATED rows (country, host_count, total_revenue, avg_rating)
+• PARAMS: start_date, end_date, top_n (default: 20)
+• SYNTAX: SELECT * FROM get_host_geography(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH country_metrics AS (
     SELECT 
@@ -314,10 +328,13 @@ RETURNS TABLE (
   avg_occupancy_rate DECIMAL(5,2) COMMENT 'Average occupancy rate',
   portfolio_performance_score DECIMAL(10,2) COMMENT 'Portfolio quality score'
 )
-COMMENT 'LLM: Returns analysis of hosts managing multiple properties (property portfolios).
-Use this for: Multi-property host management, professional host identification, portfolio optimization, scalability analysis.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional min_properties (default: 3).
-Example questions: "Multi-property hosts" "Professional hosts" "Hosts with multiple listings"'
+COMMENT '
+• PURPOSE: Analysis of hosts managing multiple properties (portfolios)
+• BEST FOR: "Multi-property hosts" | "Professional hosts" | "Hosts with multiple listings"
+• RETURNS: Individual host rows (host_id, host_name, property_count, total_revenue)
+• PARAMS: start_date, end_date, min_properties (default: 3)
+• SYNTAX: SELECT * FROM get_multi_property_hosts(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH multi_property_metrics AS (
     SELECT 
@@ -354,4 +371,5 @@ RETURN
      (property_count / NULLIF(10, 0)) * 20) as portfolio_performance_score
   FROM multi_property_metrics
   ORDER BY portfolio_performance_score DESC;
+
 

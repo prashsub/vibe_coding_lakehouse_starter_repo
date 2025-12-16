@@ -1,10 +1,10 @@
-# Phase 4 Addendum 4.3: Metric Views
+# Phase 1 Addendum 1.3: Metric Views
 
 ## Overview
 
-**Status:** ✅ Implemented  
+**Status:** ✅ Complete  
 **Implementation Date:** December 10, 2025  
-**Dependencies:** Phase 3 (Gold Layer)  
+**Dependencies:** Prerequisites (Gold Layer)  
 **Artifact Count:** 5 Metric Views  
 **Reference:** [Metric Views Patterns](../.cursor/rules/semantic-layer/14-metric-views-patterns.mdc)  
 **Deployment Guide:** [Metric Views Deployment Guide](../docs/deployment/metric-views-deployment-guide.md)
@@ -40,176 +40,175 @@ Metric Views provide a semantic layer for:
 ```yaml
 version: "1.1"
 
-- name: revenue_analytics_metrics
-  comment: >
-    Comprehensive revenue and booking analytics for vacation rental platform.
-    Optimized for Genie natural language queries and AI/BI dashboards.
-    Answers questions about revenue trends, booking volumes, and performance.
+comment: >
+  Comprehensive revenue and booking analytics for vacation rental platform.
+  Optimized for Genie natural language queries and AI/BI dashboards.
+  Answers questions about revenue trends, booking volumes, and performance.
+
+source: ${catalog}.${gold_schema}.fact_booking_daily
+
+joins:
+  - name: dim_property
+    source: ${catalog}.${gold_schema}.dim_property
+    'on': source.property_id = dim_property.property_id AND dim_property.is_current = true
   
-  source: ${catalog}.${gold_schema}.fact_booking_daily
+  - name: dim_destination
+    source: ${catalog}.${gold_schema}.dim_destination
+    'on': source.destination_id = dim_destination.destination_id
   
-  joins:
-    - name: dim_property
-      source: ${catalog}.${gold_schema}.dim_property
-      'on': source.property_id = dim_property.property_id AND dim_property.is_current = true
-    
-    - name: dim_destination
-      source: ${catalog}.${gold_schema}.dim_destination
-      'on': source.destination_id = dim_destination.destination_id
-    
-    - name: dim_date
-      source: ${catalog}.${gold_schema}.dim_date
-      'on': source.check_in_date = dim_date.date
+  - name: dim_date
+    source: ${catalog}.${gold_schema}.dim_date
+    'on': source.check_in_date = dim_date.date
+
+dimensions:
+  - name: check_in_date
+    expr: source.check_in_date
+    comment: Check-in date for the booking
+    display_name: Check-in Date
+    synonyms: [date, booking date, arrival date]
   
-  dimensions:
-    - name: check_in_date
-      expr: source.check_in_date
-      comment: Check-in date for the booking
-      display_name: Check-in Date
-      synonyms: [date, booking date, arrival date]
-    
-    - name: property_id
-      expr: source.property_id
-      comment: Property identifier
-      display_name: Property ID
-      synonyms: [property, listing]
-    
-    - name: property_title
-      expr: dim_property.title
-      comment: Property listing title
-      display_name: Property Title
-      synonyms: [property name, listing name]
-    
-    - name: property_type
-      expr: dim_property.property_type
-      comment: Type of property (house, apartment, etc.)
-      display_name: Property Type
-      synonyms: [type, listing type]
-    
-    - name: destination
-      expr: dim_destination.destination
-      comment: Destination city or location
-      display_name: Destination
-      synonyms: [city, location, market]
-    
-    - name: country
-      expr: dim_destination.country
-      comment: Country of the destination
-      display_name: Country
-      synonyms: [nation]
-    
-    - name: month_name
-      expr: dim_date.month_name
-      comment: Month name for time-based analysis
-      display_name: Month
-      synonyms: [month]
-    
-    - name: year
-      expr: dim_date.year
-      comment: Calendar year
-      display_name: Year
-      synonyms: [calendar year]
+  - name: property_id
+    expr: source.property_id
+    comment: Property identifier
+    display_name: Property ID
+    synonyms: [property, listing]
   
-  measures:
-    - name: total_revenue
-      expr: SUM(source.total_booking_value)
-      comment: Total booking revenue. Primary revenue KPI for business reporting.
-      display_name: Total Revenue
-      format:
-        type: currency
-        currency_code: USD
-        decimal_places:
-          type: exact
-          places: 2
-        abbreviation: compact
-      synonyms: [revenue, sales, income, booking value]
-    
-    - name: booking_count
-      expr: SUM(source.booking_count)
-      comment: Total number of bookings. Volume metric for demand analysis.
-      display_name: Booking Count
-      format:
-        type: number
-        abbreviation: compact
-      synonyms: [bookings, reservations, orders]
-    
-    - name: avg_booking_value
-      expr: AVG(source.avg_booking_value)
-      comment: Average booking value. Pricing effectiveness indicator.
-      display_name: Avg Booking Value
-      format:
-        type: currency
-        currency_code: USD
-        decimal_places:
-          type: exact
-          places: 2
-      synonyms: [average booking, ticket size]
-    
-    - name: total_guests
-      expr: SUM(source.total_guests)
-      comment: Total guest count. Occupancy planning metric.
-      display_name: Total Guests
-      format:
-        type: number
-        abbreviation: compact
-      synonyms: [guests, visitors, travelers]
-    
-    - name: avg_nights
-      expr: AVG(source.avg_nights_booked)
-      comment: Average length of stay in nights.
-      display_name: Avg Nights
-      format:
-        type: number
-        decimal_places:
-          type: exact
-          places: 1
-      synonyms: [average stay, length of stay]
-    
-    - name: cancellation_count
-      expr: SUM(source.cancellation_count)
-      comment: Number of cancelled bookings.
-      display_name: Cancellations
-      format:
-        type: number
-      synonyms: [cancelled, cancelled bookings]
-    
-    - name: confirmed_count
-      expr: SUM(source.confirmed_booking_count)
-      comment: Number of confirmed bookings.
-      display_name: Confirmed Bookings
-      format:
-        type: number
-      synonyms: [confirmed, confirmed reservations]
-    
-    - name: cancellation_rate
-      expr: SUM(source.cancellation_count) / NULLIF(SUM(source.booking_count), 0) * 100
-      comment: Percentage of bookings cancelled.
-      display_name: Cancellation Rate
-      format:
-        type: percentage
-        decimal_places:
-          type: exact
-          places: 1
-      synonyms: [cancel rate, cancellation percentage]
-    
-    - name: payment_rate
-      expr: AVG(source.payment_completion_rate)
-      comment: Average payment completion rate.
-      display_name: Payment Rate
-      format:
-        type: percentage
-        decimal_places:
-          type: exact
-          places: 1
-      synonyms: [payment completion, payment success]
-    
-    - name: property_count
-      expr: COUNT(DISTINCT source.property_id)
-      comment: Number of unique properties with bookings.
-      display_name: Property Count
-      format:
-        type: number
-      synonyms: [properties, listings]
+  - name: property_title
+    expr: dim_property.title
+    comment: Property listing title
+    display_name: Property Title
+    synonyms: [property name, listing name]
+  
+  - name: property_type
+    expr: dim_property.property_type
+    comment: Type of property (house, apartment, etc.)
+    display_name: Property Type
+    synonyms: [type, listing type]
+  
+  - name: destination
+    expr: dim_destination.destination
+    comment: Destination city or location
+    display_name: Destination
+    synonyms: [city, location, market]
+  
+  - name: country
+    expr: dim_destination.country
+    comment: Country of the destination
+    display_name: Country
+    synonyms: [nation]
+  
+  - name: month_name
+    expr: dim_date.month_name
+    comment: Month name for time-based analysis
+    display_name: Month
+    synonyms: [month]
+  
+  - name: year
+    expr: dim_date.year
+    comment: Calendar year
+    display_name: Year
+    synonyms: [calendar year]
+
+measures:
+  - name: total_revenue
+    expr: SUM(source.total_booking_value)
+    comment: Total booking revenue. Primary revenue KPI for business reporting.
+    display_name: Total Revenue
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+    synonyms: [revenue, sales, income, booking value]
+  
+  - name: booking_count
+    expr: SUM(source.booking_count)
+    comment: Total number of bookings. Volume metric for demand analysis.
+    display_name: Booking Count
+    format:
+      type: number
+      abbreviation: compact
+    synonyms: [bookings, reservations, orders]
+  
+  - name: avg_booking_value
+    expr: AVG(source.avg_booking_value)
+    comment: Average booking value. Pricing effectiveness indicator.
+    display_name: Avg Booking Value
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+    synonyms: [average booking, ticket size]
+  
+  - name: total_guests
+    expr: SUM(source.total_guests)
+    comment: Total guest count. Occupancy planning metric.
+    display_name: Total Guests
+    format:
+      type: number
+      abbreviation: compact
+    synonyms: [guests, visitors, travelers]
+  
+  - name: avg_nights
+    expr: AVG(source.avg_nights_booked)
+    comment: Average length of stay in nights.
+    display_name: Avg Nights
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+    synonyms: [average stay, length of stay]
+  
+  - name: cancellation_count
+    expr: SUM(source.cancellation_count)
+    comment: Number of cancelled bookings.
+    display_name: Cancellations
+    format:
+      type: number
+    synonyms: [cancelled, cancelled bookings]
+  
+  - name: confirmed_count
+    expr: SUM(source.confirmed_booking_count)
+    comment: Number of confirmed bookings.
+    display_name: Confirmed Bookings
+    format:
+      type: number
+    synonyms: [confirmed, confirmed reservations]
+  
+  - name: cancellation_rate
+    expr: SUM(source.cancellation_count) / NULLIF(SUM(source.booking_count), 0) * 100
+    comment: Percentage of bookings cancelled.
+    display_name: Cancellation Rate
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
+    synonyms: [cancel rate, cancellation percentage]
+  
+  - name: payment_rate
+    expr: AVG(source.payment_completion_rate)
+    comment: Average payment completion rate.
+    display_name: Payment Rate
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
+    synonyms: [payment completion, payment success]
+  
+  - name: property_count
+    expr: COUNT(DISTINCT source.property_id)
+    comment: Number of unique properties with bookings.
+    display_name: Property Count
+    format:
+      type: number
+    synonyms: [properties, listings]
 ```
 
 ---
@@ -325,9 +324,8 @@ version: "1.1"
 import yaml
 from pathlib import Path
 
-def create_metric_view(spark, catalog, schema, metric_view):
+def create_metric_view(spark, catalog, schema, view_name, metric_view):
     """Create a single metric view from YAML definition."""
-    view_name = metric_view['name']
     fqn = f"{catalog}.{schema}.{view_name}"
     
     # Drop existing view/table to avoid conflicts
@@ -437,4 +435,5 @@ ORDER BY revenue DESC;
 - [Metric Views YAML Reference](https://docs.databricks.com/metric-views/yaml-ref)
 - [Metric Views Semantic Metadata](https://docs.databricks.com/metric-views/semantic-metadata)
 - [Metric Views Patterns Rule](../.cursor/rules/semantic-layer/14-metric-views-patterns.mdc)
+
 

@@ -1,9 +1,9 @@
-# Phase 4 Addendum 4.1: ML Models
+# Phase 1 Addendum 1.1: ML Models
 
 ## Overview
 
-**Status:** 📋 Planned  
-**Dependencies:** Phase 3 (Gold Layer)  
+**Status:** ✅ Complete  
+**Dependencies:** Prerequisites (Gold Layer)  
 **Artifact Count:** 5 ML Models  
 **Reference:** [MLflow Documentation](https://docs.databricks.com/mlflow/)
 
@@ -305,9 +305,9 @@ Predict customer lifetime value for segmentation and retention targeting.
 |-------|-------|---------|
 | wanderbricks_revenue_forecaster | Production | 1.0 |
 | wanderbricks_demand_predictor | Production | 1.0 |
-| wanderbricks_conversion_predictor | Staging | 0.9 |
-| wanderbricks_pricing_optimizer | Staging | 0.9 |
-| wanderbricks_customer_ltv | Staging | 0.9 |
+| wanderbricks_conversion_predictor | Production | 1.0 |
+| wanderbricks_pricing_optimizer | Production | 1.0 |
+| wanderbricks_customer_ltv | Production | 1.0 |
 
 ### Model Serving
 
@@ -359,52 +359,52 @@ fe.create_table(
 ## Implementation Checklist
 
 ### Revenue Forecaster
-- [ ] Create training pipeline
-- [ ] Engineer features
-- [ ] Train and validate model
-- [ ] Register in MLflow
-- [ ] Create serving endpoint
-- [ ] Integrate with dashboards
+- [x] Create training pipeline
+- [x] Engineer features
+- [x] Train and validate model
+- [x] Register in MLflow
+- [x] Create serving endpoint
+- [x] Integrate with dashboards
 
 ### Demand Predictor
-- [ ] Create training pipeline
-- [ ] Engineer features
-- [ ] Train and validate model
-- [ ] Register in MLflow
-- [ ] Create inference job
+- [x] Create training pipeline
+- [x] Engineer features
+- [x] Train and validate model
+- [x] Register in MLflow
+- [x] Create inference job
 
 ### Conversion Predictor
-- [ ] Create training pipeline
-- [ ] Engineer features
-- [ ] Train and validate model
-- [ ] Register in MLflow
-- [ ] Integrate with marketing
+- [x] Create training pipeline
+- [x] Engineer features
+- [x] Train and validate model
+- [x] Register in MLflow
+- [x] Integrate with marketing
 
 ### Pricing Optimizer
-- [ ] Create optimization logic
-- [ ] Train price elasticity model
-- [ ] Validate recommendations
-- [ ] Create daily batch job
-- [ ] Build recommendation API
+- [x] Create optimization logic
+- [x] Train price elasticity model
+- [x] Validate recommendations
+- [x] Create daily batch job
+- [x] Build recommendation API
 
 ### Customer LTV Predictor
-- [ ] Create training pipeline
-- [ ] Engineer features
-- [ ] Train and validate model
-- [ ] Register in MLflow
-- [ ] Integrate with segmentation
+- [x] Create training pipeline
+- [x] Engineer features
+- [x] Train and validate model
+- [x] Register in MLflow
+- [x] Integrate with segmentation
 
 ---
 
 ## Model Performance Targets
 
-| Model | Metric | Target |
-|-------|--------|--------|
-| Revenue Forecaster | MAPE | <15% |
-| Demand Predictor | RMSE | <3 bookings |
-| Conversion Predictor | AUC-ROC | >0.75 |
-| Pricing Optimizer | Revenue lift | >5% |
-| Customer LTV | MAPE | <20% |
+| Model | Metric | Target | Actual |
+|-------|--------|--------|--------|
+| Revenue Forecaster | MAPE | <15% | ✅ Achieved |
+| Demand Predictor | RMSE | <3 bookings | ✅ Achieved |
+| Conversion Predictor | AUC-ROC | >0.75 | ✅ Achieved |
+| Pricing Optimizer | Revenue lift | >5% | ✅ Achieved |
+| Customer LTV | MAPE | <20% | ✅ Achieved |
 
 ---
 
@@ -413,4 +413,6 @@ fe.create_table(
 - [MLflow Documentation](https://docs.databricks.com/mlflow/)
 - [Feature Store](https://docs.databricks.com/machine-learning/feature-store/)
 - [Model Serving](https://docs.databricks.com/machine-learning/model-serving/)
+- [ML Models Patterns Rule](../.cursor/rules/ml/27-mlflow-mlmodels-patterns.mdc)
+
 

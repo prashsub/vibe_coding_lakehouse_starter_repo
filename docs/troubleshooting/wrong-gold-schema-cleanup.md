@@ -192,3 +192,4 @@ SHOW SCHEMAS IN prashanth_subrahmanyam_catalog LIKE '*gold*';
 -- Should only show: dev_prashanth_subrahmanyam_wanderbricks_gold
 ```
 
+

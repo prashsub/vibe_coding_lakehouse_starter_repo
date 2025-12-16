@@ -1,9 +1,9 @@
-# Phase 4 Addendum 4.2: Table-Valued Functions (TVFs)
+# Phase 1 Addendum 1.2: Table-Valued Functions (TVFs)
 
 ## Overview
 
-**Status:** ✅ Implemented  
-**Dependencies:** Phase 3 (Gold Layer)  
+**Status:** ✅ Complete  
+**Dependencies:** Prerequisites (Gold Layer)  
 **Artifact Count:** 26 TVFs  
 **Reference:** [TVF Patterns](../.cursor/rules/semantic-layer/15-databricks-table-valued-functions.mdc)
 
@@ -243,6 +243,10 @@ Example questions: "Who are top performing hosts?" "Show host KPIs"';
 
 **Purpose:** Host distribution by country
 
+### 5. get_multi_property_hosts
+
+**Purpose:** Hosts with multiple properties
+
 ---
 
 ## 🎯 Customer Domain TVFs
@@ -430,12 +434,12 @@ SELECT * FROM ${catalog}.${gold_schema}.get_property_performance(
 
 ### Validation Criteria
 
-| Criteria | Target |
-|----------|--------|
-| All TVFs created without errors | 25/25 |
-| Genie can invoke TVFs | Yes |
-| Response time < 30 seconds | All |
-| Results match direct SQL | 100% |
+| Criteria | Target | Status |
+|----------|--------|--------|
+| All TVFs created without errors | 26/26 | ✅ Complete |
+| Genie can invoke TVFs | Yes | ✅ Verified |
+| Response time < 30 seconds | All | ✅ Achieved |
+| Results match direct SQL | 100% | ✅ Verified |
 
 ---
 
@@ -445,4 +449,5 @@ SELECT * FROM ${catalog}.${gold_schema}.get_property_performance(
 - [TVFs Prompt](../context/prompts/09-table-valued-functions-prompt.md)
 - [Databricks TVF Documentation](https://docs.databricks.com/sql/language-manual/sql-ref-syntax-ddl-create-sql-function.html)
 - [Genie Trusted Assets](https://docs.databricks.com/genie/trusted-assets.html)
+
 

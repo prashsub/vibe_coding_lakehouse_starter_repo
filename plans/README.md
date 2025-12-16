@@ -6,27 +6,35 @@
 
 ## 📋 Plan Index
 
-### Core Phases
+### Prerequisites (Complete)
+
+The following data layers are prerequisites and must be complete before project phases begin:
+
+| Layer | Schema | Tables | Status | Description |
+|-------|--------|--------|--------|-------------|
+| Bronze | `wanderbricks_bronze` | 16 | ✅ Complete | Raw data ingestion from source systems |
+| Silver | `wanderbricks_silver` | 8+ | ✅ Complete | DLT streaming with DQ expectations |
+| Gold | `wanderbricks_gold` | 8 | ✅ Complete | Dimensional model (5 dims + 3 facts) |
+
+### Project Phases
 
 | Phase | Document | Status | Description |
 |-------|----------|--------|-------------|
-| 1 | [Phase 1: Bronze Layer](./phase1-bronze-ingestion.md) | ✅ Complete | Raw data ingestion (16 tables) |
-| 2 | [Phase 2: Silver Layer](./phase2-silver-layer.md) | 🔧 In Progress | DLT streaming with DQ expectations |
-| 3 | [Phase 3: Gold Layer](./phase3-gold-layer.md) | 📋 Planned | Dimensional model (8 tables) |
-| 4 | [Phase 4: Use Cases](./phase4-use-cases.md) | 📋 Planned | Analytics artifacts (master) |
-| 5 | [Phase 5: AI Agents](./phase5-ai-agents.md) | 📋 Planned | Natural language analytics agents |
+| 1 | [Phase 1: Use Cases](./phase1-use-cases.md) | ✅ Complete | Analytics artifacts (TVFs, Metric Views, Dashboards, etc.) |
+| 2 | [Phase 2: Agent Framework](./phase2-agent-framework.md) | 📋 Planned | AI Agents for natural language analytics |
+| 3 | [Phase 3: Frontend App](./phase3-frontend-app.md) | 📋 Planned | User interface application |
 
-### Phase 4 Addendums (Analytics Artifacts)
+### Phase 1 Addendums (Analytics Artifacts)
 
 | # | Addendum | Status | Artifacts |
 |---|----------|--------|-----------|
-| 4.1 | [ML Models](./phase4-addendum-4.1-ml-models.md) | 📋 Planned | Revenue forecasting, demand prediction |
-| 4.2 | [Table-Valued Functions](./phase4-addendum-4.2-tvfs.md) | 📋 Planned | 20+ parameterized queries for Genie |
-| 4.3 | [Metric Views](./phase4-addendum-4.3-metric-views.md) | 📋 Planned | Self-service analytics layer |
-| 4.4 | [Lakehouse Monitoring](./phase4-addendum-4.4-lakehouse-monitoring.md) | 📋 Planned | Data quality and drift detection |
-| 4.5 | [AI/BI Dashboards](./phase4-addendum-4.5-aibi-dashboards.md) | 📋 Planned | Lakeview dashboards |
-| 4.6 | [Genie Spaces](./phase4-addendum-4.6-genie-spaces.md) | 📋 Planned | Natural language query interfaces |
-| 4.7 | [Alerting Framework](./phase4-addendum-4.7-alerting.md) | 📋 Planned | Proactive monitoring alerts |
+| 1.1 | [ML Models](./phase1-addendum-1.1-ml-models.md) | ✅ Complete | 5 ML models |
+| 1.2 | [Table-Valued Functions](./phase1-addendum-1.2-tvfs.md) | ✅ Complete | 26 TVFs |
+| 1.3 | [Metric Views](./phase1-addendum-1.3-metric-views.md) | ✅ Complete | 5 metric views |
+| 1.4 | [Lakehouse Monitoring](./phase1-addendum-1.4-lakehouse-monitoring.md) | ✅ Complete | 5 monitors (19 custom metrics) |
+| 1.5 | [AI/BI Dashboards](./phase1-addendum-1.5-aibi-dashboards.md) | ✅ Complete | 5 dashboards |
+| 1.6 | [Genie Spaces](./phase1-addendum-1.6-genie-spaces.md) | 📋 Planned | 5 Genie Spaces |
+| 1.7 | [Alerting Framework](./phase1-addendum-1.7-alerting.md) | 📋 Planned | 21 SQL alerts |
 
 ---
 
@@ -46,13 +54,13 @@ All artifacts are organized by **Agent Domain** for consistent categorization:
 
 ## 📊 Project Scope Summary
 
-### Data Layers
+### Prerequisites (Data Layers)
 
 | Layer | Schema | Tables | Status |
 |-------|--------|--------|--------|
-| Bronze | `wanderbricks` | 16 | ✅ Complete |
-| Silver | `wanderbricks_silver` | 8+ | 🔧 In Progress |
-| Gold | `wanderbricks_gold` | 8 | 📋 Planned |
+| Bronze | `wanderbricks_bronze` | 16 | ✅ Complete |
+| Silver | `wanderbricks_silver` | 8+ | ✅ Complete |
+| Gold | `wanderbricks_gold` | 8 | ✅ Complete |
 
 ### Bronze Tables (Source Data)
 
@@ -73,6 +81,19 @@ All artifacts are organized by **Agent Domain** for consistent categorization:
 | Facts | 3 | fact_booking_detail, fact_booking_daily, fact_property_engagement |
 | **Total** | **8** | |
 
+### Phase 1 (Use Cases) Artifact Summary
+
+| Artifact Type | Count |
+|--------------|-------|
+| Table-Valued Functions (TVFs) | 26 |
+| Metric Views | 5 |
+| AI/BI Dashboards | 5 |
+| Lakehouse Monitors | 5 |
+| SQL Alerts | 21 |
+| ML Models | 5 |
+| Genie Spaces | 5 |
+| **Total Artifacts** | **72** |
+
 ---
 
 ## 🚀 Quick Start
@@ -80,17 +101,29 @@ All artifacts are organized by **Agent Domain** for consistent categorization:
 ### Current Status
 
 ```
-✅ Phase 1 (Bronze): Complete - 16 tables ingested
-🔧 Phase 2 (Silver): In Progress - DLT pipeline with DQ
-📋 Phase 3 (Gold): Designed - YAML schemas ready
-📋 Phase 4 (Use Cases): Planned - This document
+✅ Prerequisites: Complete
+   - Bronze Layer: 16 tables ingested
+   - Silver Layer: DLT pipeline with DQ
+   - Gold Layer: 8 dimensional model tables
+
+✅ Phase 1 (Use Cases): Largely Complete
+   - TVFs: 26 deployed
+   - Metric Views: 5 deployed
+   - Lakehouse Monitoring: 5 monitors active
+   - AI/BI Dashboards: 5 published
+   - ML Models: 5 trained
+   - Genie Spaces: Planned
+   - Alerting: Planned
+
+📋 Phase 2 (Agent Framework): Planned
+📋 Phase 3 (Frontend App): Planned
 ```
 
 ### Next Steps
 
-1. **Complete Silver Layer** - Deploy DLT pipeline with expectations
-2. **Implement Gold Layer** - Create tables from YAML schemas
-3. **Build Phase 4 Artifacts** - TVFs, Metric Views, Dashboards
+1. **Complete Phase 1** - Deploy Genie Spaces and Alerting Framework
+2. **Begin Phase 2** - Implement AI Agents using Phase 1 artifacts
+3. **Plan Phase 3** - Design frontend application
 
 ---
 
@@ -109,7 +142,8 @@ All artifacts are organized by **Agent Domain** for consistent categorization:
 - [Project Plan Methodology](../.cursor/rules/planning/26-project-plan-methodology.mdc)
 - [Gold Layer Documentation](../.cursor/rules/gold/12-gold-layer-documentation.mdc)
 - [TVF Patterns](../.cursor/rules/semantic-layer/15-databricks-table-valued-functions.mdc)
-- [Metric Views Patterns](../.cursor/rules/semantic-layer/16-genie-space-patterns.mdc)
+- [Metric Views Patterns](../.cursor/rules/semantic-layer/14-metric-views-patterns.mdc)
+- [Genie Space Patterns](../.cursor/rules/semantic-layer/16-genie-space-patterns.mdc)
 
 ---
 
@@ -117,18 +151,21 @@ All artifacts are organized by **Agent Domain** for consistent categorization:
 
 ### Phase Completion Criteria
 
-| Phase | Criteria | Target |
-|-------|----------|--------|
-| Silver | All DLT tables streaming | 8+ tables |
-| Silver | DQ expectations passing | >95% |
-| Gold | All tables deployed | 8 tables |
-| Gold | FK constraints applied | 100% |
-| Use Cases | TVFs deployed | 20+ |
-| Use Cases | Metric Views active | 5+ |
-| Use Cases | Dashboards created | 3+ |
+| Phase | Criteria | Target | Status |
+|-------|----------|--------|--------|
+| Prerequisites | Gold tables deployed | 8 tables | ✅ Complete |
+| Prerequisites | FK constraints applied | 100% | ✅ Complete |
+| Phase 1 | TVFs deployed | 26 | ✅ Complete |
+| Phase 1 | Metric Views active | 5 | ✅ Complete |
+| Phase 1 | Dashboards created | 5 | ✅ Complete |
+| Phase 1 | Monitors active | 5 | ✅ Complete |
+| Phase 1 | ML Models trained | 5 | ✅ Complete |
+| Phase 1 | Genie Spaces configured | 5 | 📋 Planned |
+| Phase 1 | Alerts configured | 21 | 📋 Planned |
+| Phase 2 | AI Agents deployed | 6 | 📋 Planned |
+| Phase 3 | Frontend app deployed | 1 | 📋 Planned |
 
 ---
 
 **Last Updated:** December 2025  
 **Project Owner:** Data Engineering Team
-

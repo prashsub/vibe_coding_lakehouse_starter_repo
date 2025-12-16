@@ -38,6 +38,7 @@ from databricks.sdk.service.catalog import (
     MonitorMetric,
     MonitorMetricType
 )
+from pyspark.sql import types as T
 
 
 def get_parameters():
@@ -163,46 +164,46 @@ def update_revenue_monitor(
             name="daily_revenue",
             input_columns=[":table"],
             definition="SUM(total_booking_value)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="avg_booking_value",
             input_columns=[":table"],
             definition="AVG(avg_booking_value)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="total_bookings",
             input_columns=[":table"],
             definition="SUM(booking_count)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="total_cancellations",
             input_columns=[":table"],
             definition="SUM(cancellation_count)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         
-        # DERIVED: Calculated metrics
+        # DERIVED: Calculated metrics (reference aggregate metrics directly, no {{ }})
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_DERIVED,
             name="cancellation_rate",
             input_columns=[":table"],
-            definition="({{total_cancellations}} / NULLIF({{total_bookings}}, 0)) * 100",
-            output_data_type="double"
+            definition="(total_cancellations / NULLIF(total_bookings, 0)) * 100",
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         
-        # DRIFT: Revenue change detection
+        # DRIFT: Revenue change detection (compares current vs baseline window)
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_DRIFT,
             name="revenue_vs_baseline",
             input_columns=[":table"],
-            definition="{{daily_revenue}}",
-            output_data_type="double"
+            definition="{{current_df}}.daily_revenue - {{base_df}}.daily_revenue",
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         )
     ]
     
@@ -248,30 +249,30 @@ def update_engagement_monitor(
             name="total_views",
             input_columns=[":table"],
             definition="SUM(view_count)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="total_clicks",
             input_columns=[":table"],
             definition="SUM(click_count)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="avg_conversion",
             input_columns=[":table"],
             definition="AVG(conversion_rate)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         
-        # DERIVED: Engagement health
+        # DERIVED: Engagement health (reference aggregate metrics directly, no {{ }})
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_DERIVED,
             name="engagement_health",
             input_columns=[":table"],
-            definition="({{total_clicks}} / NULLIF({{total_views}}, 0)) * 100",
-            output_data_type="double"
+            definition="(total_clicks / NULLIF(total_views, 0)) * 100",
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         )
     ]
     
@@ -317,21 +318,21 @@ def update_property_monitor(
             name="active_listings",
             input_columns=[":table"],
             definition="COUNT(CASE WHEN is_current = true THEN 1 END)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="avg_price",
             input_columns=[":table"],
             definition="AVG(CASE WHEN is_current = true THEN base_price END)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="price_variance",
             input_columns=["base_price"],
             definition="STDDEV(base_price)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         )
     ]
     
@@ -374,37 +375,37 @@ def update_host_monitor(
             name="active_hosts",
             input_columns=[":table"],
             definition="COUNT(CASE WHEN is_current = true AND is_active = true THEN 1 END)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="total_current_hosts",
             input_columns=[":table"],
             definition="COUNT(CASE WHEN is_current = true THEN 1 END)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="verified_hosts",
             input_columns=[":table"],
             definition="SUM(CASE WHEN is_verified AND is_current THEN 1 ELSE 0 END)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="avg_rating",
             input_columns=[":table"],
             definition="AVG(CASE WHEN is_current = true THEN rating END)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         
-        # DERIVED: Verification rate
+        # DERIVED: Verification rate (reference aggregate metrics directly, no {{ }})
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_DERIVED,
             name="verification_rate",
             input_columns=[":table"],
-            definition="({{verified_hosts}} / NULLIF({{total_current_hosts}}, 0)) * 100",
-            output_data_type="double"
+            definition="(verified_hosts / NULLIF(total_current_hosts, 0)) * 100",
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         )
     ]
     
@@ -447,33 +448,27 @@ def update_customer_monitor(
             name="total_customers",
             input_columns=[":table"],
             definition="COUNT(CASE WHEN is_current = true THEN 1 END)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_AGGREGATE,
             name="business_customers",
             input_columns=[":table"],
             definition="SUM(CASE WHEN is_business AND is_current THEN 1 ELSE 0 END)",
-            output_data_type="double"
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         ),
         
-        # DERIVED: Business customer rate
+        # DERIVED: Business customer rate (reference aggregate metrics directly, no {{ }})
         MonitorMetric(
             type=MonitorMetricType.CUSTOM_METRIC_TYPE_DERIVED,
             name="business_customer_rate",
             input_columns=[":table"],
-            definition="({{business_customers}} / NULLIF({{total_customers}}, 0)) * 100",
-            output_data_type="double"
-        ),
-        
-        # DRIFT: Customer growth tracking
-        MonitorMetric(
-            type=MonitorMetricType.CUSTOM_METRIC_TYPE_DRIFT,
-            name="customer_growth",
-            input_columns=[":table"],
-            definition="{{total_customers}}",
-            output_data_type="double"
+            definition="(business_customers / NULLIF(total_customers, 0)) * 100",
+            output_data_type=T.StructField("output", T.DoubleType()).json()
         )
+        
+        # NOTE: DRIFT metrics removed - Snapshot monitors require baseline_table for drift
+        # To enable drift tracking, provide a baseline table in monitor creation
     ]
     
     snapshot_config = MonitorSnapshot()

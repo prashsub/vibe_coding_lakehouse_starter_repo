@@ -397,3 +397,4 @@ Integrate with monitoring:
 
 **Next:** Ready to proceed with [cleanup of wrong schema](docs/troubleshooting/wrong-gold-schema-cleanup.md) or continue with semantic layer development!
 
+

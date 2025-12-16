@@ -557,3 +557,4 @@ databricks bundle destroy -t dev
 - [DLT Expectations Patterns](.cursor/rules/silver/07-dlt-expectations-patterns.mdc)
 - [Asset Bundle Configuration](.cursor/rules/common/02-databricks-asset-bundles.mdc)
 
+

@@ -42,10 +42,13 @@ RETURNS TABLE (
   total_views BIGINT COMMENT 'Total property views',
   property_score DECIMAL(10,2) COMMENT 'Composite property performance score'
 )
-COMMENT 'LLM: Returns comprehensive property performance metrics including revenue, occupancy, and conversion.
-Use this for: Property portfolio analysis, pricing strategy, inventory management, property comparison.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional destination_filter (NULL for all destinations).
-Example questions: "How are properties performing in Paris?" "Show property KPIs" "Property performance metrics"'
+COMMENT '
+• PURPOSE: Comprehensive property performance metrics
+• BEST FOR: "Property performance in Paris" | "Property KPIs" | "Property performance metrics"
+• RETURNS: Individual property rows (property_id, title, destination, total_revenue, booking_count, occupancy_rate)
+• PARAMS: start_date, end_date, destination_filter (optional, NULL for all)
+• SYNTAX: SELECT * FROM get_property_performance(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH property_metrics AS (
     SELECT 
@@ -114,10 +117,13 @@ RETURNS TABLE (
   avg_price DECIMAL(18,2) COMMENT 'Average property price per night',
   inventory_utilization DECIMAL(5,2) COMMENT 'Percentage of properties with bookings'
 )
-COMMENT 'LLM: Returns property inventory and availability metrics by destination.
-Use this for: Inventory management, market capacity analysis, destination portfolio planning, supply/demand analysis.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional top_n (default: 20).
-Example questions: "Property inventory by destination" "How many properties in each market?" "Destination capacity"'
+COMMENT '
+• PURPOSE: Property inventory and availability by destination
+• BEST FOR: "Property inventory by destination" | "How many properties in each market?" | "Destination capacity"
+• RETURNS: PRE-AGGREGATED rows (destination, property_count, total_capacity, avg_base_price)
+• PARAMS: start_date, end_date, top_n (default: 20)
+• SYNTAX: SELECT * FROM get_property_inventory(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH destination_inventory AS (
     SELECT 
@@ -175,10 +181,13 @@ RETURNS TABLE (
   conversion_rate DECIMAL(5,2) COMMENT 'Views to bookings conversion (%)',
   market_share_revenue DECIMAL(5,2) COMMENT 'Percentage of total revenue'
 )
-COMMENT 'LLM: Returns performance analysis by property type (apartment, house, villa, etc.).
-Use this for: Property type strategy, inventory planning, pricing by type, market segmentation.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "Performance by property type" "Which property types are most popular?" "Property type comparison"'
+COMMENT '
+• PURPOSE: Performance analysis by property type
+• BEST FOR: "Performance by property type" | "Which property types most popular?" | "Property type comparison"
+• RETURNS: PRE-AGGREGATED rows (property_type, property_count, total_revenue, avg_revenue_per_property)
+• PARAMS: start_date, end_date
+• SYNTAX: SELECT * FROM get_property_type_performance(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH type_metrics AS (
     SELECT 
@@ -237,10 +246,13 @@ RETURNS TABLE (
   avg_occupancy_rate DECIMAL(5,2) COMMENT 'Occupancy rate (%)',
   performance_score DECIMAL(10,2) COMMENT 'Composite performance score'
 )
-COMMENT 'LLM: Returns performance analysis by property amenities (bedrooms, bathrooms, capacity).
-Use this for: Amenity optimization, pricing strategy, property development decisions, capacity planning.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "Impact of amenities on performance" "Best performing property configurations" "Amenity analysis"'
+COMMENT '
+• PURPOSE: Performance analysis by property amenities (bedrooms, capacity)
+• BEST FOR: "Impact of amenities on performance" | "Best performing configurations" | "Amenity analysis"
+• RETURNS: PRE-AGGREGATED rows (bedrooms, bathrooms, max_guests, property_count, avg_revenue)
+• PARAMS: start_date, end_date
+• SYNTAX: SELECT * FROM get_amenity_performance(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH amenity_metrics AS (
     SELECT 
@@ -293,10 +305,13 @@ RETURNS TABLE (
   revenue_per_property DECIMAL(18,2) COMMENT 'Average revenue per property',
   price_efficiency_score DECIMAL(10,2) COMMENT 'Price point efficiency score'
 )
-COMMENT 'LLM: Returns pricing analysis with performance by price bucket.
-Use this for: Pricing optimization, competitive analysis, revenue management, price elasticity studies.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "Pricing analysis" "Optimal price points" "Revenue by price range"'
+COMMENT '
+• PURPOSE: Pricing analysis with performance by price bucket
+• BEST FOR: "Pricing analysis" | "Optimal price points" | "Revenue by price range"
+• RETURNS: PRE-AGGREGATED rows (price_bucket, property_count, avg_revenue, avg_booking_count)
+• PARAMS: start_date, end_date
+• SYNTAX: SELECT * FROM get_pricing_analysis(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH price_buckets AS (
     SELECT 
@@ -353,4 +368,5 @@ RETURN
       WHEN '$300-$499' THEN 4
       WHEN '$500+' THEN 5
     END;
+
 

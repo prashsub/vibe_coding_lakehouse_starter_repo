@@ -37,10 +37,15 @@ RETURNS TABLE (
   avg_nights_per_booking DECIMAL(10,2) COMMENT 'Average length of stay',
   cancellation_rate DECIMAL(5,2) COMMENT 'Cancellation rate (%)'
 )
-COMMENT 'LLM: Returns customer segment analysis based on booking behavior (frequency, value, recency).
-Use this for: Customer segmentation, marketing targeting, loyalty programs, customer lifecycle management.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "What are our customer segments?" "Show segment performance" "Customer segmentation analysis"'
+COMMENT '
+• PURPOSE: Customer behavioral segmentation with booking patterns and revenue metrics
+• BEST FOR: "What are our customer segments?" | "Segment performance" | "How many VIP customers?"
+• NOT FOR: VIP property preferences (use get_vip_customer_property_preferences) | Individual customer details
+• RETURNS: 5 PRE-AGGREGATED rows (segment_name, customer_count, total_bookings, total_revenue, avg_booking_value)
+• PARAMS: start_date, end_date (format: YYYY-MM-DD)
+• SYNTAX: SELECT * FROM get_customer_segments(''2020-01-01'', ''2024-12-31'')
+• NOTE: Column is "segment_name" NOT "segment" | DO NOT add GROUP BY - data is already aggregated
+'
 RETURN
   WITH customer_metrics AS (
     SELECT 
@@ -145,10 +150,14 @@ RETURNS TABLE (
   days_since_last_booking INT COMMENT 'Recency metric (days)',
   customer_tenure_days INT COMMENT 'Days since first booking'
 )
-COMMENT 'LLM: Returns customer lifetime value (LTV) ranked by total revenue contribution.
-Use this for: VIP customer identification, customer value analysis, retention strategies, loyalty program targeting.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional top_n (default: 100).
-Example questions: "Top customers by lifetime value" "Highest value customers" "Customer LTV analysis"'
+COMMENT '
+• PURPOSE: Individual customer lifetime value with ranking and booking history
+• BEST FOR: "Show VIP customers" | "Most valuable customers" | "Top customers by spend" | "Customer details"
+• RETURNS: Individual customer rows (rank, user_id, country, user_type, total_bookings, lifetime_value, avg_booking_value, booking dates)
+• PARAMS: start_date, end_date, top_n (default: 100)
+• SYNTAX: SELECT * FROM get_customer_ltv(''2020-01-01'', ''2024-12-31'')
+• NOTE: Returns user_id for individual customer analysis | Sorted by lifetime_value DESC
+'
 RETURN
   WITH customer_ltv AS (
     SELECT 
@@ -206,10 +215,13 @@ RETURNS TABLE (
   customer_percentage DECIMAL(5,2) COMMENT 'Percentage of total customers',
   revenue_percentage DECIMAL(5,2) COMMENT 'Percentage of total revenue'
 )
-COMMENT 'LLM: Returns booking frequency distribution showing customer behavior patterns.
-Use this for: Frequency analysis, repeat purchase behavior, customer loyalty assessment, engagement strategies.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "Booking frequency distribution" "How often do customers book?" "Repeat booking patterns"'
+COMMENT '
+• PURPOSE: Booking frequency distribution showing customer behavior patterns
+• BEST FOR: "Booking frequency distribution" | "How often do customers book?" | "Repeat booking patterns"
+• RETURNS: PRE-AGGREGATED rows (frequency_bucket, customer_count, total_bookings, total_revenue, avg_value)
+• PARAMS: start_date, end_date (format: YYYY-MM-DD)
+• SYNTAX: SELECT * FROM get_booking_frequency_analysis(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH customer_frequency AS (
     SELECT 
@@ -286,10 +298,13 @@ RETURNS TABLE (
   avg_booking_value DECIMAL(18,2) COMMENT 'Average booking value',
   cancellation_rate DECIMAL(5,2) COMMENT 'Cancellation rate (%)'
 )
-COMMENT 'LLM: Returns customer geographic distribution and behavior by country.
-Use this for: Geographic customer analysis, market segmentation, international marketing, regional strategies.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional top_n (default: 20).
-Example questions: "Customers by country" "Geographic customer distribution" "Which countries have most customers?"'
+COMMENT '
+• PURPOSE: Customer geographic distribution and behavior by country
+• BEST FOR: "Customers by country" | "Geographic distribution" | "Which countries have most customers?"
+• RETURNS: PRE-AGGREGATED rows (country, customer_count, total_bookings, total_revenue, avg_booking_value)
+• PARAMS: start_date, end_date, top_n (default: 20)
+• SYNTAX: SELECT * FROM get_customer_geography(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH country_metrics AS (
     SELECT 
@@ -345,10 +360,15 @@ RETURNS TABLE (
   cancellation_rate DECIMAL(5,2) COMMENT 'Cancellation rate (%)',
   payment_completion_rate DECIMAL(5,2) COMMENT 'Payment completion rate (%)'
 )
-COMMENT 'LLM: Returns comparison of business vs leisure booking patterns and behaviors.
-Use this for: B2B vs B2C segmentation, corporate account targeting, booking pattern analysis, pricing strategies.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "Business vs leisure bookings" "Corporate booking patterns" "B2B vs B2C comparison"'
+COMMENT '
+• PURPOSE: Business vs leisure booking comparison by trip purpose
+• BEST FOR: "Business vs leisure breakdown" | "B2B vs B2C analysis" | "Trip purpose comparison"
+• NOT FOR: User type analysis (use customer_analytics_metrics.user_type instead)
+• RETURNS: 2 PRE-AGGREGATED rows (booking_type, customer_count, total_bookings, total_revenue, cancellation_rate)
+• PARAMS: start_date, end_date (format: YYYY-MM-DD)
+• SYNTAX: SELECT * FROM get_business_vs_leisure_analysis(''2020-01-01'', ''2024-12-31'')
+• NOTE: Groups by is_business_booking flag (trip purpose), NOT user_type (account type)
+'
 RETURN
   WITH booking_type_metrics AS (
     SELECT 
@@ -387,4 +407,74 @@ RETURN
       WHEN 'Business' THEN 1
       WHEN 'Leisure' THEN 2
     END;
+
+
+-- =============================================================================
+-- TVF 5: get_vip_customer_property_preferences
+-- Returns property types that attract VIP customers (top 5% spenders)
+-- =============================================================================
+
+CREATE OR REPLACE FUNCTION get_vip_customer_property_preferences(
+  start_date STRING DEFAULT '2020-01-01' COMMENT 'Start date (format: YYYY-MM-DD)',
+  end_date STRING DEFAULT '2099-12-31' COMMENT 'End date (format: YYYY-MM-DD)'
+)
+RETURNS TABLE (
+  property_type STRING COMMENT 'Property type category',
+  vip_customer_count BIGINT COMMENT 'Number of unique VIP customers',
+  vip_bookings BIGINT COMMENT 'Number of VIP bookings',
+  vip_revenue DECIMAL(18,2) COMMENT 'Total revenue from VIP customers',
+  avg_booking_value DECIMAL(18,2) COMMENT 'Average VIP booking value',
+  pct_of_total_vip_revenue DECIMAL(5,2) COMMENT 'Percentage of total VIP revenue'
+)
+COMMENT '
+• PURPOSE: Property types preferred by VIP customers (top 5% spenders)
+• BEST FOR: "What property types attract VIP customers?" | "VIP customer preferences" | "High-value customer property analysis"
+• RETURNS: PRE-AGGREGATED rows (property_type, vip_customer_count, vip_bookings, vip_revenue, pct_of_total_vip_revenue)
+• PARAMS: start_date (default: 2020-01-01), end_date (default: 2099-12-31)
+• SYNTAX: SELECT * FROM get_vip_customer_property_preferences()
+• NOTE: VIP defined as top 5% by total spend (PERCENTILE 95)
+'
+RETURN
+  WITH customer_spend AS (
+    SELECT 
+      fbd.user_id,
+      SUM(fbd.total_amount) AS total_spend
+    FROM ${catalog}.${gold_schema}.fact_booking_detail fbd
+    WHERE fbd.check_in_date BETWEEN CAST(start_date AS DATE) AND CAST(end_date AS DATE)
+    GROUP BY fbd.user_id
+  ),
+  vip_threshold AS (
+    SELECT PERCENTILE(total_spend, 0.95) AS threshold
+    FROM customer_spend
+  ),
+  vip_customers AS (
+    SELECT cs.user_id
+    FROM customer_spend cs, vip_threshold vt
+    WHERE cs.total_spend >= vt.threshold
+  ),
+  vip_bookings AS (
+    SELECT 
+      dp.property_type,
+      COUNT(DISTINCT fbd.user_id) AS vip_customer_count,
+      COUNT(DISTINCT fbd.booking_id) AS vip_bookings,
+      SUM(fbd.total_amount) AS vip_revenue
+    FROM ${catalog}.${gold_schema}.fact_booking_detail fbd
+    JOIN vip_customers vc ON fbd.user_id = vc.user_id
+    JOIN ${catalog}.${gold_schema}.dim_property dp ON fbd.property_id = dp.property_id AND dp.is_current = true
+    WHERE dp.property_type IS NOT NULL
+      AND fbd.check_in_date BETWEEN CAST(start_date AS DATE) AND CAST(end_date AS DATE)
+    GROUP BY dp.property_type
+  ),
+  total_vip_revenue AS (
+    SELECT SUM(vip_revenue) AS total_revenue FROM vip_bookings
+  )
+  SELECT
+    vb.property_type,
+    vb.vip_customer_count,
+    vb.vip_bookings,
+    vb.vip_revenue,
+    vb.vip_revenue / NULLIF(vb.vip_bookings, 0) AS avg_booking_value,
+    (vb.vip_revenue / NULLIF(tr.total_revenue, 0)) * 100 AS pct_of_total_vip_revenue
+  FROM vip_bookings vb, total_vip_revenue tr
+  ORDER BY vip_customer_count DESC;
 

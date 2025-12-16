@@ -327,3 +327,4 @@ def silver_customer_support_logs():
         .withColumn("processed_timestamp", current_timestamp())
     )
 
+

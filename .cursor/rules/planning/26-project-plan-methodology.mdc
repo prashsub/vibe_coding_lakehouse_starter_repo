@@ -4,46 +4,57 @@
 
 This rule documents the comprehensive methodology for creating multi-phase project plans for Databricks data platform solutions. The patterns were discovered and refined during the Databricks Health Monitor project planning process.
 
+**Key Assumption:** Planning starts AFTER Bronze ingestion and Gold layer design are complete. These are prerequisites, not phases.
+
 ---
 
 ## When to Apply This Rule
 
 Apply this methodology when:
 - Creating architectural plans for Databricks data platform projects
-- Designing solutions that span Bronze → Silver → Gold medallion architecture
 - Building observability/monitoring solutions using system tables
 - Planning multi-artifact solutions (TVFs, Metric Views, Dashboards, etc.)
 - Developing agent-based frameworks for platform management
+- Creating frontend applications for data platform interaction
 
 ---
 
 ## Plan Structure Framework
+
+### Prerequisites (Not Numbered Phases)
+
+Before planning begins, these must be complete:
+
+| Prerequisite | Description | Status |
+|--------------|-------------|--------|
+| Bronze Layer | Raw data ingestion from source systems | ✅ Complete |
+| Silver Layer | DLT streaming with data quality | ✅ Complete |
+| Gold Layer | Dimensional model (star schema) | ✅ Complete |
 
 ### Standard Project Phases
 
 ```
 plans/
 ├── README.md                              # Index and overview
-├── phase1-bronze-ingestion.md             # Data ingestion layer
-├── phase2-gold-layer-design.md            # Dimensional model layer
-├── phase3-use-cases.md                    # Analytics artifacts (master)
-│   ├── phase3-addendum-3.1-ml-models.md   # Machine Learning
-│   ├── phase3-addendum-3.2-tvfs.md        # Table-Valued Functions
-│   ├── phase3-addendum-3.3-metric-views.md # UC Metric Views
-│   ├── phase3-addendum-3.4-lakehouse-monitoring.md # Monitoring
-│   ├── phase3-addendum-3.5-ai-bi-dashboards.md # Dashboards
-│   ├── phase3-addendum-3.6-genie-spaces.md # Natural Language
-│   └── phase3-addendum-3.7-alerting-framework.md # Alerting
-├── phase4-agent-framework.md              # AI Agents
-└── phase5-frontend-app.md                 # User Interface
+├── prerequisites.md                       # Bronze/Silver/Gold summary (optional)
+├── phase1-use-cases.md                    # Analytics artifacts (master)
+│   ├── phase1-addendum-1.1-ml-models.md   # Machine Learning
+│   ├── phase1-addendum-1.2-tvfs.md        # Table-Valued Functions
+│   ├── phase1-addendum-1.3-metric-views.md # UC Metric Views
+│   ├── phase1-addendum-1.4-lakehouse-monitoring.md # Monitoring
+│   ├── phase1-addendum-1.5-ai-bi-dashboards.md # Dashboards
+│   ├── phase1-addendum-1.6-genie-spaces.md # Natural Language
+│   └── phase1-addendum-1.7-alerting-framework.md # Alerting
+├── phase2-agent-framework.md              # AI Agents
+└── phase3-frontend-app.md                 # User Interface
 ```
 
 ### Phase Dependencies
 
 ```
-Phase 1 (Bronze) → Phase 2 (Gold) → Phase 3 (Use Cases) → Phase 4 (Agents) → Phase 5 (Frontend)
-                                          ↓
-                                    All Addendums
+Prerequisites (Bronze → Silver → Gold) → Phase 1 (Use Cases) → Phase 2 (Agents) → Phase 3 (Frontend)
+         [COMPLETE]                               ↓
+                                           All Addendums
 ```
 
 ---
@@ -242,7 +253,7 @@ When users provide specific requirements:
 4. **Add Cross-References**
    - Link related artifacts
    - Document dependencies
-   - Update main phase3-use-cases.md
+   - Update main phase1-use-cases.md
 
 ### Example: Commit Tracking Use Case
 
@@ -253,13 +264,13 @@ When users provide specific requirements:
 | Addendum | Artifact | Purpose |
 |----------|----------|---------|
 | Gold Schema | `commit_configurations` table | Store commit amounts |
-| 3.2 TVFs | `get_commit_vs_actual` | Query commit status |
-| 3.2 TVFs | `get_commit_forecast` | Query ML forecast |
-| 3.3 Metric Views | `commit_tracking_metrics` | Self-service analytics |
-| 3.5 Dashboards | Commit Tracking Dashboard | Visualization |
-| 3.7 Alerts | COST-009/010/011 | Proactive monitoring |
-| 3.1 ML Models | Budget Forecaster enhancement | Prediction capability |
-| 3.4 Monitoring | Budget variance metrics | Drift detection |
+| 1.2 TVFs | `get_commit_vs_actual` | Query commit status |
+| 1.2 TVFs | `get_commit_forecast` | Query ML forecast |
+| 1.3 Metric Views | `commit_tracking_metrics` | Self-service analytics |
+| 1.5 Dashboards | Commit Tracking Dashboard | Visualization |
+| 1.7 Alerts | COST-009/010/011 | Proactive monitoring |
+| 1.1 ML Models | Budget Forecaster enhancement | Prediction capability |
+| 1.4 Monitoring | Budget variance metrics | Drift detection |
 
 ---
 
@@ -471,8 +482,8 @@ start_date STRING COMMENT 'Format: YYYY-MM-DD'
 
 ### Project Examples
 - [plans/README.md](../plans/README.md) - Index of all plans
-- [plans/phase3-use-cases.md](../plans/phase3-use-cases.md) - Master Phase 3 document
-- [plans/phase3-addendum-3.7-alerting-framework.md](../plans/phase3-addendum-3.7-alerting-framework.md) - Complete alerting example
+- [plans/phase1-use-cases.md](../plans/phase1-use-cases.md) - Master Phase 1 document
+- [plans/phase1-addendum-1.7-alerting-framework.md](../plans/phase1-addendum-1.7-alerting-framework.md) - Complete alerting example
 
 ---
 
@@ -480,10 +491,13 @@ start_date STRING COMMENT 'Format: YYYY-MM-DD'
 
 **Created:** December 2025  
 **Trigger:** Comprehensive plan creation for Databricks Health Monitor project  
+**Updated:** December 2025 - Restructured phases to start from Use Cases (Bronze/Silver/Gold as prerequisites)
+
 **Patterns Documented:** 
-- 5-phase project structure
+- 3-phase project structure (Use Cases → Agents → Frontend)
+- Prerequisites section for completed data layers
 - Agent domain framework (5 domains)
-- 7 Phase 3 addendums
+- 7 Phase 1 addendums
 - 100+ artifacts planned
 - Dashboard pattern extraction methodology
 - User requirement integration process
@@ -495,3 +509,4 @@ start_date STRING COMMENT 'Format: YYYY-MM-DD'
 4. Dashboard JSON files are rich sources of SQL patterns
 5. LLM-friendly comments are critical for Genie/AI/BI integration
 6. Summary tables help maintain accuracy across large plans
+7. Planning starts after data layers are complete - focus on consumption artifacts

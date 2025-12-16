@@ -395,7 +395,7 @@ A production-grade Silver layer with:
 - [Unity Catalog](https://docs.databricks.com/unity-catalog/)
 
 ### Project Documentation
-- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Complete deployment instructions
+- [Deployment Guide](docs/deployment/DEPLOYMENT_GUIDE.md) - Complete deployment instructions
 - [Quick Start](QUICKSTART.md) - Fast track deployment
 - [Silver README](src/wanderbricks_silver/README.md) - Technical details
 
@@ -409,9 +409,10 @@ A production-grade Silver layer with:
 ## 🆘 Getting Help
 
 1. **Pre-deployment issues:** Run `./scripts/validate_bundle.sh`
-2. **Deployment errors:** Check [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md#-troubleshooting)
+2. **Deployment errors:** Check [DEPLOYMENT_GUIDE.md](docs/deployment/DEPLOYMENT_GUIDE.md#-troubleshooting)
 3. **Validation failures:** Run `silver_validation_job` for diagnostics
 4. **DLT pipeline issues:** Review Event Logs in Databricks UI
 
 **For questions, check the comprehensive guides first - they have detailed troubleshooting sections!**
+
 

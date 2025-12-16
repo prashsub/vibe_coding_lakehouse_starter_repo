@@ -40,10 +40,13 @@ RETURNS TABLE (
   avg_time_on_page DECIMAL(10,2) COMMENT 'Average time spent viewing property (seconds)',
   engagement_score DECIMAL(10,2) COMMENT 'Composite engagement score (clicks + time weight)'
 )
-COMMENT 'LLM: Returns engagement metrics for properties including views, clicks, and conversion rates.
-Use this for: Marketing analysis, content optimization, funnel analysis, property listing quality assessment.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional property_id_filter (NULL for all properties).
-Example questions: "Which properties have highest engagement?" "Show conversion rates" "Property engagement metrics"'
+COMMENT '
+• PURPOSE: Engagement metrics for properties (views, clicks, conversions)
+• BEST FOR: "Highest engagement properties" | "Conversion rates" | "Property engagement metrics"
+• RETURNS: Individual property rows (property_id, title, total_views, total_clicks, conversion_rate)
+• PARAMS: start_date, end_date, property_id_filter (optional, NULL for all)
+• SYNTAX: SELECT * FROM get_property_engagement(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH engagement_data AS (
     SELECT 
@@ -104,10 +107,13 @@ RETURNS TABLE (
   overall_conversion_rate DECIMAL(5,2) COMMENT 'Percentage of views resulting in bookings',
   funnel_efficiency DECIMAL(5,2) COMMENT 'Composite funnel health score (0-100)'
 )
-COMMENT 'LLM: Returns conversion funnel analysis from views to clicks to bookings by destination.
-Use this for: Marketing funnel optimization, conversion rate analysis, identifying funnel drop-off points, destination performance.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional destination_filter (NULL for all destinations).
-Example questions: "Show conversion funnel" "Where do users drop off?" "Funnel performance by destination"'
+COMMENT '
+• PURPOSE: Conversion funnel analysis (views → clicks → bookings)
+• BEST FOR: "Show conversion funnel" | "Where do users drop off?" | "Funnel by destination"
+• RETURNS: PRE-AGGREGATED rows (destination, views, clicks, bookings, view_to_click_rate, click_to_book_rate)
+• PARAMS: start_date, end_date, destination_filter (optional, NULL for all)
+• SYNTAX: SELECT * FROM get_conversion_funnel(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH funnel_data AS (
     SELECT 
@@ -160,10 +166,13 @@ RETURNS TABLE (
   conversion_rate DECIMAL(5,2) COMMENT 'Conversion rate (%)',
   bookings_generated BIGINT COMMENT 'Total bookings'
 )
-COMMENT 'LLM: Returns engagement and conversion performance by property type (traffic source proxy).
-Use this for: Property type performance, inventory optimization, marketing focus areas, user preference analysis.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "Performance by property type" "Which property types convert best?" "Traffic source effectiveness"'
+COMMENT '
+• PURPOSE: Engagement performance by property type
+• BEST FOR: "Which property types convert best?" | "Engagement by property type" | "Property type conversion"
+• RETURNS: PRE-AGGREGATED rows (property_type, total_views, total_clicks, conversion_rate)
+• PARAMS: start_date, end_date
+• SYNTAX: SELECT * FROM get_engagement_by_type(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH source_data AS (
     SELECT 
@@ -216,10 +225,13 @@ RETURNS TABLE (
   unique_properties_viewed BIGINT COMMENT 'Number of properties viewed',
   engagement_index DECIMAL(10,2) COMMENT 'Composite engagement health score'
 )
-COMMENT 'LLM: Returns daily or weekly engagement trends with key metrics.
-Use this for: Trend analysis, identifying seasonal patterns, campaign impact measurement, engagement health tracking.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional time_grain (default: day).
-Example questions: "Show daily engagement trends" "Weekly engagement patterns" "How is engagement trending?"'
+COMMENT '
+• PURPOSE: Daily/weekly engagement trends
+• BEST FOR: "Daily engagement trends" | "Weekly engagement patterns" | "How is engagement trending?"
+• RETURNS: PRE-AGGREGATED rows (period_date, total_views, total_clicks, conversion_rate)
+• PARAMS: start_date, end_date, time_grain (day|week, default: day)
+• SYNTAX: SELECT * FROM get_engagement_trends(''2020-01-01'', ''2024-12-31'', ''week'')
+'
 RETURN
   WITH period_data AS (
     SELECT 
@@ -274,10 +286,13 @@ RETURNS TABLE (
   engagement_score DECIMAL(10,2) COMMENT 'Composite engagement score',
   bookings_generated BIGINT COMMENT 'Number of bookings'
 )
-COMMENT 'LLM: Returns top N properties ranked by engagement score (clicks, time, conversions).
-Use this for: Identifying best-performing listings, content optimization examples, marketing case studies.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional top_n (default: 10).
-Example questions: "Most engaging properties" "Top 10 by engagement" "Best performing listings"'
+COMMENT '
+• PURPOSE: Top properties ranked by engagement score
+• BEST FOR: "Most engaging properties" | "Top 10 by engagement" | "Best performing listings"
+• RETURNS: Individual property rows (rank, property_id, title, engagement_score, total_views, conversion_rate)
+• PARAMS: start_date, end_date, top_n (default: 10)
+• SYNTAX: SELECT * FROM get_top_engaged_properties(''2020-01-01'', ''2024-12-31'', 20)
+'
 RETURN
   WITH property_engagement AS (
     SELECT 
@@ -321,4 +336,5 @@ RETURN
   SELECT * FROM ranked_properties
   WHERE rank <= top_n
   ORDER BY rank;
+
 

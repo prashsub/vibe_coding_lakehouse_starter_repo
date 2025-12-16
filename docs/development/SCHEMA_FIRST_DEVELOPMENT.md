@@ -337,3 +337,4 @@ echo "✅ SQL validation passed"
 
 **Remember:** When in doubt, read the YAML. It's always right.
 
+

@@ -475,3 +475,4 @@ def silver_property_images():
         .withColumn("processed_timestamp", current_timestamp())
     )
 
+

@@ -9,67 +9,281 @@
 - ✅ Table-Valued Functions created (common queries)
 - ✅ Gold layer tables (with rich descriptions)
 
-**What You'll Configure:**
-1. **Trusted Assets** - Tables, views, and functions Genie can use
-2. **Agent Instructions** - Business context and query patterns
-3. **Benchmark Questions** - Test cases to validate Genie performance
+---
 
-**Fast Track (UI-Based):**
+# ⚠️⚠️⚠️ MANDATORY DELIVERABLES - DO NOT SKIP ⚠️⚠️⚠️
+
+## 🔴🔴🔴 REQUIRED OUTPUT: GENIE SPACE SETUP DOCUMENT 🔴🔴🔴
+
+**You MUST produce a complete document containing ALL 7 sections below.**
+**Each section is NON-NEGOTIABLE. Missing any section = INCOMPLETE deliverable.**
+
+---
+
+## ████████████████████████████████████████████████████████████████
+## █                                                              █
+## █  SECTION A: SPACE NAME                                       █
+## █  ─────────────────────────────────────────────────────────── █
+## █  REQUIRED: Provide the exact Genie Space name                █
+## █                                                              █
+## ████████████████████████████████████████████████████████████████
+
+**Format:**
 ```
-1. Navigate to: Databricks Workspace → Genie Spaces → Create New
-2. Add Trusted Assets:
-   - All Metric Views from Gold schema
-   - All TVFs from Gold schema
-   - Gold dimension/fact tables (if needed)
-3. Configure Agent Instructions (comprehensive context)
-4. Add 10-15 Benchmark Questions
-5. Test queries: "Show top 10 stores by revenue last month"
+Space Name: {Project Name} {Domain} Analytics Space
 ```
 
-**Agent Instructions Template:**
+**Example:**
+```
+Space Name: Wanderbricks Revenue Analytics Space
+```
+
+---
+
+## ████████████████████████████████████████████████████████████████
+## █                                                              █
+## █  SECTION B: SPACE DESCRIPTION                                █
+## █  ─────────────────────────────────────────────────────────── █
+## █  REQUIRED: 2-3 sentence description of the space purpose     █
+## █                                                              █
+## ████████████████████████████████████████████████████████████████
+
+**Format:**
+```
+Description: Natural language interface for {domain} analytics. 
+Enables {user type} to query {data types} without SQL. 
+Powered by {key data assets}.
+```
+
+**Example:**
+```
+Description: Natural language interface for vacation rental revenue and booking analytics. 
+Enables business analysts and executives to query revenue, occupancy, and host performance metrics without SQL. 
+Powered by Metric Views, Table-Valued Functions, and Gold layer dimensional model.
+```
+
+---
+
+## ████████████████████████████████████████████████████████████████
+## █                                                              █
+## █  SECTION C: SAMPLE QUESTIONS                                 █
+## █  ─────────────────────────────────────────────────────────── █
+## █  REQUIRED: 10-15 example questions users can ask             █
+## █  These appear in Genie UI to guide users                     █
+## █                                                              █
+## ████████████████████████████████████████████████████████████████
+
+**Format:**
 ```markdown
-# Data Assets
-- Metric Views: sales_performance_metrics, inventory_metrics
-- Key Dimensions: store, product, date
-- Key Measures: revenue, units, transactions
-- Functions: get_top_stores_by_revenue(), get_store_performance()
+## Sample Questions
 
-# Business Context
-- [Your domain-specific context]
+### Revenue Questions
+1. "What is the total revenue for the last 30 days?"
+2. "Show me the top 10 {entities} by revenue"
+3. "What was the revenue trend by month?"
 
-# Query Patterns
-- [Common question patterns]
+### Performance Questions
+4. "Which {entity} had the best performance last quarter?"
+5. "Compare {entity A} vs {entity B}"
+
+### Trend Questions
+6. "Show me daily {metric} for the last 7 days"
+7. "What is the month-over-month growth?"
+
+### Drill-Down Questions
+8. "Show {metric} by {dimension}"
+9. "Which {entities} in {filter} had {metric} over {threshold}?"
+10. "What is the average {metric} by {dimension}?"
 ```
 
-**Benchmark Questions (Test Cases):**
-- Top N queries: "Top 10 stores by revenue"
-- Trending: "Revenue trend last 90 days"
-- Comparison: "Compare stores A vs B"
-- Drill-down: "Product performance in California"
+---
 
-**Output:** Business users can query data via natural language
+## ████████████████████████████████████████████████████████████████
+## █                                                              █
+## █  SECTION D: DATA ASSETS (TABLES & METRIC VIEWS)              █
+## █  ─────────────────────────────────────────────────────────── █
+## █  REQUIRED: Complete list of all trusted assets               █
+## █  Include: Metric Views, Dimension Tables, Fact Tables        █
+## █                                                              █
+## ████████████████████████████████████████████████████████████████
 
-📖 **Full guide below** for detailed setup →
+**Format:**
+```markdown
+## Data Assets
+
+### Metric Views (PRIMARY - Use First)
+| Metric View Name | Purpose | Key Measures |
+|------------------|---------|--------------|
+| {metric_view_1} | {purpose} | {measures} |
+| {metric_view_2} | {purpose} | {measures} |
+
+### Dimension Tables
+| Table Name | Purpose | Key Columns |
+|------------|---------|-------------|
+| dim_{entity1} | {purpose} | {columns} |
+| dim_{entity2} | {purpose} | {columns} |
+| dim_date | Calendar lookups | year, quarter, month, day |
+
+### Fact Tables (if needed beyond Metric Views)
+| Table Name | Purpose | Grain |
+|------------|---------|-------|
+| fact_{entity} | {purpose} | {grain} |
+```
 
 ---
 
-## Quick Reference
+## ████████████████████████████████████████████████████████████████
+## █                                                              █
+## █  SECTION E: GENERAL INSTRUCTIONS (20 LINES MAX)              █
+## █  ─────────────────────────────────────────────────────────── █
+## █  REQUIRED: Concise LLM behavior instructions                 █
+## █  MUST BE EXACTLY 20 LINES OR LESS                            █
+## █                                                              █
+## ████████████████████████████████████████████████████████████████
 
-**Use this prompt when setting up a Databricks Genie Space for natural language queries.**
+**Format (COPY AND CUSTOMIZE):**
+```markdown
+## General Instructions
 
-**Input Required:**
-- Metric Views (already created)
-- Table-Valued Functions (already created)
-- Gold layer tables
-- Common business questions
+You are an expert {domain} analyst. Follow these rules:
 
-**Output:** Genie Space with trusted assets, agent instructions, and benchmark questions.
+1. **Primary Data Source:** Always use Metric Views first (e.g., {metric_view_name})
+2. **Use TVFs:** For common queries, prefer Table-Valued Functions over raw SQL
+3. **Date Defaults:** If no date specified, default to last 30 days
+4. **Aggregations:** Use SUM for totals, AVG for averages, COUNT for volumes
+5. **Sorting:** Sort results by primary metric DESC unless user specifies otherwise
+6. **Limits:** Return top 10-20 rows for ranking queries unless user specifies
+7. **Currency:** Format as USD with 2 decimal places
+8. **Percentages:** Show as % with 1 decimal place
+9. **Synonyms:** Handle these equivalents:
+   - Revenue = sales, dollars, earnings
+   - {Entity} = {synonyms}
+10. **Context:** Always explain what the numbers mean in business terms
+11. **Comparisons:** When comparing, show both absolute values and % difference
+12. **Time Periods:** Support: today, yesterday, last week, last month, last quarter, YTD
+13. **Null Handling:** Exclude nulls from calculations
+14. **Performance:** Never scan raw Bronze/Silver tables
+15. **Accuracy:** If unsure about a metric definition, state the assumption made
+```
 
-**Time Estimate:** 1-2 hours
+**⚠️ CONSTRAINT: MAXIMUM 20 LINES. Do not exceed.**
 
 ---
 
-## Core Philosophy: Natural Language Data Access
+## ████████████████████████████████████████████████████████████████
+## █                                                              █
+## █  SECTION F: TABLE-VALUED FUNCTIONS (TVFs)                    █
+## █  ─────────────────────────────────────────────────────────── █
+## █  REQUIRED: List ALL TVFs with signatures and descriptions    █
+## █                                                              █
+## ████████████████████████████████████████████████████████████████
+
+**Format:**
+```markdown
+## Table-Valued Functions
+
+| Function Name | Signature | Purpose | When to Use |
+|---------------|-----------|---------|-------------|
+| get_{query1} | `get_{query1}(param1 TYPE, param2 TYPE)` | {purpose} | {when to use} |
+| get_{query2} | `get_{query2}(param1 TYPE, param2 TYPE)` | {purpose} | {when to use} |
+
+### TVF Details
+
+#### get_{query1}
+- **Signature:** `get_{query1}(param1 STRING, start_date DATE, end_date DATE)`
+- **Returns:** {description of output columns}
+- **Use When:** User asks for {specific question pattern}
+- **Example:** `SELECT * FROM get_{query1}('value', CURRENT_DATE - 30, CURRENT_DATE)`
+
+#### get_{query2}
+- **Signature:** `get_{query2}(limit INT, start_date DATE, end_date DATE)`
+- **Returns:** {description of output columns}
+- **Use When:** User asks for {specific question pattern}
+- **Example:** `SELECT * FROM get_{query2}(10, CURRENT_DATE - 30, CURRENT_DATE)`
+```
+
+---
+
+## ████████████████████████████████████████████████████████████████
+## █                                                              █
+## █  SECTION G: BENCHMARK QUESTIONS WITH SQL ANSWERS             █
+## █  ─────────────────────────────────────────────────────────── █
+## █  REQUIRED: 10-15 questions with EXACT SQL that should run    █
+## █  These are for TESTING the Genie Space works correctly       █
+## █                                                              █
+## ████████████████████████████████████████████████████████████████
+
+**Format:**
+```markdown
+## Benchmark Questions & Expected SQL
+
+### Question 1: "{Natural language question}"
+**Expected SQL:**
+```sql
+SELECT 
+  {columns}
+FROM {table_or_metric_view}
+WHERE {conditions}
+GROUP BY {grouping}
+ORDER BY {ordering}
+LIMIT {n};
+```
+**Expected Result:** {Description of what should return}
+
+---
+
+### Question 2: "{Natural language question using TVF}"
+**Expected SQL:**
+```sql
+SELECT * FROM get_{function_name}({params});
+```
+**Expected Result:** {Description of what should return}
+
+---
+
+### Question 3: "{Aggregation question}"
+**Expected SQL:**
+```sql
+SELECT 
+  {dimension},
+  MEASURE(`{Metric Name}`) as {alias}
+FROM {metric_view}
+GROUP BY {dimension}
+ORDER BY {alias} DESC
+LIMIT 10;
+```
+**Expected Result:** {Description of what should return}
+```
+
+**⚠️ REQUIREMENT: Provide 10-15 benchmark questions with EXACT working SQL.**
+
+---
+
+# ✅ DELIVERABLE CHECKLIST
+
+Before submitting, verify ALL sections are complete:
+
+| Section | Requirement | Complete? |
+|---------|-------------|-----------|
+| **A. Space Name** | Exact name provided | ☐ |
+| **B. Space Description** | 2-3 sentences | ☐ |
+| **C. Sample Questions** | 10-15 questions | ☐ |
+| **D. Data Assets** | All tables & metric views listed | ☐ |
+| **E. General Instructions** | ≤20 lines, behavior rules | ☐ |
+| **F. TVFs** | All functions with signatures | ☐ |
+| **G. Benchmark Questions** | 10-15 with SQL answers | ☐ |
+
+**🔴 ALL 7 SECTIONS MUST BE COMPLETE. NO EXCEPTIONS. 🔴**
+
+---
+
+# 📖 Detailed Implementation Guide
+
+The sections below provide additional context and examples for each deliverable.
+
+---
+
+## Understanding Genie Spaces
 
 **⚠️ CRITICAL PRINCIPLE:**
 
@@ -96,8 +310,8 @@ Genie Spaces enable **business users to query data using natural language**:
 
 **Navigate to:** Databricks Workspace → Genie Spaces → Create New
 
-1. **Space Name:** `{Project} Analytics Space`
-2. **Description:** "Natural language interface for {project} sales, inventory, and product analytics"
+1. **Space Name:** Use format from Section A
+2. **Description:** Use text from Section B
 3. **SQL Warehouse:** Select serverless SQL warehouse
 4. **Permissions:** Grant access to business user groups
 
@@ -118,19 +332,18 @@ Genie Spaces enable **business users to query data using natural language**:
 ```
 Trusted Assets:
 ├── Metric Views (Primary)
-│   ├── sales_performance_metrics
-│   └── inventory_performance_metrics (if applicable)
+│   ├── {metric_view_1}
+│   └── {metric_view_2}
 │
 ├── Table-Valued Functions (Common Queries)
-│   ├── get_sales_by_store(store_number, start_date, end_date)
-│   ├── get_top_products(limit, start_date, end_date)
-│   ├── get_store_performance(store_number, start_date, end_date)
-│   └── ... (5-10 TVFs)
+│   ├── get_{query1}(params)
+│   ├── get_{query2}(params)
+│   └── ... (all TVFs from Section F)
 │
 └── Gold Tables (Context)
-    ├── dim_store (for store lookups)
-    ├── dim_product (for product lookups)
-    └── dim_date (for date context)
+    ├── dim_{entity1}
+    ├── dim_{entity2}
+    └── dim_date
 ```
 
 **In Genie UI:**
@@ -141,79 +354,26 @@ Trusted Assets:
 
 ---
 
-## Step 3: Agent Instructions
+## Step 3: Configure Agent Instructions
 
-### Comprehensive Instructions Template
+Copy the General Instructions from Section E into the Genie Space configuration.
+
+**Additional Detailed Instructions (Optional):**
+
+For complex domains, you may add more detailed instructions beyond the 20-line summary:
 
 ```markdown
-# {Project} Analytics Genie Agent Instructions
-
-You are an expert data analyst for {Project Name}, helping users analyze sales, inventory, and product performance data. Follow these guidelines:
-
-## Data Sources
-
-### Primary Data Sources (Use These First)
-
-**CUSTOMIZE THIS SECTION:** Replace with your actual metric view names and measures
-
-1. **{your_primary_metric_view}** - {Description of what this metric view contains}
-   - Use for: {Types of questions this answers}
-   - Key measures: {List your actual measures - e.g., Total Revenue, Count, Average}
-   - Dimensions: {List your actual dimensions - e.g., Location, Product, Customer, Date}
-
-**Example (Retail):**
-1. **sales_performance_metrics** - Comprehensive sales metrics
-   - Use for: Revenue queries, sales trends, store performance
-   - Key measures: Total Revenue, Total Units, Transaction Count
-   - Dimensions: Store, Product, Date
-
-**Example (Healthcare):**
-1. **patient_outcomes_metrics** - Patient treatment outcomes and metrics
-   - Use for: Treatment efficacy, readmission analysis
-   - Key measures: Patient Count, Readmission Rate, Average Length of Stay
-   - Dimensions: Provider, Diagnosis, Date
-
-2. **Table-Valued Functions (TVFs)** - Pre-built queries for common analyses
-   - `get_sales_by_store(store_number, start_date, end_date)` - Store-specific sales details
-   - `get_top_products(limit, start_date, end_date)` - Top N products by revenue
-   - `get_store_performance(store_number, start_date, end_date)` - Comprehensive store metrics
-   - Use TVFs when they match the user's question exactly
-
-### Dimension Tables (For Lookups)
-- **dim_store** - Store details (name, address, city, state)
-- **dim_product** - Product details (brand, category, UPC)
-- **dim_date** - Calendar attributes (year, quarter, month, weekday, weekend)
-
 ## Query Guidelines
 
 ### Revenue Queries
-- **Use:** `MEASURE(\`Total Revenue\`)` from sales_performance_metrics
+- **Use:** `MEASURE(\`Total Revenue\`)` from {metric_view}
 - **Aggregation:** Already aggregated at daily grain, use SUM/AVG as needed
-- **Filters:** Store name, city, state, brand, category, date ranges
-
-### Unit/Volume Queries
-- **Use:** `MEASURE(\`Total Units\`)` from sales_performance_metrics
-- **Context:** Net units after returns
-- **Analysis:** Trend analysis, store comparison, product performance
-
-### Transaction Queries
-- **Use:** `MEASURE(\`Transaction Count\`)` from sales_performance_metrics
-- **Metrics:** Customer traffic, conversion, transaction velocity
-
-### Store Performance
-- **Best Approach:** Use `get_store_performance()` TVF for comprehensive view
-- **Alternative:** Query sales_performance_metrics filtered by store
-- **Dimensions:** Store name, city, state for grouping
-
-### Product Analysis
-- **Best Approach:** Use `get_top_products()` TVF for rankings
-- **Alternative:** sales_performance_metrics grouped by brand/category
-- **Metrics:** Revenue, units, transaction count per product
+- **Filters:** {available filter dimensions}
 
 ### Time-Based Analysis
 - **Dimensions:** year, quarter, month_name, is_weekend from dim_date
-- **Comparisons:** Use WHERE clause for date ranges (e.g., "last 30 days")
-- **Trending:** Use ORDER BY transaction_date for time series
+- **Comparisons:** Use WHERE clause for date ranges
+- **Trending:** Use ORDER BY date for time series
 
 ## Response Format
 
@@ -225,115 +385,28 @@ You are an expert data analyst for {Project Name}, helping users analyze sales, 
 
 ### For Summary Statistics
 - Provide context (time period, filters applied)
-- Show key metrics: Total Revenue, Total Units, Transaction Count
+- Show key metrics
 - Include comparisons when relevant (YoY, MoM)
-
-### For Trends
-- Use line charts when showing time-based data
-- Include trend indicators (up/down, % change)
-- Highlight anomalies or significant changes
-
-## Common Query Patterns
-
-### "Show me revenue by store"
-```sql
-SELECT 
-  store_name,
-  MEASURE(\`Total Revenue\`) as revenue
-FROM sales_performance_metrics
-GROUP BY store_name
-ORDER BY revenue DESC
-LIMIT 10
-```
-
-### "Top 10 products by sales"
-```sql
-SELECT * FROM get_top_products(10, CURRENT_DATE - INTERVAL 30 DAYS, CURRENT_DATE)
-```
-
-### "Store performance for Store 12345"
-```sql
-SELECT * FROM get_store_performance('12345', CURRENT_DATE - INTERVAL 90 DAYS, CURRENT_DATE)
-```
-
-### "Sales trend by month"
-```sql
-SELECT 
-  month_name,
-  year,
-  MEASURE(\`Total Revenue\`) as revenue
-FROM sales_performance_metrics
-GROUP BY month_name, year
-ORDER BY year, month_name
-```
-
-## Important Notes
-
-- **Date Ranges:** Default to last 30 days if not specified
-- **Aggregations:** Use appropriate aggregation (SUM for totals, AVG for averages)
-- **Null Handling:** Exclude nulls from calculations when appropriate
-- **Performance:** Prefer Metric Views over raw tables for better performance
-- **Formatting:** Format currency as USD, round to 2 decimal places
-- **Business Context:** Explain results in business terms, not just numbers
-
-## Synonyms and Alternatives
-
-Users may ask questions using these terms (handle all):
-- "Revenue" = sales, dollars, amount, total sales, net revenue
-- "Units" = quantity, volume, items sold
-- "Transactions" = sales, orders, purchases
-- "Store" = location, shop, retail location
-- "Product" = item, SKU, UPC, merchandise
-- "Brand" = manufacturer, product brand
-- "Weekend" = Saturday and Sunday
 ```
 
 ---
 
-## Step 4: Benchmark Questions
+## Step 4: Add Benchmark Questions
 
-### Create Test Questions
+Use the benchmark questions from Section G to:
 
-**Add 10-15 benchmark questions** to validate Genie responses:
+1. **Validate Genie Setup:** Run each question and verify SQL matches expected
+2. **Test Edge Cases:** Ensure complex queries work correctly
+3. **Onboard Users:** Show examples of what Genie can answer
 
-#### Revenue Questions
-1. "What is the total revenue for the last 30 days?"
-2. "Show me the top 10 stores by revenue this month"
-3. "What was the revenue trend by month for the last year?"
-4. "Which state generated the most revenue last quarter?"
+### Testing Process
 
-#### Product Questions
-5. "What are the top 5 products by sales?"
-6. "Show me revenue by brand"
-7. "What is the best-selling category?"
-8. "Which products have the highest return rate?"
-
-#### Store Questions
-9. "How many transactions did store 12345 have last week?"
-10. "Compare revenue between weekends and weekdays"
-11. "Which stores in California had revenue over $100K?"
-
-#### Trend Questions
-12. "Show me daily revenue for the last 7 days"
-13. "What is the month-over-month revenue growth?"
-14. "How does this month's revenue compare to last year?"
-
-#### Advanced Questions
-15. "What is the average transaction value by store?"
-16. "Show me stores with declining sales trends"
-
----
-
-## Step 5: Testing and Validation
-
-### Test Each Benchmark Question
-
-**For each question:**
+**For each benchmark question:**
 1. Ask question in Genie Space
 2. Review SQL generated
-3. Verify results accuracy
-4. Check response formatting
-5. Document any issues
+3. Compare to expected SQL from Section G
+4. Verify results accuracy
+5. Document any discrepancies
 
 ### Common Issues and Fixes
 
@@ -361,32 +434,23 @@ Users may ask questions using these terms (handle all):
 
 ### Phase 2: Genie Space Setup (30 min)
 - [ ] Create Genie Space in UI
-- [ ] Add name and description
+- [ ] Add name and description (Sections A & B)
 - [ ] Select SQL warehouse
 - [ ] Grant permissions to user groups
 
 ### Phase 3: Add Trusted Assets (15 min)
-- [ ] Add all Metric Views
-- [ ] Add all Table-Valued Functions
-- [ ] Add dimension tables
+- [ ] Add all Metric Views (Section D)
+- [ ] Add all Table-Valued Functions (Section F)
+- [ ] Add dimension tables (Section D)
 - [ ] Verify all assets accessible
 
-### Phase 4: Agent Instructions (30 min)
-- [ ] Copy instruction template
-- [ ] Customize for your project
-- [ ] Add project-specific context
-- [ ] Include query examples
-- [ ] Add synonym mappings
+### Phase 4: Agent Instructions (15 min)
+- [ ] Add General Instructions (Section E)
+- [ ] Add Sample Questions to UI (Section C)
 
-### Phase 5: Benchmark Questions (15 min)
-- [ ] Create 10-15 test questions
-- [ ] Cover all major query types
-- [ ] Include edge cases
-- [ ] Add complex multi-table queries
-
-### Phase 6: Testing (30 min)
-- [ ] Test each benchmark question
-- [ ] Review generated SQL
+### Phase 5: Testing (30 min)
+- [ ] Test each Benchmark Question (Section G)
+- [ ] Compare generated SQL to expected SQL
 - [ ] Verify result accuracy
 - [ ] Document issues
 - [ ] Refine instructions as needed
@@ -405,66 +469,15 @@ Users may ask questions using these terms (handle all):
 - ✅ Faster than generating complex SQL
 - ✅ Ensures consistent business logic
 
-### 3. Comprehensive Instructions
-- ✅ Provide context about data sources
-- ✅ Include query examples
+### 3. Concise Instructions
+- ✅ Keep General Instructions to 20 lines
+- ✅ Be specific about data sources
 - ✅ Define synonyms and alternatives
-- ✅ Explain business logic
 
-### 4. Benchmark Questions
-- ✅ Cover all major use cases
+### 4. Benchmark with SQL
+- ✅ Every benchmark question has expected SQL
 - ✅ Test regularly after changes
-- ✅ Document expected results
-- ✅ Use for onboarding new users
-
----
-
-## Example Genie Space Configuration
-
-### Space Details Template
-
-**CUSTOMIZE THIS:** Fill in your specific details
-
-- **Name:** {Your Project} {Domain} Analytics Space
-- **Description:** Natural language interface for {describe your business domain and users}
-- **Warehouse:** {Your SQL Warehouse Name}
-
-**Examples:**
-
-**Retail:**
-- **Name:** Retail Sales Analytics Space
-- **Description:** Natural language interface for multi-channel retail sales analysis across stores, e-commerce, and partners
-
-**Healthcare:**
-- **Name:** Patient Outcomes Analytics Space
-- **Description:** Natural language interface for clinical outcomes analysis across hospitals and clinics
-
-**Finance:**
-- **Name:** Financial Performance Space
-- **Description:** Natural language interface for revenue, billing, and financial metrics analysis
-
-### Trusted Assets (10 assets)
-1. sales_performance_metrics (Metric View)
-2. inventory_performance_metrics (Metric View)
-3. get_sales_by_store (TVF)
-4. get_top_products (TVF)
-5. get_store_performance (TVF)
-6. get_daily_sales_trend (TVF)
-7. dim_store (Table)
-8. dim_product (Table)
-9. dim_date (Table)
-10. fact_sales_daily (Table - optional)
-
-### Benchmark Questions (15 questions)
-- Revenue analysis: 5 questions
-- Product analysis: 4 questions
-- Store analysis: 3 questions
-- Trend analysis: 3 questions
-
-### Agent Instructions
-- 800+ words
-- 10+ query examples
-- 20+ synonym mappings
+- ✅ Use for validating Genie behavior
 
 ---
 
@@ -474,22 +487,21 @@ After setup, test these queries manually:
 
 ```sql
 -- Test Metric View access
-SELECT * FROM {catalog}.{schema}.sales_performance_metrics LIMIT 5;
+SELECT * FROM {catalog}.{schema}.{metric_view} LIMIT 5;
 
 -- Test TVF access
-SELECT * FROM get_top_products(10, CURRENT_DATE - INTERVAL 30 DAYS, CURRENT_DATE);
+SELECT * FROM get_{function}({params});
 
 -- Test dimension access
-SELECT * FROM {catalog}.{schema}.dim_store WHERE state = 'CA' LIMIT 10;
+SELECT * FROM {catalog}.{schema}.dim_{entity} LIMIT 10;
 
 -- Test measure aggregation
 SELECT 
-  store_name,
-  MEASURE(`Total Revenue`) as revenue,
-  MEASURE(`Total Units`) as units
-FROM {catalog}.{schema}.sales_performance_metrics
-GROUP BY store_name
-ORDER BY revenue DESC
+  {dimension},
+  MEASURE(`{Metric Name}`) as metric_value
+FROM {catalog}.{schema}.{metric_view}
+GROUP BY {dimension}
+ORDER BY metric_value DESC
 LIMIT 10;
 ```
 
@@ -509,15 +521,21 @@ LIMIT 10;
 
 ## Summary
 
-**What to Create:**
-1. Genie Space (via UI)
-2. Agent Instructions (800+ words)
-3. Benchmark Questions (10-15 questions)
-4. Test and validate all queries
+**🔴 MANDATORY OUTPUT: Complete Genie Space Setup Document with 7 sections:**
+
+| # | Section | What to Provide |
+|---|---------|-----------------|
+| A | Space Name | Exact name |
+| B | Space Description | 2-3 sentences |
+| C | Sample Questions | 10-15 questions |
+| D | Data Assets | All tables & metric views |
+| E | General Instructions | ≤20 lines of behavior rules |
+| F | TVFs | All functions with signatures |
+| G | Benchmark Questions | 10-15 questions with SQL answers |
 
 **Time Estimate:** 1-2 hours
 
-**Next Action:** Create space, add assets, write instructions, test benchmark questions
+**Next Action:** Create document with all 7 sections, then configure in Databricks UI
 
 
 

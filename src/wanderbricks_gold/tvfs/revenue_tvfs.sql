@@ -39,60 +39,35 @@ RETURNS TABLE (
   unique_properties BIGINT COMMENT 'Number of unique properties booked',
   unique_guests BIGINT COMMENT 'Number of unique guests'
 )
-COMMENT 'LLM: Returns revenue metrics aggregated by time period (day, week, month, quarter, year).
-Use this for: Revenue trends, period-over-period comparisons, seasonal analysis, and financial reporting.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional time_grain (default: day).
-Example questions: "What was revenue last month?" "Show me weekly booking trends" "Compare quarterly revenue"'
+COMMENT '
+• PURPOSE: Revenue metrics aggregated by time period
+• BEST FOR: "Weekly revenue trend" | "Monthly revenue" | "Revenue by quarter" | "Revenue for Q4"
+• RETURNS: PRE-AGGREGATED rows (period_start, period_name, total_revenue, booking_count, avg_booking_value)
+• PARAMS: start_date, end_date, time_grain (day|week|month|quarter|year, default: day)
+• SYNTAX: SELECT * FROM get_revenue_by_period(''2024-10-01'', ''2024-12-31'', ''week'')
+'
 RETURN
-  WITH period_data AS (
-    SELECT 
-      DATE_TRUNC(time_grain, fbd.check_in_date) AS period_start,
-      CASE 
-        WHEN time_grain = 'day' THEN DATE_FORMAT(fbd.check_in_date, 'yyyy-MM-dd')
-        WHEN time_grain = 'week' THEN CONCAT('Week ', WEEKOFYEAR(fbd.check_in_date), ' ', YEAR(fbd.check_in_date))
-        WHEN time_grain = 'month' THEN DATE_FORMAT(fbd.check_in_date, 'MMMM yyyy')
-        WHEN time_grain = 'quarter' THEN CONCAT('Q', QUARTER(fbd.check_in_date), ' ', YEAR(fbd.check_in_date))
-        WHEN time_grain = 'year' THEN CAST(YEAR(fbd.check_in_date) AS STRING)
-        ELSE DATE_FORMAT(fbd.check_in_date, 'yyyy-MM-dd')
-      END AS period_name,
-      fbd.total_booking_value as total_revenue,
-      fbd.booking_count,
-      fbd.avg_booking_value,
-      fbd.confirmed_booking_count as confirmed_bookings,
-      fbd.cancellation_count
-    FROM ${catalog}.${gold_schema}.fact_booking_daily fbd
-    WHERE fbd.check_in_date BETWEEN CAST(start_date AS DATE) AND CAST(end_date AS DATE)
-  ),
-  aggregated_periods AS (
-    SELECT 
-      pd.period_start,
-      pd.period_name,
-      SUM(pd.total_revenue) as total_revenue,
-      SUM(pd.booking_count) as booking_count,
-      SUM(pd.total_revenue) / NULLIF(SUM(pd.booking_count), 0) as avg_booking_value,
-      SUM(pd.confirmed_bookings) as confirmed_bookings,
-      SUM(pd.cancellation_count) as cancellation_count,
-      (SUM(pd.cancellation_count) / NULLIF(SUM(pd.booking_count), 0)) * 100 as cancellation_rate,
-      COUNT(DISTINCT fbd.property_id) as unique_properties,
-      SUM(fbd.total_guests) as unique_guests
-    FROM period_data pd
-    LEFT JOIN ${catalog}.${gold_schema}.fact_booking_daily fbd
-      ON DATE_TRUNC(time_grain, fbd.check_in_date) = pd.period_start
-      AND fbd.check_in_date BETWEEN CAST(start_date AS DATE) AND CAST(end_date AS DATE)
-    GROUP BY pd.period_start, pd.period_name
-  )
   SELECT 
-    period_start,
-    period_name,
-    total_revenue,
-    booking_count,
-    avg_booking_value,
-    confirmed_bookings,
-    cancellation_count,
-    cancellation_rate,
-    unique_properties,
-    unique_guests
-  FROM aggregated_periods
+    DATE_TRUNC(time_grain, fbd.check_in_date) AS period_start,
+    CASE 
+      WHEN time_grain = 'day' THEN DATE_FORMAT(DATE_TRUNC(time_grain, fbd.check_in_date), 'yyyy-MM-dd')
+      WHEN time_grain = 'week' THEN CONCAT('Week ', WEEKOFYEAR(DATE_TRUNC(time_grain, fbd.check_in_date)), ' ', YEAR(DATE_TRUNC(time_grain, fbd.check_in_date)))
+      WHEN time_grain = 'month' THEN DATE_FORMAT(DATE_TRUNC(time_grain, fbd.check_in_date), 'MMMM yyyy')
+      WHEN time_grain = 'quarter' THEN CONCAT('Q', QUARTER(DATE_TRUNC(time_grain, fbd.check_in_date)), ' ', YEAR(DATE_TRUNC(time_grain, fbd.check_in_date)))
+      WHEN time_grain = 'year' THEN CAST(YEAR(DATE_TRUNC(time_grain, fbd.check_in_date)) AS STRING)
+      ELSE DATE_FORMAT(DATE_TRUNC(time_grain, fbd.check_in_date), 'yyyy-MM-dd')
+    END AS period_name,
+    SUM(fbd.total_booking_value) as total_revenue,
+    SUM(fbd.booking_count) as booking_count,
+    SUM(fbd.total_booking_value) / NULLIF(SUM(fbd.booking_count), 0) as avg_booking_value,
+    SUM(fbd.confirmed_booking_count) as confirmed_bookings,
+    SUM(fbd.cancellation_count) as cancellation_count,
+    (SUM(fbd.cancellation_count) / NULLIF(SUM(fbd.booking_count), 0)) * 100 as cancellation_rate,
+    COUNT(DISTINCT fbd.property_id) as unique_properties,
+    SUM(fbd.total_guests) as unique_guests
+  FROM ${catalog}.${gold_schema}.fact_booking_daily fbd
+  WHERE fbd.check_in_date BETWEEN CAST(start_date AS DATE) AND CAST(end_date AS DATE)
+  GROUP BY DATE_TRUNC(time_grain, fbd.check_in_date)
   ORDER BY period_start;
 
 -- =============================================================================
@@ -118,10 +93,13 @@ RETURNS TABLE (
   total_nights BIGINT COMMENT 'Total nights booked',
   avg_occupancy_rate DECIMAL(5,2) COMMENT 'Occupancy rate as percentage'
 )
-COMMENT 'LLM: Returns top N properties ranked by revenue for a date range.
-Use this for: Property performance analysis, revenue optimization, identifying best performers, property portfolio management.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional top_n (default: 10).
-Example questions: "Top 10 revenue generating properties" "Best performing listings" "Which properties made the most money?"'
+COMMENT '
+• PURPOSE: Top properties ranked by revenue
+• BEST FOR: "Top revenue generating properties" | "Best performing listings" | "Which properties made most money?"
+• RETURNS: Individual property rows (rank, property_id, title, destination, total_revenue, booking_count)
+• PARAMS: start_date, end_date, top_n (default: 10)
+• SYNTAX: SELECT * FROM get_top_revenue_properties(''2020-01-01'', ''2024-12-31'', 20)
+'
 RETURN
   WITH property_metrics AS (
     SELECT 
@@ -188,10 +166,13 @@ RETURNS TABLE (
   avg_revenue_per_property DECIMAL(18,2) COMMENT 'Average revenue per property',
   unique_guests BIGINT COMMENT 'Number of unique guests'
 )
-COMMENT 'LLM: Returns revenue breakdown by geographic destination/market.
-Use this for: Geographic market analysis, destination popularity tracking, regional performance comparisons, market expansion planning.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional top_n (default: 20).
-Example questions: "Revenue by destination" "Top performing cities" "Which markets generate most revenue?"'
+COMMENT '
+• PURPOSE: Revenue breakdown by geographic destination
+• BEST FOR: "Revenue by destination" | "Top performing cities" | "Which markets generate most revenue?"
+• RETURNS: PRE-AGGREGATED rows (destination, country, total_revenue, booking_count, avg_booking_value)
+• PARAMS: start_date, end_date, top_n (default: 20)
+• SYNTAX: SELECT * FROM get_revenue_by_destination(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH destination_metrics AS (
     SELECT 
@@ -245,10 +226,13 @@ RETURNS TABLE (
   payment_completion_rate DECIMAL(5,2) COMMENT 'Percentage of bookings with completed payments',
   total_booking_value DECIMAL(18,2) COMMENT 'Total booking value (including unpaid)'
 )
-COMMENT 'LLM: Returns payment completion rates and payment method analysis.
-Use this for: Payment method preference analysis, payment success rates, payment processing optimization, financial reconciliation.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "Payment completion rates" "Most popular payment methods" "Payment method performance"'
+COMMENT '
+• PURPOSE: Payment completion rates and method analysis
+• BEST FOR: "Payment completion rates" | "Payment method performance" | "Most popular payment methods"
+• RETURNS: PRE-AGGREGATED rows (payment_method, booking_count, total_payment_amount, payment_completion_rate)
+• PARAMS: start_date, end_date
+• SYNTAX: SELECT * FROM get_payment_metrics(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH payment_data AS (
     SELECT 
@@ -291,10 +275,13 @@ RETURNS TABLE (
   actual_revenue DECIMAL(18,2) COMMENT 'Revenue from confirmed bookings only',
   lost_revenue DECIMAL(18,2) COMMENT 'Revenue lost to cancellations'
 )
-COMMENT 'LLM: Returns cancellation patterns and revenue impact by destination.
-Use this for: Cancellation trend analysis, risk assessment, revenue forecasting, destination-specific cancellation patterns.
-Parameters: start_date, end_date (YYYY-MM-DD format).
-Example questions: "Cancellation rates by destination" "How much revenue lost to cancellations?" "Which markets have highest cancellations?"'
+COMMENT '
+• PURPOSE: Cancellation patterns and revenue impact by destination
+• BEST FOR: "Cancellation rates by destination" | "Revenue lost to cancellations" | "Highest cancellation markets"
+• RETURNS: PRE-AGGREGATED rows (destination, cancellation_rate, cancelled_revenue, total_revenue)
+• PARAMS: start_date, end_date
+• SYNTAX: SELECT * FROM get_cancellation_analysis(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   WITH cancellation_data AS (
     SELECT 
@@ -346,10 +333,13 @@ RETURNS TABLE (
   month INT COMMENT 'Month number (feature)',
   quarter INT COMMENT 'Quarter number (feature)'
 )
-COMMENT 'LLM: Returns historical revenue data formatted for ML forecasting models (Prophet-compatible).
-Use this for: Revenue forecasting, demand prediction, ML model training, time series analysis.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional property_id_filter (NULL for all properties).
-Example questions: "Get data for revenue forecasting" "Historical revenue for ML model" "Time series data for predictions"'
+COMMENT '
+• PURPOSE: Historical revenue data formatted for ML forecasting (Prophet-compatible)
+• BEST FOR: "Revenue forecasting data" | "Historical revenue for ML" | "Time series data"
+• RETURNS: Daily rows (ds, y) - Prophet-compatible format
+• PARAMS: start_date, end_date, property_id_filter (optional, NULL for all)
+• SYNTAX: SELECT * FROM get_revenue_forecast_data(''2020-01-01'', ''2024-12-31'')
+'
 RETURN
   SELECT 
     fbd.check_in_date as ds,

@@ -6,6 +6,43 @@ alwaysApply: true
 
 # Databricks Asset Bundles Configuration Patterns
 
+## ⚠️ CRITICAL PATTERNS - NEVER SKIP THESE
+
+### 🔴 MANDATORY: Serverless Environment Configuration
+
+**EVERY JOB MUST INCLUDE THIS - NO EXCEPTIONS:**
+
+```yaml
+resources:
+  jobs:
+    <job_name>:
+      name: "[${bundle.target}] <Display Name>"
+      
+      # ✅ MANDATORY: Define serverless environment at job level
+      environments:
+        - environment_key: "default"
+          spec:
+            environment_version: "4"
+      
+      tasks:
+        - task_key: <task_name>
+          environment_key: default  # ✅ MANDATORY: Reference environment in EVERY task
+          notebook_task:
+            notebook_path: ../src/<script>.py
+```
+
+**Why this is critical:**
+- Enables serverless compute for cost optimization
+- Ensures consistent Python environment across all tasks
+- Required for library dependency management
+- Prevents deployment errors and runtime failures
+
+**Validation:** Before deploying ANY job YAML, verify:
+- [ ] `environments:` block exists at job level
+- [ ] Every task has `environment_key: default`
+
+---
+
 ## Pattern Recognition
 All Databricks workflows, jobs, and pipelines are defined as Asset Bundles using YAML configuration. This rule standardizes the structure for serverless-first, production-ready deployments.
 
@@ -56,7 +93,9 @@ include:
   - resources/*.yml
 ```
 
-## Serverless Job Pattern
+## Serverless Job Pattern - ALL JOBS MUST USE SERVERLESS BY DEFAULT
+
+**✅ This is the MANDATORY starting point for every job. Copy this template:**
 
 ```yaml
 # <Job Name> - <Description>
@@ -67,7 +106,7 @@ resources:
     <job_key>:
       name: "[${bundle.target}] <Job Display Name>"
       
-      # Serverless environment configuration (recommended for cost and simplicity)
+      # ✅ MANDATORY: Serverless environment configuration
       environments:
         - environment_key: "default"
           spec:
@@ -83,6 +122,7 @@ resources:
       # Tasks
       tasks:
         - task_key: <task_key>
+          environment_key: default  # ✅ MANDATORY: Reference the environment
           python_task:
             python_file: ../src/<path_to_script>.py
             parameters:
@@ -1035,21 +1075,21 @@ When creating Asset Bundle configurations:
 ```
 
 ```yaml
-# Hardcoded cluster config (not serverless)
+# ❌ Hardcoded cluster config (not serverless)
 cluster:
   spark_version: "13.3.x-scala2.12"
   node_type_id: "i3.xlarge"
   num_workers: 2
 
-# No tags
+# ❌ No environments block
 jobs:
   my_job:
-    name: my_job
+    name: my_job  # ❌ Missing [${bundle.target}] prefix
 
-# No error handling
+# ❌ No tags, no error handling
 tasks:
   - task_key: task1
-    python_task:
+    python_task:  # ❌ Should be notebook_task
       python_file: script.py
 
 # ❌ WRONG: max_retries at job level (unsupported)
@@ -1099,29 +1139,33 @@ def get_parameters():
 
 ✅ **Do this:**
 ```yaml
-# Serverless compute
-compute:
-  - spec:
-      kind: serverless_compute_v1
-
-# Proper tags
-jobs:
-  my_job:
-    name: "[${bundle.target}] My Job"
-    tags:
-      environment: ${bundle.target}
-      project: my_project
-      layer: bronze
-
-# With error handling (timeout at job level)
-timeout_seconds: 7200  # ✅ Job-level timeout
-
-tasks:
-  - task_key: task1
-    python_task:
-      python_file: ../src/bronze/script.py
-      parameters:
-        - "--catalog=${catalog}"
+resources:
+  jobs:
+    my_job:
+      name: "[${bundle.target}] My Job"
+      
+      # ✅ Serverless environment
+      environments:
+        - environment_key: "default"
+          spec:
+            environment_version: "4"
+      
+      # ✅ Proper tags
+      tags:
+        environment: ${bundle.target}
+        project: my_project
+        layer: bronze
+      
+      # ✅ Error handling (timeout at job level)
+      timeout_seconds: 7200
+      
+      tasks:
+        - task_key: task1
+          environment_key: default  # ✅ Reference environment
+          notebook_task:  # ✅ Use notebook_task
+            notebook_path: ../src/bronze/script.py
+            base_parameters:  # ✅ Use base_parameters
+              catalog: ${var.catalog}
 
 # ✅ CORRECT: Schedule paused in dev
 schedule:

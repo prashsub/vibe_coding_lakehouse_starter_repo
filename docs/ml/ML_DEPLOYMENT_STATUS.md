@@ -124,8 +124,8 @@ resources/ml/
 
 ## 📚 Documentation
 
-- **Complete ML Guide:** [docs/ml/ml-models-guide.md](ml/ml-models-guide.md)
-- **Plan Document:** [plans/phase4-addendum-4.1-ml-models.md](../plans/phase4-addendum-4.1-ml-models.md)
+- **Complete ML Guide:** [docs/ml/ml-models-guide.md](ml-models-guide.md)
+- **Plan Document:** [plans/phase1-addendum-1.1-ml-models.md](../../plans/phase1-addendum-1.1-ml-models.md)
 
 ---
 
@@ -149,3 +149,4 @@ resources/ml/
 | Prophet model working | ⏳ Pending |
 | Models registered | ⏳ Pending |
 | Serving endpoints deployed | ⏳ Pending |
+

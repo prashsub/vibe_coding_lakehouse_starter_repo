@@ -1,9 +1,9 @@
-# Phase 4 Addendum 4.7: Alerting Framework
+# Phase 1 Addendum 1.7: Alerting Framework
 
 ## Overview
 
 **Status:** 📋 Planned  
-**Dependencies:** Phase 3 (Gold Layer), 4.4 (Lakehouse Monitoring)  
+**Dependencies:** Prerequisites (Gold Layer), 1.4 (Lakehouse Monitoring)  
 **Artifact Count:** 21 SQL Alerts  
 **Reference:** [Databricks SQL Alerts](https://docs.databricks.com/sql/user/alerts/)
 
@@ -419,4 +419,5 @@ alert:
 
 - [Databricks SQL Alerts](https://docs.databricks.com/sql/user/alerts/)
 - [Alert Notifications](https://docs.databricks.com/sql/user/alerts/index.html#notifications)
+
 

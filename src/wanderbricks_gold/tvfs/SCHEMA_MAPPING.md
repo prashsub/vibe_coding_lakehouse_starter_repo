@@ -295,3 +295,4 @@ DESCRIBE TABLE fact_property_engagement;
 **Last Updated:** December 2025  
 **Source:** gold_layer_design/yaml/**/*.yaml
 
+

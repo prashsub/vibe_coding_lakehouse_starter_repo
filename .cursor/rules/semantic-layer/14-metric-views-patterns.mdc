@@ -825,6 +825,270 @@ Comments should:
 comment: Total net revenue after discounts and returns. Primary revenue metric for business reporting. Excludes tax.
 ```
 
+---
+
+## ⚠️ CRITICAL: Standardized Metric View Comment Format (v2.0)
+
+**Issue:** Metric view comments without usage guidance cause Genie to select wrong views.**
+
+### Standardized Comment Structure
+
+```yaml
+comment: >
+  [Primary purpose description].
+  [What this view is BEST FOR].
+  [What this view is NOT FOR and what to use instead].
+  [Source table info for transparency].
+```
+
+### Example 1: View with Limitations (Redirect Pattern)
+
+```yaml
+comment: >
+  Host demographics, verification status, and portfolio analytics ONLY.
+  BEST FOR: Host attributes, verification analysis, geographic distribution.
+  ⚠️ DO NOT USE for: "Top performing hosts", "Host revenue rankings", "Best hosts by bookings".
+  → USE get_host_performance TVF INSTEAD for accurate host revenue/booking metrics.
+  Source: dim_host with nested joins to dim_property and fact_booking_detail.
+```
+
+### Example 2: Primary Analytics View
+
+```yaml
+comment: >
+  Revenue and booking analytics with complete transaction metrics.
+  BEST FOR: Revenue by property type, destination, time period; booking trends; payment analysis.
+  Source: fact_booking_daily (aggregated fact table) with joins to dim_property, dim_destination.
+  For host-level revenue, use get_host_performance TVF instead.
+```
+
+### Example 3: Property-Centric View
+
+```yaml
+comment: >
+  Property inventory, attributes, and performance metrics.
+  BEST FOR: Property counts, types, pricing analysis, revenue per property, verified host analysis.
+  Source: dim_property (SCD2) with complete property data.
+  Note: Includes ALL properties regardless of booking activity.
+```
+
+### Key Elements
+
+| Element | Purpose |
+|---|---|
+| **Primary purpose** | What the view is designed for |
+| **BEST FOR** | Types of questions this view handles well |
+| **NOT FOR / USE INSTEAD** | Explicit redirect when view has limitations |
+| **Source info** | Transparency on underlying data (FACT vs DIMENSION) |
+
+---
+
+## ⚠️ CRITICAL: Source Table Selection for Metric Views
+
+**Issue:** Wrong source table selection caused revenue under-reporting by 4x.**
+
+### The Rule
+
+| Metric Type | Source Table | Reason |
+|---|---|---|
+| **Revenue, Bookings, Transactions** | FACT table (e.g., `fact_booking_daily`) | Transaction metrics come from fact tables |
+| **Property counts, Inventory** | DIMENSION table (e.g., `dim_property`) | Inventory metrics come from dimension tables |
+| **Host attributes, Demographics** | DIMENSION table (e.g., `dim_host`) | Attribute metrics come from dimension tables |
+
+### ❌ WRONG: Revenue from Dimension Table
+
+```yaml
+# BAD: Revenue from dim_property (SCD2 dimension)
+source: ${catalog}.${gold_schema}.dim_property  # ❌ Wrong for revenue!
+
+measures:
+  - name: total_revenue
+    expr: SUM(dim_property.fact_booking.total_amount)  # Under-reports by 4x!
+```
+
+**Result:** ~$10M revenue (wrong)
+
+### ✅ CORRECT: Revenue from Fact Table
+
+```yaml
+# GOOD: Revenue from fact_booking_daily
+source: ${catalog}.${gold_schema}.fact_booking_daily  # ✅ Correct for revenue!
+
+measures:
+  - name: total_revenue
+    expr: SUM(source.total_booking_value)  # Accurate!
+```
+
+**Result:** ~$40M revenue (correct)
+
+### Why Dimension Tables Under-Report
+
+1. **SCD2 dimensions** have multiple versions per entity
+2. **Joining fact to dimension** then back can cause fanout
+3. **Dimension grain** is different from transaction grain
+
+### Source Selection Decision Tree
+
+```
+Question: "Revenue/bookings/transactions?"
+├── YES → Source: FACT table
+│   └── Use: fact_booking_daily, fact_booking_detail
+└── NO → Question: "Property/host counts or attributes?"
+    ├── YES → Source: DIMENSION table
+    │   └── Use: dim_property, dim_host
+    └── NO → Question: "Cross-domain analysis?"
+        └── Consider TVF or enriched view instead
+```
+
+---
+
+## ⚠️ CRITICAL: Snowflake Schema Joins (Nested Joins)
+
+**Issue:** Direct joins fail when fact table doesn't have FK to needed dimension.**
+
+### The Problem
+
+```
+Data Model:
+dim_host (host owns) → dim_property (property has) → fact_booking_detail (booking)
+
+Needed: Host revenue from bookings
+Problem: fact_booking_detail has property_id, NOT host_id
+```
+
+### ❌ WRONG: Direct Join (Fails)
+
+```yaml
+source: ${catalog}.${gold_schema}.dim_host
+
+joins:
+  - name: fact_booking
+    source: ${catalog}.${gold_schema}.fact_booking_detail
+    'on': source.host_id = fact_booking.host_id  # ❌ fact table doesn't have host_id!
+```
+
+**Error:** `UNRESOLVED_COLUMN: fact_booking.host_id cannot be resolved`
+
+### ✅ CORRECT: Snowflake Schema (Nested Joins)
+
+```yaml
+source: ${catalog}.${gold_schema}.dim_host
+
+joins:
+  - name: dim_property
+    source: ${catalog}.${gold_schema}.dim_property
+    'on': source.host_id = dim_property.host_id AND dim_property.is_current = true
+    joins:  # ✅ Nested join under dim_property
+      - name: fact_booking
+        source: ${catalog}.${gold_schema}.fact_booking_detail
+        'on': dim_property.property_id = fact_booking.property_id
+```
+
+### Nested Column Reference Pattern
+
+**For nested joins, reference columns via full parent path:**
+
+```yaml
+measures:
+  - name: total_revenue
+    expr: SUM(dim_property.fact_booking.total_amount)  # parent.nested.column
+    
+  - name: booking_count
+    expr: COUNT(dim_property.fact_booking.booking_id)  # parent.nested.column
+```
+
+### When to Use Snowflake Joins
+
+| Scenario | Pattern |
+|---|---|
+| Host → Property → Booking | `dim_host.dim_property.fact_booking.column` |
+| Destination → Property → Engagement | `dim_destination.dim_property.fact_engagement.column` |
+| Any dim → intermediate dim → fact | Use nested `joins:` with parent path references |
+
+### Requirements
+
+- **Databricks Runtime 17.1+** for snowflake schema support
+- **Correct nesting** in YAML structure
+- **Full parent path** for column references
+
+---
+
+## ⚠️ Dimension & Measure Comment Best Practices
+
+### Dimension Comments
+
+```yaml
+dimensions:
+  - name: host_id
+    expr: source.host_id
+    comment: Unique host identifier for host-level performance analysis
+    display_name: Host ID
+    synonyms:
+      - host
+      - host number
+      - owner id
+```
+
+### Measure Comments
+
+```yaml
+measures:
+  - name: total_revenue
+    expr: SUM(dim_property.fact_booking.total_amount)
+    comment: >
+      Total revenue generated by hosts. Primary financial metric for host
+      earnings and platform transaction volume analysis.
+    display_name: Total Revenue
+    format:
+      type: currency
+      currency_code: USD
+    synonyms:
+      - revenue
+      - earnings
+      - income
+```
+
+### Key Points
+
+- `comment`: Business context and purpose (for LLM understanding)
+- `display_name`: User-friendly name (for UI)
+- `synonyms`: Alternative terms users might use (3-5 per field)
+- **Keep comments professional** - avoid phrases like "metric view is broken"
+
+---
+
+## Professional Language Standards
+
+**Issue:** Some metric view comments used unprofessional language.
+
+### ❌ Avoid
+
+```yaml
+comment: Use this because the TVF doesn't work correctly
+comment: This metric view is broken for revenue queries
+comment: The other view gives wrong results so use this instead
+```
+
+### ✅ Use
+
+```yaml
+comment: >
+  Host demographics and verification analytics ONLY.
+  → For revenue/booking queries, USE get_host_performance TVF (different join path).
+
+comment: >
+  Property-centric analytics including revenue per property.
+  PREFERRED for: "revenue per property", "verified host analysis by property".
+```
+
+### Language Guidelines
+
+| Instead of... | Use... |
+|---|---|
+| "X is broken" | "For X queries, use Y instead" |
+| "X gives wrong results" | "Y has more accurate join path for X" |
+| "Don't use X" | "X is BEST FOR Y; for Z use W instead" |
+
 ## Complete Example: Sales Performance Metrics
 
 **✅ CORRECT v1.1 Structure (No `name`, `time_dimension`, or `window_measures`):**
@@ -954,6 +1218,23 @@ measures:
 - [ ] Joined table columns use join `name` as prefix in expr fields
 - [ ] No references to table names (use `source.` or `{join_name}.`)
 - [ ] **All column names verified against actual schemas**
+
+### Source Table Selection
+- [ ] Revenue/booking metrics source from FACT tables
+- [ ] Inventory/count metrics source from DIMENSION tables
+- [ ] Source table documented in metric view comment
+
+### Snowflake Schema Joins (if needed)
+- [ ] Nested `joins:` used when fact doesn't have direct FK
+- [ ] Nested columns reference full path (`parent.nested.column`)
+- [ ] Tested with Databricks Runtime 17.1+
+
+### Comment Format
+- [ ] Comment includes PRIMARY PURPOSE
+- [ ] Comment includes BEST FOR (question patterns)
+- [ ] Comment includes NOT FOR / USE INSTEAD (when view has limitations)
+- [ ] Comment includes SOURCE info (transparency on data origin)
+- [ ] Professional language (no "broken", "doesn't work")
 
 ### Python Script Error Handling
 - [ ] Script extracts view name from filename (not from YAML)
@@ -1088,6 +1369,24 @@ def main():
 - ✅ Can identify which specific views failed
 - ✅ Prevents silent failures
 
+## Version History
+
+- **v2.0** (Dec 16, 2025) - Genie optimization patterns from production post-mortem
+  - Added standardized metric view comment format (BEST FOR / NOT FOR / SOURCE)
+  - Added source table selection guidance (FACT vs DIMENSION)
+  - Added snowflake schema (nested joins) patterns for transitive relationships
+  - Added professional language standards
+  - Updated validation checklist with new checks
+  - **Key Learning:** Wrong source table caused 4x revenue under-reporting
+  - Based on: [Genie Space Post-Mortem](../../docs/reference/genie-space-semantic-layer-postmortem.md)
+
+- **v1.0** (Oct 2025) - Initial rule based on metric view deployment learnings
+  - Schema validation patterns
+  - YAML structure standards
+  - Join patterns and column references
+
+---
+
 ## References
 
 ### Official Documentation
@@ -1097,7 +1396,12 @@ def main():
 - [Metric Views Joins](https://docs.databricks.com/aws/en/metric-views/joins)
 - [Query Metric Views](https://docs.databricks.com/aws/en/metric-views/query)
 
+### Related Cursor Rules
+- [databricks-table-valued-functions.mdc](mdc:.cursor/rules/semantic-layer/15-databricks-table-valued-functions.mdc) - TVF patterns
+- [genie-space-patterns.mdc](mdc:.cursor/rules/semantic-layer/16-genie-space-patterns.mdc) - Genie Space setup
+
 ### Internal Documentation
+- [Genie Space Post-Mortem](../../docs/reference/genie-space-semantic-layer-postmortem.md) - Comprehensive lessons learned from Genie Space implementation
 - [Post-Mortem: Metric Views Schema Validation](../../docs/reference/rule-improvement-metric-views-schema-validation.md) - Comprehensive analysis of deployment failures and prevention strategies
 - [Deployment Success Summary](../../docs/deployment/metric-views-deployment-success.md) - Complete deployment history and issues fixed
 - [Gold Layer YAML Schemas](../../gold_layer_design/yaml/) - Source of truth for table schemas

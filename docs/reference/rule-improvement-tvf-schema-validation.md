@@ -484,3 +484,4 @@ cp scripts/validate_tvf_sql.sh /new-project/scripts/
 **Rule Version:** v2.0  
 **Last Updated:** December 10, 2025
 
+

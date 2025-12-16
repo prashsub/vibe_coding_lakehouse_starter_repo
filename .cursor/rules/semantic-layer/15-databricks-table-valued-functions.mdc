@@ -448,7 +448,213 @@ RETURN
 
 Every TVF should have rich metadata to help Genie understand when and how to use it.
 
-### Function-Level Comment Template
+---
+
+### ⚠️ CRITICAL: Standardized TVF Comment Format (v3.0)
+
+**Problems with unstructured comments:**
+- Genie didn't know what questions the TVF was best for
+- Column names weren't explicit, causing UNRESOLVED_COLUMN errors
+- No guidance on when NOT to use the TVF
+- Missing syntax examples led to wrong parameter formats
+
+**Use this standardized bullet-point format for ALL TVF comments:**
+
+```sql
+COMMENT '
+• PURPOSE: [One-line description of what the TVF does]
+• BEST FOR: [Example questions separated by |]
+• NOT FOR: [What to avoid - redirect to correct TVF] (optional)
+• RETURNS: [PRE-AGGREGATED rows or Individual rows] (exact column list)
+• PARAMS: [Parameter names with defaults]
+• SYNTAX: SELECT * FROM tvf_name(''param1'', ''param2'')
+• NOTE: [Important caveats - DO NOT wrap in TABLE(), etc.] (optional)
+'
+```
+
+---
+
+### Example 1: Aggregate TVF (Returns Pre-Aggregated Rows)
+
+```sql
+CREATE OR REPLACE FUNCTION get_customer_segments(
+  start_date STRING COMMENT 'Start date (format: YYYY-MM-DD)',
+  end_date STRING COMMENT 'End date (format: YYYY-MM-DD)'
+)
+RETURNS TABLE(
+  segment_name STRING COMMENT 'Customer segment category',
+  customer_count BIGINT COMMENT 'Number of customers in segment',
+  total_bookings BIGINT COMMENT 'Total bookings from segment',
+  total_revenue DECIMAL(18,2) COMMENT 'Total revenue from segment',
+  avg_booking_value DECIMAL(18,2) COMMENT 'Average booking value'
+)
+COMMENT '
+• PURPOSE: Customer behavioral segmentation with booking patterns and revenue metrics
+• BEST FOR: "What are our customer segments?" | "Segment performance" | "How many VIP customers?"
+• NOT FOR: VIP property preferences (use get_vip_customer_property_preferences) | Individual customer details
+• RETURNS: 5 PRE-AGGREGATED rows (segment_name, customer_count, total_bookings, total_revenue, avg_booking_value)
+• PARAMS: start_date, end_date (format: YYYY-MM-DD)
+• SYNTAX: SELECT * FROM get_customer_segments(''2020-01-01'', ''2024-12-31'')
+• NOTE: Column is "segment_name" NOT "segment" | DO NOT add GROUP BY - data is already aggregated
+'
+RETURN
+  ...
+```
+
+**Key characteristics of aggregate TVFs:**
+- Returns fixed number of rows (e.g., 5 segment rows)
+- Data is PRE-AGGREGATED - no GROUP BY needed on top
+- Do NOT use in JOINs (no user_id or other keys to join on)
+
+---
+
+### Example 2: Individual Row TVF (Returns Detail Rows)
+
+```sql
+CREATE OR REPLACE FUNCTION get_customer_ltv(
+  start_date STRING COMMENT 'Start date (format: YYYY-MM-DD)',
+  end_date STRING COMMENT 'End date (format: YYYY-MM-DD)',
+  top_n INT DEFAULT 100 COMMENT 'Number of top customers to return'
+)
+RETURNS TABLE(
+  rank BIGINT COMMENT 'Customer rank by lifetime value',
+  user_id BIGINT COMMENT 'Customer identifier',
+  country STRING COMMENT 'Customer country',
+  user_type STRING COMMENT 'User type (individual/business)',
+  total_bookings BIGINT COMMENT 'Total bookings',
+  lifetime_value DECIMAL(18,2) COMMENT 'Total revenue from customer'
+)
+COMMENT '
+• PURPOSE: Individual customer lifetime value with ranking and booking history
+• BEST FOR: "Show VIP customers" | "Most valuable customers" | "Top customers by spend"
+• RETURNS: Individual customer rows (rank, user_id, country, user_type, total_bookings, lifetime_value)
+• PARAMS: start_date, end_date, top_n (default: 100)
+• SYNTAX: SELECT * FROM get_customer_ltv(''2020-01-01'', ''2024-12-31'')
+• NOTE: Returns user_id for individual customer analysis | Sorted by lifetime_value DESC
+'
+RETURN
+  ...
+```
+
+**Key characteristics of individual row TVFs:**
+- Returns variable number of rows based on data
+- Each row represents one entity (customer, property, host)
+- CAN be used in JOINs (has identifier columns)
+
+---
+
+### Example 3: TVF with Limitations (Redirect Pattern)
+
+```sql
+COMMENT '
+• PURPOSE: Comprehensive host performance metrics with accurate revenue from booking transactions
+• BEST FOR: "Top performing hosts" | "Impact of verification on performance" | "Host KPIs"
+• PREFERRED OVER: host_analytics_metrics (which has join path limitations)
+• RETURNS: Individual host rows (host_id, host_name, is_verified, rating, property_count, total_bookings, total_revenue)
+• PARAMS: start_date, end_date, top_n (default: 100)
+• SYNTAX: SELECT * FROM get_host_performance(''2020-01-01'', ''2024-12-31'')
+• NOTE: Returns ACCURATE revenue totals (~$40M) vs metric view (~$1K due to join issues)
+'
+```
+
+---
+
+### Key Elements Explained
+
+| Element | Purpose | Why It Matters |
+|---|---|---|
+| **PURPOSE** | One-line description | Quick understanding for LLM |
+| **BEST FOR** | Example questions (pipe-separated) | LLM matches user query to TVF |
+| **NOT FOR** | Redirect to correct asset | Prevents wrong TVF selection |
+| **PREFERRED OVER** | Alternative to problematic metric view | Steers away from broken assets |
+| **RETURNS** | PRE-AGGREGATED vs Individual + columns | Prevents GROUP BY on aggregates, clarifies available columns |
+| **PARAMS** | Parameter names and defaults | Prevents WRONG_NUM_ARGS errors |
+| **SYNTAX** | Exact copyable example | Prevents TABLE() wrapper, wrong date format |
+| **NOTE** | Critical caveats | Prevents common misuse patterns |
+
+---
+
+### Common Genie Misuse Patterns to Prevent
+
+**1. TABLE() Wrapper Error:**
+```sql
+-- ❌ WRONG: Genie sometimes wraps TVFs in TABLE()
+SELECT * FROM TABLE(get_customer_segments('2020-01-01', '2024-12-31'))
+-- Error: NOT_A_SCALAR_FUNCTION
+
+-- ✅ CORRECT: Direct call
+SELECT * FROM get_customer_segments('2020-01-01', '2024-12-31')
+```
+
+**Prevention:** Add to NOTE: "DO NOT wrap in TABLE()"
+
+**2. GROUP BY on Pre-Aggregated Data:**
+```sql
+-- ❌ WRONG: Adding GROUP BY to already-aggregated output
+SELECT segment_name, SUM(total_revenue) 
+FROM get_customer_segments('2020-01-01', '2024-12-31')
+GROUP BY segment_name
+-- Result: Same as without GROUP BY, but confusing
+
+-- ✅ CORRECT: No GROUP BY needed
+SELECT * FROM get_customer_segments('2020-01-01', '2024-12-31')
+```
+
+**Prevention:** Add to NOTE: "DO NOT add GROUP BY - data is already aggregated"
+
+**3. Wrong Column Name:**
+```sql
+-- ❌ WRONG: Using assumed column name
+SELECT segment FROM get_customer_segments(...)
+-- Error: UNRESOLVED_COLUMN
+
+-- ✅ CORRECT: Use actual column name
+SELECT segment_name FROM get_customer_segments(...)
+```
+
+**Prevention:** List exact column names in RETURNS
+
+**4. Missing Parameters:**
+```sql
+-- ❌ WRONG: No parameters when required
+SELECT * FROM get_customer_segments()
+-- Error: WRONG_NUM_ARGS
+
+-- ✅ CORRECT: Include required parameters
+SELECT * FROM get_customer_segments('2020-01-01', '2024-12-31')
+```
+
+**Prevention:** Include exact SYNTAX example with parameters
+
+---
+
+### Professional Language Standards
+
+**❌ Avoid unprofessional language:**
+```sql
+-- BAD: Negative about other assets
+COMMENT 'Use this because the metric view is broken and returns wrong data'
+COMMENT 'This TVF actually works unlike the metric view'
+```
+
+**✅ Use professional, guiding language:**
+```sql
+-- GOOD: Professional redirect
+COMMENT '
+• PREFERRED OVER: host_analytics_metrics for revenue/booking queries (different join paths)
+'
+
+-- GOOD: Factual comparison
+COMMENT '
+• NOTE: Returns ACCURATE revenue totals (~$40M) vs metric view (~$1K)
+'
+```
+
+---
+
+### Legacy Format (Deprecated)
+
+The following format is still supported but not recommended for new TVFs:
 
 ```sql
 COMMENT 'LLM: [Brief description]. Use this for [use cases]. 
@@ -456,47 +662,7 @@ Parameters: [parameter list with formats].
 Example: "[Natural language question 1]" or "[Natural language question 2]"'
 ```
 
-### Complete Example
-
-```sql
-CREATE OR REPLACE FUNCTION get_top_stores_by_revenue(
-  start_date STRING COMMENT 'Start date (format: YYYY-MM-DD)',
-  end_date STRING COMMENT 'End date (format: YYYY-MM-DD)',
-  top_n INT DEFAULT 10 COMMENT 'Number of top stores to return'
-)
-RETURNS TABLE(
-  rank INT COMMENT 'Store rank by revenue',
-  store_number STRING COMMENT 'Store identifier',
-  store_name STRING COMMENT 'Store name',
-  total_revenue DECIMAL(18,2) COMMENT 'Total revenue for period',
-  total_units BIGINT COMMENT 'Total units sold',
-  transaction_count BIGINT COMMENT 'Number of transactions',
-  avg_transaction_value DECIMAL(18,2) COMMENT 'Average transaction value'
-)
-COMMENT 'LLM: Returns the top N stores ranked by revenue for a date range. 
-Use this for store performance analysis, regional comparisons, and identifying 
-best performers. Parameters: start_date, end_date, optional top_n (default 10). 
-Example: "What are the top 10 stores by revenue this month?" or 
-"Show me the best performing stores"'
-RETURN
-  WITH store_metrics AS (
-    SELECT ... FROM ...
-  ),
-  ranked_stores AS (
-    SELECT ...,
-      ROW_NUMBER() OVER (ORDER BY total_revenue DESC) as rank
-    FROM store_metrics
-  )
-  SELECT * FROM ranked_stores
-  WHERE rank <= top_n
-  ORDER BY rank;
-```
-
-**Metadata Requirements:**
-- ✅ Function COMMENT: LLM-friendly description with use cases and examples
-- ✅ Parameter COMMENT: Clear description with format for strings
-- ✅ Column COMMENT: Business-friendly description for each returned column
-- ✅ Example questions: Natural language patterns Genie should recognize
+**Migration:** When updating existing TVFs, convert to the new bullet-point format
 
 ---
 
@@ -599,21 +765,28 @@ When creating Table-Valued Functions for Genie:
 - [ ] No parameters used in LIMIT clauses (use WHERE rank <= param)
 - [ ] All divisions use NULLIF to prevent divide-by-zero
 - [ ] SCD2 joins include `is_current = true` filter
+- [ ] **No cartesian products:** CTEs don't re-join tables already aggregated
+- [ ] **Single aggregation pass:** Each source table read and aggregated only once
 
-### Genie Optimization
-- [ ] Function COMMENT starts with "LLM:"
-- [ ] Function COMMENT includes use cases
-- [ ] Function COMMENT includes 2+ example questions
-- [ ] All parameters have descriptive COMMENT
-- [ ] String parameters include format (e.g., "format: YYYY-MM-DD")
+### Genie Optimization (Standardized Comment Format)
+- [ ] Function COMMENT uses bullet-point format (• PURPOSE, • BEST FOR, etc.)
+- [ ] **PURPOSE:** One-line description of what TVF does
+- [ ] **BEST FOR:** 2+ example questions (pipe-separated)
+- [ ] **NOT FOR / PREFERRED OVER:** Redirect to correct asset when applicable
+- [ ] **RETURNS:** Specifies PRE-AGGREGATED or Individual rows + exact column list
+- [ ] **PARAMS:** Parameter names with defaults
+- [ ] **SYNTAX:** Exact copyable example with proper date format
+- [ ] **NOTE:** Caveats (DO NOT wrap in TABLE(), DO NOT add GROUP BY, etc.)
+- [ ] All parameters have descriptive COMMENT with format
 - [ ] All returned columns have COMMENT
-- [ ] Column names are business-friendly
+- [ ] Professional language (no "metric view is broken" phrases)
 
 ### Testing
 - [ ] Function compiles without errors
 - [ ] Function executes with valid parameters
 - [ ] Function handles edge cases (empty results, null values)
 - [ ] Function tested in Genie Space (if applicable)
+- [ ] **Results validated against metric view** (ratio ≈ 1.0, not 254x)
 
 ---
 
@@ -653,6 +826,32 @@ revenue / transactions
 COMMENT 'Gets data'
 ```
 
+### ❌ Mistake 6: Cartesian Product in CTE (254x Over-Counting)
+```sql
+-- ❌ CRITICAL BUG: Re-joining source table after aggregation
+WITH period_data AS (
+  SELECT SUM(revenue) as total_revenue
+  FROM fact_table
+  GROUP BY period
+),
+final AS (
+  SELECT SUM(pd.total_revenue), SUM(ft.other_metric)  -- 🔥 CARTESIAN!
+  FROM period_data pd
+  LEFT JOIN fact_table ft ON ...  -- ❌ Re-joining source!
+)
+```
+
+**Fix:** Single aggregation pass, no self-joins:
+```sql
+-- ✅ CORRECT: Single aggregation
+SELECT 
+  period,
+  SUM(revenue) as total_revenue,
+  SUM(other_metric) as other_metric
+FROM fact_table
+GROUP BY period;
+```
+
 ---
 
 ## References
@@ -670,7 +869,12 @@ COMMENT 'Gets data'
 - [Customer TVFs](../../src/wanderbricks_gold/tvfs/customer_tvfs.sql) - 5 customer behavior TVFs
 - [SCHEMA_MAPPING.md](../../src/wanderbricks_gold/tvfs/SCHEMA_MAPPING.md) - Schema reference documentation
 
+### Related Cursor Rules
+- [metric-views-patterns.mdc](mdc:.cursor/rules/semantic-layer/14-metric-views-patterns.mdc) - Metric view YAML structure
+- [genie-space-patterns.mdc](mdc:.cursor/rules/semantic-layer/16-genie-space-patterns.mdc) - Genie Space setup
+
 ### Project Documentation
+- [Genie Space Post-Mortem](../../docs/reference/genie-space-semantic-layer-postmortem.md) - Comprehensive lessons learned from Genie Space implementation
 - [TVF Deployment Post-Mortem](../../docs/troubleshooting/2025-12-10-tvf-deployment-postmortem.md) - Complete failure analysis and prevention
 - [Schema-First Development Guide](../../docs/development/SCHEMA_FIRST_DEVELOPMENT.md) - Comprehensive workflow guide
 - [Semantic Setup Refactoring](../../docs/reference/semantic-setup-refactoring.md) - Job reorganization details
@@ -680,6 +884,22 @@ COMMENT 'Gets data'
 
 ## Version History
 
+- **v3.0** (Dec 16, 2025) - Standardized TVF comment format for Genie optimization
+  - New bullet-point comment format (PURPOSE, BEST FOR, NOT FOR, RETURNS, PARAMS, SYNTAX, NOTE)
+  - Separate examples for aggregate vs individual row TVFs
+  - Common Genie misuse patterns documentation (TABLE() wrapper, GROUP BY on aggregates)
+  - Professional language standards (avoid "metric view is broken")
+  - Key elements table explaining why each comment element matters
+  - Updated checklist with new comment format requirements
+  - **Key Learning:** Structured comments prevent 80%+ of Genie misuse errors
+  - Based on: [Genie Space Post-Mortem](../../docs/reference/genie-space-semantic-layer-postmortem.md)
+
+- **v2.1** (Dec 15, 2025) - Critical bug prevention: Cartesian product in aggregations
+  - Added cartesian product bug detection section
+  - Documented self-join anti-pattern in CTEs
+  - Case study: get_revenue_by_period bug (254x revenue over-counting)
+  - **Key Learning:** Never re-join a table that's already been aggregated in a CTE
+  
 - **v2.0** (Dec 2025) - Major enhancement: Schema-first development patterns
   - Added comprehensive pre-development schema validation section
   - Documented YAML-first approach (Rule #0) based on production post-mortem
@@ -693,3 +913,150 @@ COMMENT 'Gets data'
   - 3 critical SQL issues identified and resolved
   - Genie compatibility patterns established
   - Production-tested with successful deployment
+
+---
+
+## ⚠️ CRITICAL: Cartesian Product Bug in Aggregation CTEs (Dec 15, 2025)
+
+### The Bug That Inflated Revenue by 254x
+
+**Case Study:** Wanderbricks `get_revenue_by_period` TVF reported $35.8M revenue when actual was $141K.
+
+**Root Cause:** Self-join on a table that was already aggregated in a CTE.
+
+#### ❌ BUGGY PATTERN: Re-Joining After Aggregation
+
+```sql
+-- BUG: This pattern causes cartesian product!
+CREATE FUNCTION get_revenue_by_period(...)
+RETURN
+  WITH period_data AS (
+    -- First CTE: Aggregate revenue from fact table
+    SELECT
+      DATE_TRUNC(time_grain, fbd.check_in_date) AS period_start,
+      period_name,
+      SUM(fbd.total_booking_value) as total_revenue,  -- ✅ Aggregated here
+      ...
+    FROM ${catalog}.${schema}.fact_booking_daily fbd
+    WHERE fbd.check_in_date BETWEEN ...
+    GROUP BY DATE_TRUNC(...), period_name
+  ),
+  aggregated_periods AS (
+    -- Second CTE: BUG - Re-joins the same table!
+    SELECT
+      pd.period_start,
+      pd.period_name,
+      SUM(pd.total_revenue) as total_revenue,  -- 🔥 ALREADY SUMMED!
+      SUM(fbd.booking_count) as booking_count  -- 🔥 JOINED AGAIN
+    FROM period_data pd
+    LEFT JOIN ${catalog}.${schema}.fact_booking_daily fbd  -- ❌ CARTESIAN PRODUCT!
+      ON DATE_TRUNC(time_grain, fbd.check_in_date) = pd.period_start
+      AND fbd.check_in_date BETWEEN ...
+    GROUP BY pd.period_start, pd.period_name
+  )
+  SELECT * FROM aggregated_periods;
+```
+
+**Why It's Wrong:**
+1. `period_data` already aggregates from `fact_booking_daily` (e.g., 100 rows → 10 periods)
+2. `aggregated_periods` joins `period_data` back to `fact_booking_daily`
+3. Each period row matches ALL detail rows for that period
+4. 1 period row × 100 matching detail rows = 100x multiplication
+5. SUM() then adds these inflated values together
+
+**Actual Bug Impact:**
+- Expected revenue per week: ~$141K
+- Actual buggy output: ~$35.8M  
+- **Inflation factor: 254x**
+
+---
+
+#### ✅ CORRECT PATTERN: Single Aggregation, No Self-Join
+
+```sql
+-- CORRECT: Single aggregation pass, no self-join
+CREATE FUNCTION get_revenue_by_period(...)
+RETURN
+  SELECT
+    DATE_TRUNC(time_grain, fbd.check_in_date) AS period_start,
+    CASE
+      WHEN time_grain = 'week' THEN CONCAT('Week ', WEEKOFYEAR(fbd.check_in_date), ' ', YEAR(fbd.check_in_date))
+      WHEN time_grain = 'month' THEN DATE_FORMAT(fbd.check_in_date, 'MMMM yyyy')
+      ...
+    END AS period_name,
+    SUM(fbd.total_booking_value) as total_revenue,  -- ✅ Aggregate once
+    SUM(fbd.booking_count) as booking_count,        -- ✅ Same aggregation pass
+    SUM(fbd.cancellation_count) as cancellation_count,
+    ...
+  FROM ${catalog}.${schema}.fact_booking_daily fbd
+  WHERE fbd.check_in_date BETWEEN CAST(start_date AS DATE) AND CAST(end_date AS DATE)
+  GROUP BY DATE_TRUNC(time_grain, fbd.check_in_date), period_name
+  ORDER BY period_start;
+```
+
+**Why It's Correct:**
+- Single pass over `fact_booking_daily`
+- All aggregations in same GROUP BY
+- No CTEs that re-join the source table
+- Results are accurate
+
+---
+
+### Detection Rules
+
+**WARNING SIGN 1: CTE that aggregates, followed by join back to same source**
+```sql
+-- 🚨 WARNING: CTE1 reads from table_A, CTE2 joins table_A
+WITH cte1 AS (
+  SELECT ... SUM(...) FROM table_A ...
+),
+cte2 AS (
+  SELECT ... FROM cte1 JOIN table_A ...  -- 🔥 DANGER!
+)
+```
+
+**WARNING SIGN 2: SUM of a SUM**
+```sql
+-- 🚨 WARNING: Summing something that's already summed
+SUM(already_aggregated_column)  -- Was this already a SUM()?
+```
+
+**WARNING SIGN 3: Dramatic result differences**
+```
+Metric view result:  $141K
+TVF result:          $35.8M
+Ratio:               254x  -- 🚨 Almost certainly a cartesian product!
+```
+
+---
+
+### Prevention Checklist
+
+**Before deploying any TVF with aggregations:**
+- [ ] Each CTE aggregates from source tables ONLY ONCE
+- [ ] No CTE re-joins a table that was already read in a prior CTE
+- [ ] If multiple CTEs, they join to EACH OTHER, not back to source
+- [ ] Results validated against known good source (metric view)
+- [ ] Spot check: result order of magnitude matches expectations
+
+**Validation Query:**
+```sql
+-- Compare TVF result to metric view result
+WITH tvf_result AS (
+  SELECT SUM(total_revenue) as tvf_total
+  FROM get_revenue_by_period('2024-10-01', '2024-12-31', 'week')
+),
+metric_result AS (
+  SELECT SUM(MEASURE(total_revenue)) as metric_total
+  FROM revenue_analytics_metrics
+  WHERE check_in_date BETWEEN '2024-10-01' AND '2024-12-31'
+)
+SELECT 
+  tvf_total,
+  metric_total,
+  tvf_total / NULLIF(metric_total, 0) as ratio  -- Should be ~1.0
+FROM tvf_result, metric_result;
+```
+
+**Expected:** ratio ≈ 1.0  
+**Bug indicator:** ratio >> 1.0 (e.g., 254)

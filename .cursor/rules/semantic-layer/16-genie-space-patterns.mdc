@@ -8,19 +8,213 @@ alwaysApply: false
 ## Pattern Recognition
 When creating Genie Spaces for natural language analytics, follow a structured approach with comprehensive agent instructions, properly selected data assets, and validated benchmark questions. This rule standardizes Genie Space configuration for production deployments.
 
-**Key Patterns:**
-1. **Four-Section Structure**: Description → Agent Instructions → Data Assets → Benchmark Q&A
-2. **Business Context First**: Agent needs deep domain knowledge before query patterns
-3. **Data Asset Hierarchy**: Metric Views (primary) → TVFs (specific queries) → Tables (reference)
-4. **Testing Framework**: Benchmark questions with expected answers and validation criteria
+---
+
+# ⚠️⚠️⚠️ MANDATORY DELIVERABLES - NON-NEGOTIABLE ⚠️⚠️⚠️
+
+## 🔴🔴🔴 REQUIRED OUTPUT: 7-SECTION GENIE SPACE DOCUMENT 🔴🔴🔴
+
+**Every Genie Space setup MUST produce a document with ALL 7 sections below.**
+**Missing any section = INCOMPLETE and REJECTED deliverable.**
+
+| Section | What to Provide | Format |
+|---------|-----------------|--------|
+| **A. Space Name** | Exact Genie Space name | `{Project} {Domain} Analytics Space` |
+| **B. Space Description** | 2-3 sentence purpose | Natural language interface for... |
+| **C. Sample Questions** | 10-15 user-facing questions | Grouped by domain |
+| **D. Data Assets** | ALL tables & metric views | Table format with purpose |
+| **E. General Instructions** | **≤20 LINES** LLM behavior rules | Concise numbered list |
+| **F. TVFs** | ALL functions with signatures | Table + detailed specs |
+| **G. Benchmark Questions** | 10-15 with **EXACT SQL** | Question + Working SQL + Expected result |
+
+---
+
+## ████ SECTION A: SPACE NAME ████
+
+**REQUIRED FORMAT:**
+```
+Space Name: {Project Name} {Domain} Analytics Space
+```
+
+**Examples:**
+- `Wanderbricks Revenue Analytics Space`
+- `RetailChain Sales Performance Space`
+- `Healthcare Patient Outcomes Space`
+
+---
+
+## ████ SECTION B: SPACE DESCRIPTION ████
+
+**REQUIRED FORMAT (2-3 sentences):**
+```
+Description: Natural language interface for {domain} analytics. 
+Enables {user type} to query {data types} without SQL. 
+Powered by {key data assets}.
+```
+
+---
+
+## ████ SECTION C: SAMPLE QUESTIONS ████
+
+**REQUIRED: 10-15 questions organized by domain**
+
+```markdown
+## Sample Questions
+
+### Revenue Questions
+1. "What is the total revenue for the last 30 days?"
+2. "Show me the top 10 {entities} by revenue"
+
+### Performance Questions  
+3. "Which {entity} had the best performance last quarter?"
+
+### Trend Questions
+4. "Show me daily {metric} for the last 7 days"
+```
+
+---
+
+## ████ SECTION D: DATA ASSETS ████
+
+**REQUIRED FORMAT:**
+
+```markdown
+## Data Assets
+
+### Metric Views (PRIMARY - Use First)
+| Metric View Name | Purpose | Key Measures |
+|------------------|---------|--------------|
+| {view_name} | {purpose} | {measures} |
+
+### Dimension Tables
+| Table Name | Purpose | Key Columns |
+|------------|---------|-------------|
+| dim_{entity} | {purpose} | {columns} |
+
+### Fact Tables (if needed)
+| Table Name | Purpose | Grain |
+|------------|---------|-------|
+| fact_{entity} | {purpose} | {grain} |
+```
+
+---
+
+## ████ SECTION E: GENERAL INSTRUCTIONS (20 LINES MAX) ████
+
+**⚠️ CONSTRAINT: EXACTLY 20 LINES OR LESS. NO EXCEPTIONS.**
+
+**REQUIRED FORMAT:**
+```markdown
+## General Instructions
+
+You are an expert {domain} analyst. Follow these rules:
+
+1. **Primary Data Source:** Always use Metric Views first
+2. **Use TVFs:** For common queries, prefer Table-Valued Functions
+3. **Date Defaults:** If no date specified, default to last 30 days
+4. **Aggregations:** Use SUM for totals, AVG for averages
+5. **Sorting:** Sort by primary metric DESC unless specified
+6. **Limits:** Return top 10-20 rows for ranking queries
+7. **Currency:** Format as USD with 2 decimal places
+8. **Percentages:** Show as % with 1 decimal place
+9. **Synonyms:** Handle common term equivalents
+10. **Context:** Explain results in business terms
+11. **Comparisons:** Show absolute values and % difference
+12. **Time Periods:** Support today, yesterday, last week, month, quarter, YTD
+13. **Null Handling:** Exclude nulls from calculations
+14. **Performance:** Never scan raw Bronze/Silver tables
+15. **Accuracy:** State assumptions when uncertain
+```
+
+---
+
+## ████ SECTION F: TABLE-VALUED FUNCTIONS ████
+
+**REQUIRED FORMAT:**
+
+```markdown
+## Table-Valued Functions
+
+| Function Name | Signature | Purpose | When to Use |
+|---------------|-----------|---------|-------------|
+| get_{query} | `get_{query}(param TYPE)` | {purpose} | {scenario} |
+
+### TVF Details
+
+#### get_{query1}
+- **Signature:** `get_{query1}(param STRING, start_date DATE, end_date DATE)`
+- **Returns:** {description of columns}
+- **Use When:** {specific question pattern}
+- **Example:** `SELECT * FROM get_{query1}('value', CURRENT_DATE - 30, CURRENT_DATE)`
+```
+
+---
+
+## ████ SECTION G: BENCHMARK QUESTIONS WITH SQL ████
+
+**⚠️ CRITICAL: Each question MUST have EXACT working SQL**
+
+**REQUIRED FORMAT:**
+
+```markdown
+## Benchmark Questions & Expected SQL
+
+### Question 1: "{Natural language question}"
+**Expected SQL:**
+```sql
+SELECT columns FROM table WHERE conditions ORDER BY metric DESC LIMIT n;
+```
+**Expected Result:** {Description}
+
+---
+
+### Question 2: "{Question using TVF}"
+**Expected SQL:**
+```sql
+SELECT * FROM get_function_name(params);
+```
+**Expected Result:** {Description}
+```
+
+**⚠️ REQUIREMENT: 10-15 benchmark questions with WORKING SQL.**
+
+---
+
+## ✅ DELIVERABLE CHECKLIST
+
+Before submitting ANY Genie Space document:
+
+| Section | Requirement | Complete? |
+|---------|-------------|-----------|
+| **A. Space Name** | Exact name provided | ☐ |
+| **B. Space Description** | 2-3 sentences | ☐ |
+| **C. Sample Questions** | 10-15 questions | ☐ |
+| **D. Data Assets** | All tables & metric views | ☐ |
+| **E. General Instructions** | ≤20 lines | ☐ |
+| **F. TVFs** | All functions with signatures | ☐ |
+| **G. Benchmark Questions** | 10-15 with SQL answers | ☐ |
+
+**🔴 ALL 7 SECTIONS REQUIRED. NO EXCEPTIONS. 🔴**
+
+---
+
+# 📖 Detailed Pattern Reference
+
+The sections below provide additional context and detailed templates.
 
 ## Core Principle: Business Context Drives AI Quality
 
 **The quality of Genie responses directly correlates with the depth of business context provided in agent instructions.**
 
+**Key Patterns:**
+1. **Seven-Section Structure**: A→B→C→D→E→F→G (all required)
+2. **Concise Instructions**: 20 lines max for LLM behavior rules
+3. **Data Asset Hierarchy**: Metric Views (primary) → TVFs (specific) → Tables (reference)
+4. **SQL Validation**: Every benchmark question has working SQL
+
 ---
 
-## Section 1: Space Description Pattern
+## Extended Space Description Pattern
 
 ### Business Context Structure
 
@@ -80,7 +274,19 @@ AVAILABLE ANALYTICS:
 
 ## Section 2: Agent Instructions Pattern
 
-### Critical Components (All Required)
+### ⚠️ TWO LEVELS OF INSTRUCTIONS
+
+**Level 1: General Instructions (MANDATORY - Section E)**
+- **MAXIMUM 20 LINES** - Concise behavior rules
+- Goes in the mandatory deliverable document
+- Covers defaults, formatting, synonyms
+
+**Level 2: Extended Instructions (OPTIONAL - for complex domains)**
+- 200-500 lines of detailed business context
+- Can be added to Genie Space for better responses
+- Use template below if needed
+
+### Extended Instructions Template (Optional)
 
 ```markdown
 =================================================================================
@@ -622,58 +828,56 @@ Before launching to users:
 
 ## Common Mistakes to Avoid
 
-### ❌ DON'T: Minimal Agent Instructions
+### ❌ DON'T: General Instructions > 20 Lines
 ```markdown
-# BAD: Too brief, no business context
+# BAD: 50+ lines of instructions
 Instructions:
-Use sales_metrics for sales questions.
-Use inventory_metrics for inventory questions.
+[Line 1]
+[Line 2]
+...
+[Line 50]  # ❌ TOO LONG - Genie won't read all of this effectively
 ```
 
-### ✅ DO: Comprehensive Agent Instructions
+### ✅ DO: Concise 20-Line General Instructions
 ```markdown
-# GOOD: Rich business context, query patterns, examples
-=================================================================================
-AGENT INSTRUCTIONS
-=================================================================================
+# GOOD: Exactly 20 lines or less
+## General Instructions
 
-BUSINESS DOMAIN KNOWLEDGE:
-[200-500 lines of detailed business context]
+You are an expert analyst. Follow these rules:
 
-DATA ASSETS AVAILABLE:
-[Detailed asset descriptions with when to use each]
-
-QUERY INTERPRETATION GUIDELINES:
-[10 categories of interpretation rules]
+1. **Primary Data:** Use Metric Views first
+2. **TVFs:** Prefer TVFs for common queries
+3. **Dates:** Default to last 30 days
+4. **Sorting:** DESC by primary metric
+5. **Limits:** Top 10-20 for rankings
+[... up to 20 lines total]
 ```
 
-### ❌ DON'T: Generic Example Questions
+### ❌ DON'T: Benchmark Questions Without SQL
 ```markdown
-# BAD: Vague, no expected results
+# BAD: No SQL, can't validate
 Example Questions:
 - Show me sales
 - What about inventory?
 - Compare stores
 ```
 
-### ✅ DO: Specific Benchmark Questions
+### ✅ DO: Benchmark Questions WITH Exact SQL
 ```markdown
-# GOOD: Specific, with expected answers and validation
-#### Q1.1: Top Stores by Revenue
-**Business Question:**
+# GOOD: Every question has working SQL
+### Question 1: "What are the top 10 stores by revenue this month?"
+**Expected SQL:**
+```sql
+SELECT 
+  store_name,
+  MEASURE(`Total Revenue`) as revenue
+FROM sales_performance_metrics
+WHERE transaction_date >= DATE_TRUNC('month', CURRENT_DATE)
+GROUP BY store_name
+ORDER BY revenue DESC
+LIMIT 10;
 ```
-What are the top 10 stores by revenue this month?
-```
-
-**Expected Answer Format:**
-| Rank | Store Number | Store Name | Total Revenue |
-|------|--------------|------------|---------------|
-| 1 | 150 | Quick Gas #150 | $125,450.00 |
-
-**Validation Criteria:**
-✓ Returns exactly 10 stores
-✓ Revenue formatted as currency
-✓ Sorted descending by revenue
+**Expected Result:** 10 rows with store names and revenue, sorted DESC
 ```
 
 ### ❌ DON'T: Add Only Tables as Trusted Assets
@@ -725,22 +929,30 @@ After deployment, measure:
 
 ## Validation Checklist
 
-When creating Genie Space setup guides:
+### 🔴 MANDATORY: 7-Section Deliverable Check
 
-- [ ] Four-section structure followed (Description, Instructions, Assets, Questions)
-- [ ] Agent instructions include all 10 critical components
-- [ ] Business domain knowledge is comprehensive (200+ lines)
-- [ ] KPIs defined with formulas
-- [ ] Query interpretation guidelines cover 10 categories
-- [ ] Metric views documented with dimensions, measures, examples
-- [ ] TVFs documented with parameters, returns, use cases
-- [ ] 20-30 benchmark questions created
-- [ ] Questions organized by business function
-- [ ] Each question has expected answer format and validation criteria
+**Before finalizing ANY Genie Space document, verify ALL sections:**
+
+| # | Section | Requirement | Status |
+|---|---------|-------------|--------|
+| A | **Space Name** | Exact name in format `{Project} {Domain} Analytics Space` | ☐ |
+| B | **Space Description** | 2-3 sentences describing purpose and users | ☐ |
+| C | **Sample Questions** | 10-15 questions grouped by domain | ☐ |
+| D | **Data Assets** | ALL metric views, dimensions, facts in table format | ☐ |
+| E | **General Instructions** | **≤20 lines** of LLM behavior rules | ☐ |
+| F | **TVFs** | ALL functions with signatures and examples | ☐ |
+| G | **Benchmark Questions** | 10-15 questions with **EXACT working SQL** | ☐ |
+
+### Additional Quality Checks
+
+- [ ] General Instructions are EXACTLY 20 lines or less (not 21+)
+- [ ] Every benchmark question has copy-paste-ready SQL
+- [ ] SQL in benchmarks actually runs (tested)
+- [ ] Metric views documented with measures and dimensions
+- [ ] TVFs documented with parameters, returns, and use cases
+- [ ] Questions cover all major use cases (revenue, performance, trends)
 - [ ] Testing plan defined with success criteria
-- [ ] User training materials included
-- [ ] Deployment checklist comprehensive (30+ items)
-- [ ] Maintenance tasks defined (weekly, monthly, quarterly)
+- [ ] Deployment checklist comprehensive
 
 ---
 
@@ -754,44 +966,413 @@ When creating Genie Space setup guides:
 - [Metric Views Documentation](https://docs.databricks.com/metric-views/)
 
 ### Related Cursor Rules
-- [metric-views-patterns.mdc](mdc:.cursor/rules/metric-views-patterns.mdc) - Metric view YAML structure
+- [metric-views-patterns.mdc](mdc:.cursor/rules/semantic-layer/14-metric-views-patterns.mdc) - Metric view YAML structure
+- [databricks-table-valued-functions.mdc](mdc:.cursor/rules/semantic-layer/15-databricks-table-valued-functions.mdc) - TVF patterns
 - [databricks-asset-bundles.mdc](mdc:.cursor/rules/databricks-asset-bundles.mdc) - Asset Bundle deployment
 
-### Project Examples
-- [GENIE_SPACE_SETUP_GUIDE.md](../docs/gold/GENIE_SPACE_SETUP_GUIDE.md) - Complete implementation example
-- [METRIC_VIEWS_GUIDE.md](../docs/gold/METRIC_VIEWS_GUIDE.md) - Metric views setup
+### Project Documentation
+- [Genie Space Post-Mortem](../../docs/reference/genie-space-semantic-layer-postmortem.md) - Comprehensive lessons learned
+- [GENIE_SPACE_UNIFIED_SETUP.md](../../docs/genie-spaces/GENIE_SPACE_UNIFIED_SETUP.md) - Complete unified Genie Space example
 
 ---
 
 ## Pattern Improvement Case Study
 
-**Date:** January 2025  
+**Date:** January 2025 (Updated December 2025)
 **Rule Created:** genie-space-patterns.mdc  
-**Trigger:** Comprehensive Genie Space setup for retail analytics
+**Trigger:** Comprehensive Genie Space setup for analytics
 
 ### Implementation Summary
 
-**Created:**
-- Complete Genie Space setup guide (1,800+ lines)
-- 27 benchmark questions across 8 business categories
-- Comprehensive agent instructions (500+ lines)
-- Testing framework with validation criteria
+**Mandatory 7-Section Structure:**
+- **A. Space Name** - Exact name format
+- **B. Space Description** - 2-3 sentences
+- **C. Sample Questions** - 10-15 questions
+- **D. Data Assets** - All metric views, tables
+- **E. General Instructions** - **≤20 lines** (CRITICAL)
+- **F. TVFs** - All functions with signatures
+- **G. Benchmark Questions** - 10-15 with **EXACT SQL**
+
+**Key Discovery (December 2025):**
+- Extended agent instructions (500+ lines) are OPTIONAL
+- General Instructions MUST be ≤20 lines for Genie to process effectively
+- Every benchmark question MUST have working SQL for validation
+- Missing any of 7 sections = incomplete deliverable
 
 **Results:**
 - Production-ready Genie Space configuration
-- Reusable patterns for future Genie deployments
-- Clear testing and validation approach
-- User training materials template
+- Clear, enforceable deliverable checklist
+- SQL-validated benchmark testing
+- Consistent output across all implementations
 
 **Reusable Insights:**
-- Agent instructions quality is the #1 factor in Genie success
-- Business context must be extremely detailed (200-500 lines)
-- Benchmark questions with expected answers accelerate testing
-- Four-section structure provides clarity and completeness
-- Metric views + TVFs hierarchy optimizes performance
+- **20-line limit** for General Instructions is critical (Genie truncates longer)
+- Benchmark SQL must be copy-paste runnable
+- Metric Views + TVFs hierarchy optimizes performance
+- Seven-section structure ensures completeness
+- SQL in benchmarks catches configuration errors early
 
 **Next Steps:**
-- Apply pattern to other Genie Space deployments
+- All Genie Space documents must pass 7-section checklist
+- SQL validation required before production deployment
 - Track success metrics after production launch
-- Refine based on user feedback
-- Document lessons learned in quarterly review
+
+---
+
+## Post-Mortem: Genie Space Benchmark SQL Errors (Dec 15, 2025)
+
+### Issues Discovered and Fixed
+
+| # | Issue | Impact | Root Cause | Prevention |
+|---|-------|--------|------------|------------|
+| 1 | MEASURE() syntax error | SQL compilation failure | Used display names instead of column names | See Rule below |
+| 2 | Missing UC namespace | Query ambiguity | Documentation lacked enforcement | See Rule below |
+| 3 | Unnecessary date filters | Empty results | Applied "last 90 days" to general questions | See Rule below |
+
+---
+
+### ⚠️ CRITICAL RULE: MEASURE() Uses Column Names, NOT Display Names
+
+**The MEASURE() function in metric view queries requires the actual column `name`, NOT the `display_name`.**
+
+#### ❌ WRONG: Using Display Names (with backticks)
+```sql
+SELECT 
+  MEASURE(`Total Revenue`) as revenue,      -- ❌ FAILS: "Total Revenue" is display_name
+  MEASURE(`Booking Count`) as bookings,     -- ❌ FAILS: "Booking Count" is display_name
+  MEASURE(`Avg Booking Value`) as avg_value -- ❌ FAILS: "Avg Booking Value" is display_name
+FROM ${catalog}.${gold_schema}.revenue_analytics_metrics;
+```
+
+**Error:**
+```
+[UNRESOLVED_COLUMN.WITH_SUGGESTION] A column, variable, or function parameter 
+with name `Total Revenue` cannot be resolved. Did you mean one of the following? 
+[`total_revenue`, `total_guests`, `month_name`, `avg_nights`, `booking_count`]
+```
+
+#### ✅ CORRECT: Using Actual Column Names (snake_case, no backticks)
+```sql
+SELECT 
+  MEASURE(total_revenue) as revenue,      -- ✅ Uses actual column name
+  MEASURE(booking_count) as bookings,     -- ✅ Uses actual column name
+  MEASURE(avg_booking_value) as avg_value -- ✅ Uses actual column name
+FROM ${catalog}.${gold_schema}.revenue_analytics_metrics;
+```
+
+#### How to Find Correct Column Names
+
+**Check the metric view YAML file:**
+```yaml
+# revenue_analytics_metrics.yaml
+measures:
+  - name: total_revenue        # ✅ Use this in MEASURE()
+    display_name: Total Revenue  # ❌ Don't use this
+    expr: SUM(source.total_booking_value)
+```
+
+**Rule:** `MEASURE(name)` NOT `MEASURE(\`display_name\`)`
+
+---
+
+### ⚠️ CRITICAL RULE: Full UC 3-Part Namespace Required
+
+**All table and function references MUST use the full Unity Catalog 3-part namespace.**
+
+#### ❌ WRONG: Partial Names
+```sql
+-- Missing catalog and schema
+SELECT * FROM fact_booking_daily;
+SELECT * FROM get_revenue_by_period('2024-01-01', '2024-12-31', 'week');
+```
+
+#### ✅ CORRECT: Full 3-Part Namespace
+```sql
+-- Always use: ${catalog}.${gold_schema}.object_name
+SELECT * FROM ${catalog}.${gold_schema}.fact_booking_daily;
+SELECT * FROM ${catalog}.${gold_schema}.get_revenue_by_period('2024-01-01', '2024-12-31', 'week');
+```
+
+**Apply to ALL objects in Genie Space documentation:**
+- Metric views: `${catalog}.${gold_schema}.revenue_analytics_metrics`
+- Fact tables: `${catalog}.${gold_schema}.fact_booking_daily`
+- Dimension tables: `${catalog}.${gold_schema}.dim_property`
+- TVFs: `${catalog}.${gold_schema}.get_revenue_by_period(...)`
+
+---
+
+### ⚠️ CRITICAL RULE: TVF vs Metric View Decision Logic
+
+**Not every question needs a TVF. Use the right tool for the question.**
+
+#### When to Use Metric Views (No Date Filter Required)
+```
+Question: "Show payment completion rates"
+Answer: Use metric view directly (question doesn't specify dates)
+```
+
+```sql
+-- ✅ CORRECT: General question → Metric view without date filter
+SELECT 
+  MEASURE(payment_rate) as payment_completion_rate
+FROM ${catalog}.${gold_schema}.revenue_analytics_metrics
+GROUP BY ALL
+ORDER BY payment_completion_rate DESC;
+```
+
+#### When to Use TVFs (Explicit Date Request)
+```
+Question: "What was the weekly revenue trend for Q4 2024?"
+Answer: Use TVF with date parameters (question specifies time period)
+```
+
+```sql
+-- ✅ CORRECT: Date-bounded question → TVF with date range
+SELECT * FROM ${catalog}.${gold_schema}.get_revenue_by_period(
+  '2024-10-01', '2024-12-31', 'week'
+);
+```
+
+#### Decision Table
+
+| Question Pattern | Tool | Date Handling |
+|-----------------|------|---------------|
+| "Show X" (no date mentioned) | Metric View | No filter |
+| "What is the X rate?" | Metric View | No filter |
+| "X by property type" | Metric View | No filter |
+| "X last month" | TVF | Specific dates |
+| "X for Q4 2024" | TVF | Specific dates |
+| "X trend for [period]" | TVF | Date range |
+
+#### Wide Date Range for "All Data" TVF Queries
+
+If using TVF but want all data (no filtering):
+```sql
+-- Use impossibly wide range to capture all data
+SELECT * FROM ${catalog}.${gold_schema}.get_payment_metrics(
+  '1900-01-01',  -- Start before any real data
+  '2100-12-31'   -- End after any real data
+);
+```
+
+---
+
+### Validation Checklist Update
+
+Add these checks to the existing checklist:
+
+**Benchmark SQL Validation:**
+- [ ] MEASURE() uses actual column names (not display_name with backticks)
+- [ ] All tables/functions have full 3-part UC namespace
+- [ ] Date filters only applied when question explicitly mentions time
+- [ ] TVF date ranges work with sample data (or use wide ranges)
+- [ ] SQL tested and returns expected results
+
+---
+
+## ⚠️ CRITICAL: General Instructions Consistency (Dec 2025)
+
+**Issue:** Contradictory rules in General Instructions caused Genie to select wrong data assets.**
+
+### The Problem
+
+```markdown
+# BAD: Contradictory rules
+Line 207: "Host performance → host_analytics_metrics"
+Line 221: "Host performance → get_host_performance TVF"
+
+# Result: Genie randomly picks one, often wrong
+```
+
+### Prevention Patterns
+
+#### 1. Use Explicit Exceptions
+
+```markdown
+# GOOD: Clear exception handling
+- Host demographics/verification → host_analytics_metrics (attributes only)
+⚠️ HOST PERFORMANCE EXCEPTION: For "Top hosts", "Host revenue" → USE get_host_performance TVF
+```
+
+#### 2. Group by Question Type, Not Asset
+
+```markdown
+# BAD: Asset-first (causes conflicts)
+- host_analytics_metrics → for host data
+- get_host_performance → for host data
+
+# GOOD: Question-first (clear routing)
+Revenue/booking questions:
+  - By property → revenue_analytics_metrics
+  - By host → get_host_performance TVF (not metric view!)
+  - By customer → customer_analytics_metrics
+
+Attribute/demographic questions:
+  - Host attributes → host_analytics_metrics
+  - Property inventory → property_analytics_metrics
+```
+
+#### 3. Use ⚠️ Markers for Critical Routing
+
+```markdown
+⚠️ CRITICAL - Metric View Selection:
+- Revenue by property type → revenue_analytics_metrics (fact source)
+- NOT property_analytics_metrics (dimension source, under-reports)
+```
+
+---
+
+## ⚠️ CRITICAL: Ambiguous Term Definitions
+
+**Issue:** Subjective terms like "underperforming" had multiple valid interpretations.**
+
+### Common Ambiguous Terms
+
+| Term | Interpretation 1 | Interpretation 2 |
+|---|---|---|
+| "underperforming" | Low revenue (some activity) | Zero activity (no bookings) |
+| "top performing" | Highest revenue | Highest rating |
+| "business vs leisure" | Account type (individual/business) | Trip purpose (is_business_booking) |
+| "valuable customers" | Historical spend | Predicted LTV |
+| "best hosts" | Most revenue | Highest rating |
+
+### Resolution Pattern
+
+**Add explicit definitions in General Instructions:**
+
+```markdown
+## Term Definitions
+
+"underperforming" = properties with revenue below median (use get_underperforming_properties TVF)
+"top performing" = highest revenue unless "rated" specified
+"business vs leisure" = trip purpose (is_business_booking), NOT account type
+"valuable customers" = 
+  - Historical: use get_customer_ltv TVF
+  - Predicted: use customer_ltv_predictions table
+"best hosts" = highest revenue per property (use get_host_performance TVF)
+```
+
+---
+
+## ⚠️ CRITICAL: Metric View vs TVF Routing
+
+**Issue:** Genie selected metric views when TVFs were more appropriate (and vice versa).**
+
+### Routing Decision Table
+
+| Question Pattern | Best Asset | Reason |
+|---|---|---|
+| "Show X" (general) | Metric View | No parameters needed |
+| "X by [dimension]" | Metric View | Standard aggregation |
+| "Top N [entities]" | TVF with `top_n` param | Parameterized ranking |
+| "X for [specific date range]" | TVF with date params | Bounded query |
+| "X trend for [period]" | TVF (e.g., `get_revenue_by_period`) | Time-series logic |
+| "Who are the [entities]?" | TVF returning individuals | Individual rows needed |
+| "How many [entities]?" | Metric View or aggregate TVF | Summary stats |
+| "Compare X vs Y" | Metric View with GROUP BY | Segmentation |
+
+### Add Routing Rules to General Instructions
+
+```markdown
+## Query Routing
+
+Revenue questions:
+  - General revenue → revenue_analytics_metrics
+  - Revenue by time period → get_revenue_by_period TVF
+  - Revenue by host → get_host_performance TVF (NOT host_analytics_metrics!)
+
+Customer questions:
+  - Customer segments (summary) → get_customer_segments TVF
+  - Individual VIP customers → get_customer_ltv TVF
+  - Predicted customer value → customer_ltv_predictions table
+
+Host questions:
+  - Host demographics → host_analytics_metrics
+  - Host revenue/bookings → get_host_performance TVF ⚠️
+
+Property questions:
+  - Property counts/inventory → property_analytics_metrics
+  - Property performance → get_property_performance TVF
+```
+
+---
+
+## ⚠️ CRITICAL: TVF Syntax Guidance in General Instructions
+
+**Issue:** Genie wrapped TVFs incorrectly or added unnecessary GROUP BY.**
+
+### Common Errors to Prevent
+
+```sql
+-- ❌ TABLE() wrapper
+SELECT * FROM TABLE(get_customer_segments('2020-01-01', '2024-12-31'))
+-- Error: NOT_A_SCALAR_FUNCTION
+
+-- ❌ Missing parameters  
+SELECT * FROM get_customer_segments()
+-- Error: WRONG_NUM_ARGS
+
+-- ❌ GROUP BY on pre-aggregated TVF
+SELECT segment_name, COUNT(*) FROM get_customer_segments(...) GROUP BY segment_name
+-- Result: Same as without GROUP BY, but confusing
+```
+
+### Add Syntax Rules to General Instructions
+
+```markdown
+## TVF Syntax Rules
+
+1. NEVER wrap TVFs in TABLE() - just call directly:
+   ✅ SELECT * FROM get_customer_segments('2020-01-01', '2024-12-31')
+   ❌ SELECT * FROM TABLE(get_customer_segments(...))
+
+2. Include required parameters (check TVF signature):
+   ✅ get_customer_ltv('2020-01-01', '2024-12-31', 100)
+   ❌ get_customer_ltv()
+
+3. Don't GROUP BY on aggregate TVFs - they're pre-aggregated:
+   - get_customer_segments: Returns 5 segment rows (already grouped)
+   - get_vip_customers: Returns segment stats (already grouped)
+   - get_revenue_by_period: Returns time periods (already grouped)
+```
+
+---
+
+## Professional Language in General Instructions
+
+**Issue:** Instructions with negative language about assets confused Genie.**
+
+### ❌ Avoid
+
+```markdown
+- Don't use host_analytics_metrics - it's broken for revenue
+- The metric view returns wrong results so use the TVF
+- host_analytics_metrics doesn't work properly
+```
+
+### ✅ Use
+
+```markdown
+- Host revenue/bookings → get_host_performance TVF (accurate join path)
+- Host attributes/demographics → host_analytics_metrics
+
+⚠️ CRITICAL: get_host_performance TVF is PREFERRED for host revenue metrics
+```
+
+---
+
+## Version History
+
+- **v2.0** (Dec 16, 2025) - Genie optimization patterns from production post-mortem
+  - Added General Instructions consistency patterns
+  - Added ambiguous term definitions
+  - Added Metric View vs TVF routing decision table
+  - Added TVF syntax guidance for General Instructions
+  - Added professional language standards
+  - **Key Learning:** Contradictory rules caused 40% of Genie misrouting
+  - Based on: [Genie Space Post-Mortem](../../docs/reference/genie-space-semantic-layer-postmortem.md)
+
+- **v1.0** (Jan 2025) - Initial rule based on Genie Space deployment
+  - 7-section mandatory structure
+  - Benchmark questions with SQL requirement
+  - Extended instructions template

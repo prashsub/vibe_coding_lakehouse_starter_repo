@@ -1,9 +1,9 @@
-# Phase 4 Addendum 4.4: Lakehouse Monitoring
+# Phase 1 Addendum 1.4: Lakehouse Monitoring
 
 ## Overview
 
-**Status:** ✅ Implemented  
-**Dependencies:** Phase 3 (Gold Layer)  
+**Status:** ✅ Complete  
+**Dependencies:** Prerequisites (Gold Layer)  
 **Artifact Count:** 5 Monitors with 19 Custom Metrics  
 **Reference:** [Lakehouse Monitoring Patterns](../.cursor/rules/monitoring/17-lakehouse-monitoring-comprehensive.mdc)
 
@@ -368,29 +368,29 @@ WHERE custom_metric_name = 'daily_revenue'
   - [x] Create monitor with time series config
   - [x] Add 6 custom metrics (4 AGGREGATE, 1 DERIVED, 1 DRIFT)
   - [ ] Create baseline table (optional - will auto-generate)
-  - [ ] Configure SQL alerts (next phase)
+  - [ ] Configure SQL alerts (in Addendum 1.7)
 
 - [x] Engagement Monitor
   - [x] Create monitor with time series config
   - [x] Add 4 custom metrics (3 AGGREGATE, 1 DERIVED)
-  - [ ] Configure SQL alerts (next phase)
+  - [ ] Configure SQL alerts (in Addendum 1.7)
 
 - [x] Property Monitor
   - [x] Create monitor with snapshot config
   - [x] Add 3 custom metrics (3 AGGREGATE)
-  - [ ] Configure SQL alerts (next phase)
+  - [ ] Configure SQL alerts (in Addendum 1.7)
 
 - [x] Host Monitor
   - [x] Create monitor with snapshot config
   - [x] Add 5 custom metrics (4 AGGREGATE, 1 DERIVED)
-  - [ ] Configure SQL alerts (next phase)
+  - [ ] Configure SQL alerts (in Addendum 1.7)
 
 - [x] Customer Monitor
   - [x] Create monitor with snapshot config
   - [x] Add 4 custom metrics (2 AGGREGATE, 1 DERIVED, 1 DRIFT)
-  - [ ] Configure SQL alerts (next phase)
+  - [ ] Configure SQL alerts (in Addendum 1.7)
 
-**Implementation Complete:** All monitors created with production-ready configuration. Alert configuration will be handled in Phase 4 Addendum 4.7 (Alerting).
+**Implementation Complete:** All monitors created with production-ready configuration. Alert configuration will be handled in Phase 1 Addendum 1.7 (Alerting).
 
 ---
 
@@ -399,4 +399,5 @@ WHERE custom_metric_name = 'daily_revenue'
 - [Lakehouse Monitoring Documentation](https://docs.databricks.com/lakehouse-monitoring/)
 - [Custom Metrics](https://docs.databricks.com/lakehouse-monitoring/custom-metrics)
 - [Monitoring Patterns Rule](../.cursor/rules/monitoring/17-lakehouse-monitoring-comprehensive.mdc)
+
 

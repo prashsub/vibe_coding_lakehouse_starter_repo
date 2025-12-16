@@ -681,3 +681,4 @@ Grain: GROUP BY property_id, destination_id, check_in_date
 
 **Next Step:** Run validation queries, then proceed to Metric Views and TVFs! 🚀
 
+

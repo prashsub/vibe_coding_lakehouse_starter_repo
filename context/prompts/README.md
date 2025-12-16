@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains **11 production-ready prompts** for building complete Databricks Medallion Architecture implementations. Each prompt is a **template** designed to work with any industry, domain, or use case.
+This directory contains **12 production-ready prompts** for building complete Databricks Medallion Architecture implementations. Each prompt is a **template** designed to work with any industry, domain, or use case.
 
 **Proven in Production:** These prompts were created from real implementations and generalized to be reusable for:
 - ✅ Retail / E-Commerce
@@ -155,6 +155,19 @@ Fill in "Your Requirements" section, then generate code with AI.
 
 ---
 
+### Machine Learning (Advanced)
+
+#### [12-ml-models-prompt.md](./12-ml-models-prompt.md)
+**Production ML pipelines with MLflow 3.1+ and Feature Store**
+- Feature Store setup with Unity Catalog integration
+- Model training pipelines (XGBoost, Prophet, etc.)
+- Batch inference with automatic feature lookup
+- Unity Catalog Model Registry
+- 5 non-negotiable rules for reliable deployment
+- **Time:** 6-12 hours | **Models:** 3-5 production models
+
+---
+
 ## 🎯 Usage Patterns
 
 ### Strategic Planning First (Recommended for Large Projects)
@@ -208,6 +221,14 @@ Full Stack (above)
 07-dqx-integration-prompt.md  (4 hours)
 ```
 **Result:** + Advanced DQ diagnostics and compliance
+
+### ML-Enabled Stack (28-44 hours)
+```
+Full Stack (above)
+  ↓
+12-ml-models-prompt.md  (6-12 hours)
+```
+**Result:** + Predictive models, feature store, batch inference
 
 ---
 
@@ -315,6 +336,13 @@ After using all prompts, you'll have:
 - ✅ Complete table/column descriptions
 - ✅ PRIMARY KEY / FOREIGN KEY constraints
 
+### Machine Learning (Optional)
+- ✅ Feature Store with Unity Catalog
+- ✅ 3-5 trained ML models
+- ✅ Batch inference pipelines
+- ✅ Model Registry integration
+- ✅ Prediction tables
+
 ### Time Savings
 - ⏱️ **Framework:** 18-28 hours total
 - ⏱️ **From Scratch:** 80-120 hours
@@ -362,6 +390,11 @@ After using all prompts, you'll have:
 ### Week 5: Exploration & Polish
 - Day 1: Exploration Notebooks (Prompt 08)
 - Day 2-5: Polish, optimize, and document
+
+### Week 6 (Optional): Machine Learning
+- Day 1-2: Feature Store Setup (Prompt 12)
+- Day 3-4: Model Training Pipelines (Prompt 12)
+- Day 5: Batch Inference & Monitoring (Prompt 12)
 
 ---
 

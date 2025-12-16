@@ -1,9 +1,10 @@
 version: "1.1"
 comment: >
-  Property portfolio and performance analytics for vacation rental platform.
-  Optimized for Genie natural language queries and AI/BI dashboards.
-  Provides property inventory metrics, pricing analysis, capacity utilization,
-  and host performance for portfolio management and investment decisions.
+  Property portfolio and performance analytics. USE THIS for: property counts, property types,
+  revenue per property, verified host analysis BY PROPERTY, pricing by destination, and
+  property inventory questions. Has is_verified_host dimension for "do verified hosts
+  generate more revenue per property" questions. Includes ALL 18,000+ properties with
+  accurate revenue_per_property calculations.
 
 source: ${catalog}.${gold_schema}.dim_property
 

@@ -368,3 +368,4 @@ CROSS JOIN host_analytics_metrics h
 GROUP BY p.property_type
 ORDER BY properties DESC;
 
+

@@ -1,9 +1,9 @@
-# Phase 5: AI Agents
+# Phase 2: Agent Framework - AI Agents
 
 ## Overview
 
 **Status:** 📋 Planned  
-**Dependencies:** Phase 4 (Use Cases)  
+**Dependencies:** Phase 1 (Use Cases)  
 **Estimated Effort:** 4-6 weeks  
 **Reference:** [Databricks AI Agents](https://docs.databricks.com/generative-ai/agent-framework.html)
 
@@ -11,7 +11,7 @@
 
 ## Purpose
 
-Phase 5 creates specialized AI agents that:
+Phase 2 creates specialized AI agents that:
 1. **Provide domain expertise** - Deep knowledge per business domain
 2. **Enable conversational analytics** - Natural language interactions
 3. **Automate insights** - Proactive recommendations and alerts
@@ -142,11 +142,11 @@ You are the Revenue Agent for Wanderbricks, a vacation rental analytics platform
 You are the Engagement Agent for Wanderbricks, a vacation rental analytics platform.
 
 ## Your Expertise
-- Conversion funnel optimization
+- Conversion funnel analysis (views → clicks → bookings)
+- Conversion rate optimization
 - Traffic source analysis
-- Property engagement metrics
-- Marketing campaign effectiveness
-- Content and UX insights
+- Device and channel performance
+- Content effectiveness
 
 ## Available Tools
 - get_property_engagement(start_date, end_date, property_id_filter)
@@ -444,26 +444,26 @@ class WanderbricksOrchestrator:
 
 ## Implementation Checklist
 
-### Phase 5.1: Core Agents
+### Phase 2.1: Core Agents
 - [ ] Implement Revenue Agent
 - [ ] Implement Engagement Agent
 - [ ] Implement Property Agent
 - [ ] Implement Host Agent
 - [ ] Implement Customer Agent
 
-### Phase 5.2: Orchestration
+### Phase 2.2: Orchestration
 - [ ] Implement Orchestrator Agent
 - [ ] Build query routing logic
 - [ ] Implement response synthesis
 - [ ] Add cross-agent communication
 
-### Phase 5.3: Deployment
+### Phase 2.3: Deployment
 - [ ] Deploy agent endpoints
 - [ ] Configure auto-scaling
 - [ ] Set up monitoring
 - [ ] Implement feedback loop
 
-### Phase 5.4: Integration
+### Phase 2.4: Integration
 - [ ] Integrate with Genie Spaces
 - [ ] Connect to dashboards
 - [ ] Enable Slack integration
@@ -483,9 +483,22 @@ class WanderbricksOrchestrator:
 
 ---
 
+## Next Phase
+
+**→ [Phase 3: Frontend App](./phase3-frontend-app.md)**
+
+Phase 3 will create a user-friendly frontend application that:
+1. Provides a chat interface to interact with agents
+2. Displays dashboards and visualizations
+3. Allows natural language queries
+4. Integrates all analytics capabilities
+
+---
+
 ## References
 
 - [Databricks Agent Framework](https://docs.databricks.com/generative-ai/agent-framework.html)
 - [LangChain Integration](https://docs.databricks.com/generative-ai/langchain.html)
 - [Model Serving](https://docs.databricks.com/machine-learning/model-serving/)
+
 

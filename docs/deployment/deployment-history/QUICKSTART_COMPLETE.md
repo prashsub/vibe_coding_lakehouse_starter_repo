@@ -252,7 +252,7 @@ databricks bundle destroy -t dev
 
 | Document | Purpose |
 |----------|---------|
-| [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Complete deployment guide |
+| [DEPLOYMENT_GUIDE.md](docs/deployment/DEPLOYMENT_GUIDE.md) | Complete deployment guide |
 | [QUICKSTART.md](QUICKSTART.md) | Silver layer quick start |
 | [plans/QUICKSTART_TVFs.md](plans/QUICKSTART_TVFs.md) | TVF quick start |
 | [plans/IMPLEMENTATION_SUMMARY_TVFs.md](plans/IMPLEMENTATION_SUMMARY_TVFs.md) | TVF implementation details |
@@ -275,4 +275,5 @@ databricks bundle destroy -t dev
 **Total Time:** ~30 minutes  
 **Status:** ✅ Production-ready  
 **TVFs:** 26 functions ready for Genie integration
+
 
