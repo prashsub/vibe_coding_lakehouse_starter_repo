@@ -333,10 +333,25 @@ Review **PART I** for principles, then use **PART V** to design and orchestrate 
 
 ---
 
+#### **Chapter 22: SQL Alerting Framework** → `monitoring/19-sql-alerting-patterns.mdc`
+**What you'll learn**: Config-driven SQL alerting with Databricks SDK
+- Alert ID convention (DOMAIN-NUMBER-SEVERITY)
+- Alert rules configuration table schema
+- SQL query patterns (threshold, anomaly, summary)
+- Databricks SDK integration for alert deployment
+- Two-job pattern (setup + deploy)
+- Custom notification templates
+
+**When to read**: After Gold layer is complete for proactive monitoring
+**Lines**: 800+ | **Complexity**: Intermediate
+**Key Concepts**: Config-driven, fully qualified table names, SDK deployment, dry-run validation
+
+---
+
 ### **PART VII: DEVELOPMENT & EXPLORATION (exploration/)**
 *Ad-hoc analysis and data exploration*
 
-#### **Chapter 22: Exploration Notebooks** → `exploration/22-adhoc-exploration-notebooks.mdc`
+#### **Chapter 23: Exploration Notebooks** → `exploration/22-adhoc-exploration-notebooks.mdc`
 **What you'll learn**: Dual-format notebooks for exploration
 - Databricks workspace version (.py with magic commands)
 - Local Jupyter version (.ipynb with Databricks Connect)
@@ -352,7 +367,7 @@ Review **PART I** for principles, then use **PART V** to design and orchestrate 
 ### **PART VIII: PROJECT PLANNING (planning/)**
 *Multi-phase project design and planning*
 
-#### **Chapter 23: Project Plan Methodology** → `planning/26-project-plan-methodology.mdc`
+#### **Chapter 24: Project Plan Methodology** → `planning/26-project-plan-methodology.mdc`
 **What you'll learn**: Creating comprehensive project plans
 - 5-phase structure (Bronze → Gold → Use Cases → Agents → Frontend)
 - Agent Domain Framework (Cost, Security, Performance, Reliability, Quality)
@@ -369,7 +384,7 @@ Review **PART I** for principles, then use **PART V** to design and orchestrate 
 ### **PART IX: META RULES (common/)**
 *Rules about rules - self-improvement and documentation*
 
-#### **Chapter 24: Cursor Rules Standards** → `common/20-cursor-rules.mdc`
+#### **Chapter 25: Cursor Rules Standards** → `common/20-cursor-rules.mdc`
 **What you'll learn**: How to create and maintain cursor rules
 - Rule file location (.cursor/rules/)
 - Naming conventions
@@ -382,7 +397,7 @@ Review **PART I** for principles, then use **PART V** to design and orchestrate 
 
 ---
 
-#### **Chapter 25: Self-Improvement** → `common/21-self-improvement.mdc`
+#### **Chapter 26: Self-Improvement** → `common/21-self-improvement.mdc`
 **What you'll learn**: Continuous improvement of cursor rules
 - Triggers for rule updates
 - Pattern recognition
@@ -395,7 +410,7 @@ Review **PART I** for principles, then use **PART V** to design and orchestrate 
 
 ---
 
-#### **Chapter 26: Documentation Organization** → `common/22-documentation-organization.mdc`
+#### **Chapter 27: Documentation Organization** → `common/22-documentation-organization.mdc`
 **What you'll learn**: Organizing project documentation
 - Root directory rules (only README, QUICKSTART, CHANGELOG)
 - docs/ folder structure
@@ -417,14 +432,14 @@ Review **PART I** for principles, then use **PART V** to design and orchestrate 
 | **Silver** | 2 | ~1,200 | Intermediate-Advanced |
 | **Gold** | 7 | ~2,800 | Intermediate |
 | **Semantic Layer** | 3 | ~1,800 | Intermediate |
-| **Monitoring** | 2 | ~1,450 | Intermediate-Advanced |
+| **Monitoring** | 3 | ~2,250 | Intermediate-Advanced |
 | **Exploration** | 1 | ~800 | Intermediate |
 | **Planning** | 1 | ~900 | Advanced |
-| **Total** | **26 rules** | **~12,300 lines** | Varies |
+| **Total** | **27 rules** | **~13,100 lines** | Varies |
 
 ### Complexity Levels
 - **Foundation** (9 rules): Core concepts, read these first
-- **Intermediate** (14 rules): Implementation patterns
+- **Intermediate** (15 rules): Implementation patterns
 - **Advanced** (2 rules): Complex integrations (DQX, Monitoring)
 - **Meta** (3 rules): Self-referential rules
 
@@ -513,6 +528,7 @@ Review **PART I** for principles, then use **PART V** to design and orchestrate 
 ### Data Quality Flow
 1. Chapter 8 (DLT Expectations) → Chapter 9 (DQX) → Chapter 20 (Monitoring)
 2. Chapter 7 (Faker with DQ corruption) → Chapter 8 (Silver DQ rules)
+3. Chapter 20 (Monitoring) → Chapter 22 (SQL Alerting) for proactive notifications
 
 ### Gold Layer Complete Flow
 1. Chapter 10 (ERD Design)
@@ -566,7 +582,8 @@ Review **PART I** for principles, then use **PART V** to design and orchestrate 
 ### Production Ready
 - [ ] All layers certified
 - [ ] Lakehouse Monitoring configured (Chapter 20)
-- [ ] Exploration notebooks created (Chapter 22)
+- [ ] SQL Alerting deployed (Chapter 22)
+- [ ] Exploration notebooks created (Chapter 23)
 - [ ] Complete documentation
 - [ ] Asset Bundles deployment (Chapter 2)
 
@@ -586,7 +603,7 @@ This guide evolves based on:
 - Added learning paths
 - Enhanced statistics
 
-See Chapter 25 (Self-Improvement) for the improvement methodology.
+See Chapter 26 (Self-Improvement) for the improvement methodology.
 
 ---
 

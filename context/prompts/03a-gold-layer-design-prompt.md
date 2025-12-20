@@ -1,30 +1,56 @@
 # Gold Layer Design Prompt
 
-## 🚀 Quick Start (2 hours)
+## 🚀 Quick Start (4-8 hours)
 
-**Goal:** Design complete Gold layer schema with ERD, YAML files, and documentation
+**Goal:** Design complete Gold layer schema with ERD(s), YAML files, lineage tracking, and comprehensive business documentation
 
 **What You'll Create:**
-1. **Mermaid ERD** - Visual diagram of all dimensions, facts, and relationships
+1. **Mermaid ERD(s)** - Visual diagrams of dimensions, facts, and relationships
+   - **Master ERD** (always) - Complete model overview
+   - **Domain ERDs** (if 9+ tables) - Focused domain-specific views
 2. **YAML Schema Files** - One per table with PRIMARY KEY, FOREIGN KEYs, columns, descriptions
 3. **Documentation** - Dual-purpose (business + technical) table/column comments
-4. **Design Review** - Stakeholder approval before implementation
+4. **Business Onboarding Guide** ⭐ **MANDATORY** - Stories, processes, and table mapping for new team members
+5. **Source Table Mapping** ⭐ **MANDATORY** - CSV with inclusion/exclusion rationale for ALL source tables
+6. **Column Lineage CSV** ⭐ **MANDATORY** - Machine-readable Bronze → Silver → Gold column mapping
+7. **Design Review** - Stakeholder approval before implementation
 
 **Fast Track:**
 ```markdown
 ## Deliverables Checklist:
-- [ ] gold_layer_design/erd_complete.md - Mermaid diagram
-- [ ] gold_layer_design/yaml/dim_*.yaml - Dimension schemas with lineage (2-5 files)
-- [ ] gold_layer_design/yaml/fact_*.yaml - Fact schemas with lineage (2-4 files)
-- [ ] gold_layer_design/COLUMN_LINEAGE.md - Bronze → Silver → Gold mapping (generated)
+
+### ERD Organization (based on table count)
+- [ ] gold_layer_design/erd_master.md - Complete model (ALWAYS required)
+- [ ] gold_layer_design/erd_summary.md - Domain overview (if 20+ tables)
+- [ ] gold_layer_design/erd/erd_{domain}.md - Domain ERDs (if 9+ tables)
+
+### YAML Schemas (organized by domain)
+- [ ] gold_layer_design/yaml/{domain}/dim_*.yaml - Dimension schemas with lineage
+- [ ] gold_layer_design/yaml/{domain}/fact_*.yaml - Fact schemas with lineage
+
+### Supporting Documentation (ALL MANDATORY)
+- [ ] gold_layer_design/docs/BUSINESS_ONBOARDING_GUIDE.md - ⭐ Business processes + stories + table mapping
+- [ ] gold_layer_design/COLUMN_LINEAGE.csv - ⭐ Machine-readable column lineage
+- [ ] gold_layer_design/COLUMN_LINEAGE.md - Human-readable lineage documentation
+- [ ] gold_layer_design/SOURCE_TABLE_MAPPING.csv - ⭐ Source table inclusion/exclusion with rationale
 - [ ] gold_layer_design/DESIGN_SUMMARY.md - Grain + SCD + transformation decisions
+- [ ] gold_layer_design/DESIGN_GAP_ANALYSIS.md - Coverage analysis and remaining gaps
+- [ ] gold_layer_design/README.md - Quick navigation to all documentation
 ```
+
+**ERD Organization Decision:**
+| Tables | ERD Strategy |
+|--------|--------------|
+| 1-8 | Master ERD only |
+| 9-20 | Master ERD + Domain ERDs |
+| 20+ | Master ERD + Domain ERDs + Summary ERD |
 
 **Key Design Decisions:**
 - **Grain:** One row per _what_? (Must be explicit for each fact)
 - **SCD Type:** Type 1 (overwrite) or Type 2 (history tracking) per dimension
 - **Relationships:** Which FKs link facts to dimensions?
 - **Measures:** Pre-aggregated (daily sales) vs transactional (line items)
+- **Domains:** How to logically group tables for manageability
 
 **YAML = Single Source of Truth:**
 - All column names, types, constraints, descriptions in YAML
@@ -159,85 +185,385 @@ For each fact table:
 - Document all FK constraints in DDL
 - Use `NOT ENFORCED` (informational only)
 
+### 1.5 Assign Tables to Domains
+
+**Assign each table to exactly ONE domain for ERD and YAML organization:**
+
+| # | Table Name | Type | Domain | Domain ERD | YAML Path |
+|---|------------|------|--------|------------|-----------|
+| 1 | dim_store | Dimension | 🏪 Location | erd_location.md | yaml/location/ |
+| 2 | dim_region | Dimension | 🏪 Location | erd_location.md | yaml/location/ |
+| 3 | dim_product | Dimension | 📦 Product | erd_product.md | yaml/product/ |
+| 4 | dim_date | Dimension | 📅 Time | erd_time.md | yaml/time/ |
+| 5 | fact_sales_daily | Fact | 💰 Sales | erd_sales.md | yaml/sales/ |
+| 6 | fact_inventory_snapshot | Fact | 📊 Inventory | erd_inventory.md | yaml/inventory/ |
+
+**Standard Domain Categories:**
+
+| Domain | Emoji | Description | Typical Tables |
+|--------|-------|-------------|----------------|
+| **Location** | 🏪 | Geographic hierarchy | dim_store, dim_region, dim_territory, dim_country |
+| **Product** | 📦 | Product hierarchy | dim_product, dim_brand, dim_category, dim_supplier |
+| **Time** | 📅 | Temporal dimensions | dim_date, dim_time, dim_fiscal_period |
+| **Customer** | 👤 | Customer attributes | dim_customer, dim_segment, dim_loyalty_tier |
+| **Sales** | 💰 | Revenue & transactions | fact_sales_*, dim_promotion, dim_channel |
+| **Inventory** | 📊 | Stock & replenishment | fact_inventory_*, dim_warehouse |
+| **Finance** | 💵 | Financial measures | fact_gl_*, dim_account, dim_cost_center |
+| **Operations** | ⚙️ | Operational metrics | fact_shipment_*, dim_carrier, dim_route |
+
+**Domain Assignment Rules:**
+1. **Dimensions** → Assign to domain based on primary business concept
+2. **Facts** → Assign to domain of the primary measure (sales fact → Sales)
+3. **Bridge tables** → Assign to domain of the "many" side
+4. **Conformed dimensions** (date, geography) → Own domain, referenced by others
+
+**Based on total table count, determine ERD strategy:**
+
+| Total Tables | ERD Strategy |
+|--------------|--------------|
+| 1-8 | Master ERD only |
+| 9-20 | Master ERD + Domain ERDs |
+| 20+ | Master ERD + Domain ERDs + Summary ERD |
+
 ---
 
-## Step 2: Create ERD with Mermaid
+## Step 2: Create ERD(s) with Mermaid
 
-### 2.1 Standard ERD Pattern
+### 2.1 ERD Organization Strategy
+
+**First, assess your model complexity:**
+
+| Total Tables | ERD Strategy | Rationale |
+|--------------|--------------|-----------|
+| **1-8 tables** | Master ERD only | Simple enough for single diagram |
+| **9-20 tables** | Master + Domain ERDs | Too complex for single view, needs breakdown |
+| **20+ tables** | Master + Domain + Summary | Focus on domains, summary for navigation |
+
+**Standard Domains for Organization:**
+
+| Domain | Emoji | Typical Tables |
+|--------|-------|----------------|
+| **Location** | 🏪 | dim_store, dim_region, dim_territory |
+| **Product** | 📦 | dim_product, dim_brand, dim_category |
+| **Time** | 📅 | dim_date, dim_fiscal_period |
+| **Customer** | 👤 | dim_customer, dim_segment |
+| **Sales** | 💰 | fact_sales_*, dim_promotion |
+| **Inventory** | 📊 | fact_inventory_*, dim_warehouse |
+| **Operations** | ⚙️ | fact_shipment_*, dim_carrier, dim_route |
+
+**Assign each table to exactly one domain:**
+- Dimensions → Domain based on business concept
+- Facts → Domain of primary measure (sales fact → Sales)
+- Conformed dimensions (date, geography) → Own domain, referenced by others
+
+---
+
+### 2.2 Master ERD Pattern (Always Create)
+
+The Master ERD shows the **complete data model** with all tables and relationships.
+
+**File:** `gold_layer_design/erd_master.md`
 
 ```mermaid
 erDiagram
-    dim_store ||--o{ fact_sales_daily : "store_number"
-    dim_product ||--o{ fact_sales_daily : "upc_code"
-    dim_date ||--o{ fact_sales_daily : "transaction_date"
-    
-    dim_store {
-        string store_key PK "Surrogate key (SCD Type 2)"
-        string store_number UK "Business key"
-        string store_name
-        string city
-        string state
-        timestamp effective_from
-        timestamp effective_to
-        boolean is_current "SCD Type 2 flag"
-    }
-    
-    dim_product {
-        string product_key PK "Surrogate key"
-        string upc_code UK "Business key"
-        string product_description
-        string brand
-        string category
-    }
-    
-    dim_date {
-        date date PK "Calendar date"
-        int year
-        int quarter
-        int month
-        string month_name
-        int week_of_year
-        boolean is_weekend
-    }
-    
-    fact_sales_daily {
-        string store_number FK "→ dim_store"
-        string upc_code FK "→ dim_product"
-        date transaction_date FK "→ dim_date"
-        decimal gross_revenue "Before returns"
-        decimal net_revenue "After returns"
-        bigint net_units "After returns"
-        bigint transaction_count
-        decimal avg_transaction_value
-    }
+  %% ═══════════════════════════════════════════════
+  %% 🏪 LOCATION DOMAIN
+  %% ═══════════════════════════════════════════════
+  dim_store {
+    string store_key PK
+    string store_number
+    string store_name
+    string city
+    string state
+    boolean is_current
+    timestamp effective_from
+    timestamp effective_to
+  }
+  
+  %% ═══════════════════════════════════════════════
+  %% 📦 PRODUCT DOMAIN
+  %% ═══════════════════════════════════════════════
+  dim_product {
+    string product_key PK
+    string upc_code
+    string product_description
+    string brand
+    string category
+  }
+  
+  %% ═══════════════════════════════════════════════
+  %% 📅 TIME DOMAIN
+  %% ═══════════════════════════════════════════════
+  dim_date {
+    date date_value PK
+    int year
+    int quarter
+    int month
+    string month_name
+    int week_of_year
+    boolean is_weekend
+  }
+  
+  %% ═══════════════════════════════════════════════
+  %% 💰 SALES DOMAIN (Fact)
+  %% ═══════════════════════════════════════════════
+  fact_sales_daily {
+    string store_number PK
+    string upc_code PK
+    date transaction_date PK
+    decimal gross_revenue
+    decimal net_revenue
+    bigint net_units
+    bigint transaction_count
+    decimal avg_transaction_value
+  }
+  
+  %% ═══════════════════════════════════════════════
+  %% RELATIONSHIPS
+  %% ═══════════════════════════════════════════════
+  dim_store   ||--o{ fact_sales_daily : by_store_number
+  dim_product ||--o{ fact_sales_daily : by_upc_code
+  dim_date    ||--o{ fact_sales_daily : by_transaction_date
 ```
 
-**ERD Requirements:**
-- ✅ Show all dimensions and facts
+**Master ERD Requirements:**
+- ✅ Show ALL dimensions and facts (complete model)
+- ✅ Group tables by domain with section headers
+- ✅ Use domain emoji markers for visual clarity
 - ✅ Show all relationships with cardinality
-- ✅ Show primary keys (PK)
-- ✅ Show foreign keys (FK)
-- ✅ Show unique keys (UK) for business keys
-- ✅ Add brief comments for key columns
+- ✅ Use `PK` markers only (no inline descriptions)
+- ✅ Use `by_{column}` pattern for relationship labels
+- ✅ Include Domain Index table after diagram
 
-**See [13-mermaid-erd-patterns.mdc](mdc:.cursor/rules/13-mermaid-erd-patterns.mdc) for complete ERD patterns.**
+**Domain Index (include after Master ERD):**
+
+| Domain | Tables | Primary Fact | Detail ERD |
+|--------|--------|--------------|------------|
+| 🏪 Location | dim_store | N/A | [erd_location.md](erd/erd_location.md) |
+| 📦 Product | dim_product | N/A | [erd_product.md](erd/erd_product.md) |
+| 📅 Time | dim_date | N/A | [erd_time.md](erd/erd_time.md) |
+| 💰 Sales | fact_sales_daily | fact_sales_daily | [erd_sales.md](erd/erd_sales.md) |
+
+---
+
+### 2.3 Domain ERD Pattern (If 9+ Tables)
+
+Domain ERDs show a **focused view** of tables within a single business domain.
+
+**File:** `gold_layer_design/erd/erd_{domain}.md`
+
+**Purpose:**
+- Focused stakeholder discussions
+- Development team reference
+- Domain-specific change management
+- Parallel development by teams
+
+**Template:**
+
+```markdown
+# Sales Domain ERD
+
+## Domain Overview
+Sales domain contains transactional fact tables and related dimensions for 
+revenue analysis, transaction trends, and promotional effectiveness.
+
+**Tables in this domain:** 3
+**Related domains:** Location, Product, Time
+
+## Entity Relationship Diagram
+
+```mermaid
+erDiagram
+  %% ═══════════════════════════════════════════════
+  %% 💰 SALES DOMAIN - Facts
+  %% ═══════════════════════════════════════════════
+  fact_sales_daily {
+    string store_number PK
+    string upc_code PK
+    date transaction_date PK
+    decimal gross_revenue
+    decimal net_revenue
+    bigint net_units
+    bigint transaction_count
+    decimal avg_transaction_value
+  }
+  
+  dim_promotion {
+    string promotion_key PK
+    string promotion_code
+    string promotion_name
+    date start_date
+    date end_date
+  }
+  
+  %% ═══════════════════════════════════════════════
+  %% CROSS-DOMAIN REFERENCES (External)
+  %% ═══════════════════════════════════════════════
+  dim_store["🏪 dim_store (Location)"] {
+    string store_number PK
+  }
+  
+  dim_product["📦 dim_product (Product)"] {
+    string upc_code PK
+  }
+  
+  dim_date["📅 dim_date (Time)"] {
+    date date_value PK
+  }
+  
+  %% ═══════════════════════════════════════════════
+  %% RELATIONSHIPS
+  %% ═══════════════════════════════════════════════
+  dim_store   ||--o{ fact_sales_daily : by_store_number
+  dim_product ||--o{ fact_sales_daily : by_upc_code
+  dim_date    ||--o{ fact_sales_daily : by_transaction_date
+  dim_promotion ||--o{ fact_sales_daily : by_promotion_key
+```
+
+## Cross-Domain Dependencies
+
+| External Table | Domain | Relationship | Purpose |
+|----------------|--------|--------------|---------|
+| dim_store | Location | fact → dim_store | Geographic sales analysis |
+| dim_product | Product | fact → dim_product | Product performance |
+| dim_date | Time | fact → dim_date | Temporal trends |
+
+## Related Documentation
+- [Master ERD](../erd_master.md) - Complete model
+- [Location Domain ERD](erd_location.md) - Store dimension details
+- [YAML Schema](../yaml/sales/fact_sales_daily.yaml) - Implementation schema
+```
+
+**Domain ERD Requirements:**
+- ✅ Focus on tables within the domain
+- ✅ Show external tables with domain labels (e.g., `["🏪 dim_store (Location)"]`)
+- ✅ Include Cross-Domain Dependencies table
+- ✅ Link to Master ERD and related Domain ERDs
+- ✅ Document domain-specific business context
+
+---
+
+### 2.4 Summary ERD Pattern (If 20+ Tables)
+
+For very large models, create a high-level view showing domains as entities:
+
+**File:** `gold_layer_design/erd_summary.md`
+
+```mermaid
+erDiagram
+  LOCATION["🏪 Location Domain"] {
+    string dim_store
+    string dim_region
+    string dim_territory
+  }
+  
+  PRODUCT["📦 Product Domain"] {
+    string dim_product
+    string dim_brand
+    string dim_category
+  }
+  
+  TIME["📅 Time Domain"] {
+    string dim_date
+    string dim_fiscal_period
+  }
+  
+  SALES["💰 Sales Domain"] {
+    string fact_sales_daily
+    string fact_sales_hourly
+    string dim_promotion
+  }
+  
+  INVENTORY["📊 Inventory Domain"] {
+    string fact_inventory_snapshot
+    string dim_warehouse
+  }
+  
+  %% Domain relationships
+  LOCATION ||--o{ SALES : "store analysis"
+  PRODUCT  ||--o{ SALES : "product performance"
+  TIME     ||--o{ SALES : "temporal trends"
+  LOCATION ||--o{ INVENTORY : "warehouse stock"
+  PRODUCT  ||--o{ INVENTORY : "product stock"
+```
+
+---
+
+### 2.5 File Organization Structure
+
+```
+gold_layer_design/
+├── erd_master.md                 # Complete model (ALWAYS)
+├── erd_summary.md                # Domain overview (20+ tables)
+├── erd/                          # Domain ERDs (9+ tables)
+│   ├── erd_location.md
+│   ├── erd_product.md
+│   ├── erd_time.md
+│   ├── erd_sales.md
+│   ├── erd_inventory.md
+│   └── erd_customer.md
+├── yaml/                         # YAML schemas organized by domain
+│   ├── location/
+│   │   └── dim_store.yaml
+│   ├── product/
+│   │   └── dim_product.yaml
+│   ├── time/
+│   │   └── dim_date.yaml
+│   └── sales/
+│       └── fact_sales_daily.yaml
+├── COLUMN_LINEAGE.md
+└── DESIGN_SUMMARY.md
+```
+
+**See [13-mermaid-erd-patterns.mdc](mdc:.cursor/rules/gold/13-mermaid-erd-patterns.mdc) for complete ERD syntax and formatting patterns.**
 
 ---
 
 ## Step 3: Create YAML Schema Files
 
-### 3.1 YAML Directory Structure
+### 3.1 YAML Directory Structure (Domain-Organized)
+
+**Organize YAML files by domain to match ERD organization:**
 
 ```
 gold_layer_design/
-└── yaml/
-    ├── {domain}/
-    │   ├── dim_store.yaml
-    │   ├── dim_product.yaml
-    │   ├── dim_date.yaml
-    │   └── fact_sales_daily.yaml
-    └── README.md
+├── erd_master.md                 # Complete ERD (always)
+├── erd_summary.md                # Domain summary (20+ tables)
+├── erd/                          # Domain ERDs (9+ tables)
+│   ├── erd_location.md
+│   ├── erd_product.md
+│   ├── erd_time.md
+│   ├── erd_sales.md
+│   └── erd_inventory.md
+├── yaml/                         # YAML schemas BY DOMAIN
+│   ├── location/                 # 🏪 Location domain
+│   │   ├── dim_store.yaml
+│   │   ├── dim_region.yaml
+│   │   └── dim_territory.yaml
+│   ├── product/                  # 📦 Product domain
+│   │   ├── dim_product.yaml
+│   │   ├── dim_brand.yaml
+│   │   └── dim_category.yaml
+│   ├── time/                     # 📅 Time domain
+│   │   ├── dim_date.yaml
+│   │   └── dim_fiscal_period.yaml
+│   ├── sales/                    # 💰 Sales domain
+│   │   ├── fact_sales_daily.yaml
+│   │   ├── fact_sales_hourly.yaml
+│   │   └── dim_promotion.yaml
+│   ├── inventory/                # 📊 Inventory domain
+│   │   ├── fact_inventory_snapshot.yaml
+│   │   └── dim_warehouse.yaml
+│   └── README.md                 # Domain index
+├── COLUMN_LINEAGE.md             # Generated lineage doc
+└── DESIGN_SUMMARY.md             # Design decisions
 ```
+
+**Domain Assignment Rules:**
+- ✅ Each table belongs to exactly ONE domain
+- ✅ YAML folder name matches domain name in ERDs
+- ✅ Conformed dimensions (date, geography) get own domain
+- ✅ Facts go to domain of their primary business measure
 
 ### 3.2 Dimension YAML Template (SCD Type 2)
 
@@ -1213,6 +1539,413 @@ description: >
 
 ---
 
+## Step 7: Business Onboarding Guide (MANDATORY)
+
+### 7.1 Why This Document is Required
+
+**⚠️ CRITICAL: This document is MANDATORY for all Gold layer designs.**
+
+The Business Onboarding Guide ensures new team members can:
+- Understand the business domain and processes
+- Trace data flow from source systems to Gold tables
+- Connect business concepts to specific tables and columns
+- Leverage analytics capabilities (Genie, AI/BI, ML)
+
+**Without this guide:**
+- ❌ New analysts struggle to understand the data model
+- ❌ Business context is lost in technical documentation
+- ❌ Self-service analytics adoption is slow
+- ❌ Incorrect queries due to misunderstanding business processes
+
+### 7.2 Required Sections
+
+**File: `gold_layer_design/docs/BUSINESS_ONBOARDING_GUIDE.md`**
+
+The guide MUST include these sections:
+
+```markdown
+# {Project Name} Analytics Platform
+## Business Onboarding Guide
+
+**Audience:** Data Engineers, Analysts, Data Scientists, Business Users
+**Purpose:** Understand {domain} operations and how to leverage the Gold layer for analytics
+
+---
+
+## Table of Contents
+1. Introduction to {Business Domain}
+2. The Business Lifecycle (Key Stages)
+3. Key Business Entities (Players/Actors)
+4. The Gold Layer Data Model (Overview)
+5. Business Processes & Tracking (DETAILED - Source to Gold mapping)
+   - 5B. Real-World Scenarios: Following the Data (STORIES)
+6. Analytics Use Cases (Operations, Revenue, Planning, Compliance)
+7. AI & ML Opportunities
+8. Self-Service Analytics with Genie
+9. Data Quality & Monitoring
+10. Getting Started (For each role: Engineers, Analysts, Scientists, Business Users)
+```
+
+### 7.3 Business Processes Section Requirements
+
+**Section 5 (Business Processes & Tracking) MUST include:**
+
+For EACH major business process:
+
+1. **Business Context** - Why this process matters, who cares about it
+2. **Process Flow Diagram** - ASCII art showing stages
+3. **Source Tables** - Actual source system table names at each stage
+4. **Gold Tables** - Which Gold tables store data from each stage
+5. **Stage-by-Stage Table** - Detailed mapping
+
+**Template:**
+
+```markdown
+### Process N: {Process Name} (Category)
+
+**Business Context:** {Why this process matters and to whom}
+
+**Why It Matters:** 
+- {Key business value 1}
+- {Key business value 2}
+- {Key business value 3}
+
+{ASCII FLOW DIAGRAM}
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                        {PROCESS NAME} FLOW                                          │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  STAGE 1               STAGE 2              STAGE 3              STAGE 4           │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐     │
+│  │   {Name}     │───▶│   {Name}     │───▶│   {Name}     │───▶│   {Name}     │     │
+│  │              │    │              │    │              │    │              │     │
+│  └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘     │
+│        │                    │                   │                   │              │
+│  Source Tables:       Source Tables:      Source Tables:      Source Tables:       │
+│  • {SOURCE_TBL1}      • {SOURCE_TBL2}     • {SOURCE_TBL3}     • {SOURCE_TBL4}      │
+│        │                    │                   │                   │              │
+│        ▼                    ▼                   ▼                   ▼              │
+│  Gold Tables:         Gold Tables:        Gold Tables:        Gold Tables:         │
+│  • {gold_table1}      • {gold_table2}     • {gold_table3}     • {gold_table4}     │
+│                                                                                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+**Stage-by-Stage Detail:**
+
+| Stage | What Happens | Source Table | Gold Table | Key Fields |
+|-------|--------------|--------------|------------|------------|
+| **1. {Stage Name}** | {Description} | `{SOURCE_TBL}` | `{gold_table}` | `{key_field1}`, `{key_field2}` |
+| **2. {Stage Name}** | {Description} | `{SOURCE_TBL}` | `{gold_table}` | `{key_field1}`, `{key_field2}` |
+
+**Business Questions Answered:**
+- "{Example business question 1}" → {Which tables/columns answer it}
+- "{Example business question 2}" → {Which tables/columns answer it}
+```
+
+### 7.4 Real-World Stories Section (MANDATORY)
+
+**Section 5B MUST include 3-4 detailed stories** showing data flow through the system.
+
+**Story Requirements:**
+
+Each story must include:
+1. **Business Context** - The scenario being described
+2. **Chapters** (4-6) - Each stage of the process
+3. **Source System Data** - What gets written to source tables (with example values)
+4. **Gold Layer Updates** - Which Gold tables are created/updated
+5. **Analytics Impact** - How metrics/dashboards change
+6. **Timeline Visualization** - Summary of data trail
+
+**Story Template:**
+
+```markdown
+### 📖 Story N: "{Title}" — {Subtitle}
+
+**The Business Context:**
+{2-3 sentences describing the real-world scenario}
+
+---
+
+#### Chapter 1: {Stage Name} ({Time})
+
+**What Happens:**  
+{Narrative description of what's happening in the business}
+
+**In {Source System} (Source System):**
+```
+{SOURCE_TABLE}:
+  field1: value1
+  field2: value2
+  field3: value3
+```
+
+**In Gold Layer:**
+
+| Table | Record Created/Updated | Key Values |
+|-------|------------------------|------------|
+| `{gold_table1}` | ✅ New row | `{field}` = '{value}', `{field2}` = '{value2}' |
+| `{gold_table2}` | 🔄 Updated | `{field}` changed from '{old}' to '{new}' |
+
+**Analytics Impact:**
+- {Metric 1} increases/decreases by {amount}
+- {Dashboard widget} now shows {value}
+- {Alert triggered if applicable}
+
+---
+
+#### Chapter 2: {Next Stage} ({Time})
+{Continue pattern...}
+
+---
+
+#### Story Summary: Data Journey Visualization
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                    {SCENARIO}: DATA TRAIL THROUGH GOLD LAYER                        │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                     │
+│  TIME        EVENT              TABLES UPDATED                                      │
+│  ─────────────────────────────────────────────────────────────────────────────     │
+│  {time1}     {event1}           {table1}, {table2}, {table3}                        │
+│  {time2}     {event2}           {table4}, {table5}                                  │
+│  {time3}     {event3}           {table6}                                            │
+│                                                                                     │
+│  TOTAL: {N} tables touched                                                          │
+│                                                                                     │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+```
+
+### 7.5 Recommended Story Types
+
+Include stories that demonstrate:
+
+| Story Type | Purpose | Example |
+|------------|---------|---------|
+| **Happy Path** | Normal successful flow | "A salmon shipment from Seattle to Anchorage" |
+| **Exception Handling** | How problems are resolved | "The overbooked flight - capacity decisions" |
+| **Error Correction** | Post-facto adjustments | "The billing dispute - CCA process" |
+| **Compliance/Safety** | Regulatory requirements | "The dangerous goods incident" |
+
+---
+
+## Step 8: Source Table Mapping (MANDATORY)
+
+### 8.1 Why Source Table Mapping is Required
+
+**⚠️ CRITICAL: This CSV file is MANDATORY for all Gold layer designs.**
+
+Every Gold layer design starts with source tables. You MUST document:
+- Which source tables are included and why
+- Which source tables are excluded and why
+- The mapping from source to Gold
+- Phase/priority for implementation
+
+**Benefits:**
+- ✅ Complete audit trail of design decisions
+- ✅ Clear scope definition for stakeholders
+- ✅ Gap analysis for future phases
+- ✅ Documentation prevents scope creep
+
+### 8.2 CSV Format
+
+**File: `gold_layer_design/SOURCE_TABLE_MAPPING.csv`**
+
+**Required Columns:**
+
+```csv
+source_table,source_description,status,gold_table,domain,entity_type,rationale,phase,priority
+```
+
+**Column Definitions:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `source_table` | STRING | Source system table name (e.g., `CAPBKGMST`) |
+| `source_description` | STRING | Brief description of what the table contains |
+| `status` | ENUM | `INCLUDED`, `EXCLUDED`, `PLANNED` |
+| `gold_table` | STRING | Target Gold table name (or `N/A` if excluded) |
+| `domain` | STRING | Business domain (e.g., `booking`, `revenue`, `operations`) |
+| `entity_type` | ENUM | `dimension`, `fact`, `lookup`, `staging`, `archive` |
+| `rationale` | STRING | **REQUIRED** - Why included or excluded |
+| `phase` | INT | Implementation phase (1, 2, 3, etc.) |
+| `priority` | ENUM | `HIGH`, `MEDIUM`, `LOW` |
+
+### 8.3 Status Values and Rationale Requirements
+
+**Status = INCLUDED:**
+- `gold_table` MUST have a value
+- `rationale` explains why this table is needed
+
+**Status = EXCLUDED:**
+- `gold_table` = `N/A`
+- `rationale` MUST explain exclusion reason
+
+**Status = PLANNED:**
+- `gold_table` can have planned name or `TBD`
+- `rationale` explains what's needed before inclusion
+
+### 8.4 Standard Exclusion Rationales
+
+Use these standard rationale phrases for excluded tables:
+
+| Rationale | When to Use |
+|-----------|-------------|
+| `System/audit table - no business value` | Internal system tables, audit logs |
+| `Historical archive - superseded by {table}` | Old tables replaced by newer versions |
+| `Duplicate data available in {table}` | Data exists in another included table |
+| `Configuration/setup table - static reference only` | System configuration tables |
+| `Out of scope for {project} phase {N}` | Valid tables deferred to future phases |
+| `Legacy table - no longer populated` | Deprecated tables |
+| `Temporary/staging table` | ETL intermediate tables |
+| `Low business value - insufficient usage` | Tables rarely queried |
+
+### 8.5 Example SOURCE_TABLE_MAPPING.csv
+
+```csv
+source_table,source_description,status,gold_table,domain,entity_type,rationale,phase,priority
+CAPBKGMST,Booking master table,INCLUDED,dim_booking,booking,dimension,Core booking information needed for all cargo analytics,1,HIGH
+CAPBKGDTL,Booking line item details,INCLUDED,fact_booking_detail,booking,fact,Shipment-level detail for volume and weight tracking,1,HIGH
+OPRSHPMSTDTL,Shipment master details,INCLUDED,fact_shipment,operations,fact,Primary operational fact table for all shipment tracking,1,HIGH
+CRAAWBCHGDTL,AWB charge details,INCLUDED,fact_awb_revenue,revenue,fact,Revenue recognition and charge breakdown,1,HIGH
+AUDITLOG,System audit log,EXCLUDED,N/A,system,audit,System/audit table - no business value,N/A,LOW
+OPRSHPHISTARC,Shipment history archive,EXCLUDED,N/A,operations,archive,Historical archive - data available in OPRSHPHIS,N/A,LOW
+MALPOAMST,Postal administration master,PLANNED,dim_postal_admin,mail,dimension,Out of scope for phase 1 - planned for mail domain expansion,2,MEDIUM
+```
+
+### 8.6 Maintaining the Mapping
+
+**Update the mapping when:**
+- ✅ New source tables are discovered
+- ✅ Design decisions change inclusion/exclusion
+- ✅ Gold table names change
+- ✅ Phases are reprioritized
+
+**Review the mapping during:**
+- ✅ Design reviews
+- ✅ Phase completion
+- ✅ Gap analysis sessions
+
+---
+
+## Step 9: Column Lineage CSV (MANDATORY)
+
+### 9.1 Why Column Lineage CSV is Required
+
+**⚠️ CRITICAL: This CSV file is MANDATORY for all Gold layer designs.**
+
+The COLUMN_LINEAGE.csv provides machine-readable lineage that:
+- Enables automated validation
+- Supports impact analysis
+- Documents every column's source
+- Prevents schema mismatches during implementation
+
+**The markdown version (COLUMN_LINEAGE.md) is for human readability. The CSV is for validation.**
+
+### 9.2 CSV Format
+
+**File: `gold_layer_design/COLUMN_LINEAGE.csv`**
+
+**Required Columns:**
+
+```csv
+domain,gold_table,gold_column,data_type,nullable,bronze_table,bronze_column,silver_table,silver_column,transformation_type,transformation_logic
+```
+
+**Column Definitions:**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `domain` | STRING | Business domain (e.g., `booking`, `revenue`) |
+| `gold_table` | STRING | Gold layer table name |
+| `gold_column` | STRING | Gold layer column name |
+| `data_type` | STRING | Data type (e.g., `STRING`, `DECIMAL(18,2)`, `TIMESTAMP`) |
+| `nullable` | BOOLEAN | `true` or `false` |
+| `bronze_table` | STRING | Source Bronze table (or `N/A` for generated columns) |
+| `bronze_column` | STRING | Source Bronze column(s) |
+| `silver_table` | STRING | Source Silver table (or `N/A`) |
+| `silver_column` | STRING | Source Silver column(s) |
+| `transformation_type` | STRING | Standard transformation type (see Step 4.3) |
+| `transformation_logic` | STRING | PySpark/SQL transformation expression |
+
+### 9.3 Example COLUMN_LINEAGE.csv
+
+```csv
+domain,gold_table,gold_column,data_type,nullable,bronze_table,bronze_column,silver_table,silver_column,transformation_type,transformation_logic
+booking,dim_booking,booking_key,STRING,false,CAPBKGMST,"ubr_number,processed_timestamp",silver_booking,"ubr_number,processed_timestamp",HASH_MD5,"md5(concat_ws('||',col('ubr_number'),col('processed_timestamp')))"
+booking,dim_booking,ubr_number,STRING,false,CAPBKGMST,ubr_number,silver_booking,ubr_number,DIRECT_COPY,"col('ubr_number')"
+booking,dim_booking,booking_date,DATE,false,CAPBKGMST,booking_date,silver_booking,booking_date,CAST,"col('booking_date').cast('date')"
+booking,dim_booking,effective_from,TIMESTAMP,false,N/A,N/A,N/A,N/A,GENERATED,"current_timestamp()"
+booking,dim_booking,effective_to,TIMESTAMP,true,N/A,N/A,N/A,N/A,GENERATED,"lit(None).cast('timestamp')"
+booking,dim_booking,is_current,BOOLEAN,false,N/A,N/A,N/A,N/A,GENERATED,"lit(True)"
+booking,fact_booking_detail,gross_weight_kg,DECIMAL(18,3),true,CAPBKGDTL,stated_weight,silver_booking_detail,stated_weight,AGGREGATE_SUM,"spark_sum('stated_weight')"
+```
+
+### 9.4 Consistency Requirements
+
+**The COLUMN_LINEAGE.csv MUST be consistent with:**
+
+1. **YAML Schema Files** - Every column in YAML must appear in CSV
+2. **ERD Diagrams** - Every column in ERD must appear in CSV
+3. **COLUMN_LINEAGE.md** - CSV and MD versions must match
+
+### 9.5 Validation Script
+
+**Use this script to validate consistency:**
+
+```python
+import pandas as pd
+import yaml
+from pathlib import Path
+
+def validate_lineage_consistency(yaml_dir: str, lineage_csv: str) -> list:
+    """Validate COLUMN_LINEAGE.csv against YAML files."""
+    
+    errors = []
+    lineage_df = pd.read_csv(lineage_csv)
+    
+    # Get all columns from YAML files
+    yaml_columns = set()
+    for yaml_file in Path(yaml_dir).rglob("*.yaml"):
+        with open(yaml_file, 'r') as f:
+            config = yaml.safe_load(f)
+        table_name = config['table_name']
+        for col in config.get('columns', []):
+            yaml_columns.add((table_name, col['name']))
+    
+    # Get all columns from CSV
+    csv_columns = set()
+    for _, row in lineage_df.iterrows():
+        csv_columns.add((row['gold_table'], row['gold_column']))
+    
+    # Find mismatches
+    in_yaml_not_csv = yaml_columns - csv_columns
+    in_csv_not_yaml = csv_columns - yaml_columns
+    
+    if in_yaml_not_csv:
+        errors.append(f"Columns in YAML but not in CSV: {in_yaml_not_csv}")
+    if in_csv_not_yaml:
+        errors.append(f"Columns in CSV but not in YAML: {in_csv_not_yaml}")
+    
+    return errors
+
+# Usage
+errors = validate_lineage_consistency(
+    yaml_dir="gold_layer_design/yaml",
+    lineage_csv="gold_layer_design/COLUMN_LINEAGE.csv"
+)
+
+if errors:
+    print("❌ Validation failed:")
+    for error in errors:
+        print(f"  - {error}")
+else:
+    print("✅ All columns consistent between YAML and CSV")
+```
+
+---
+
 ## Design Validation Checklist
 
 ### Dimensional Model
@@ -1222,25 +1955,46 @@ description: >
 - [ ] Grain defined for each fact table
 - [ ] All measures documented with calculation logic
 - [ ] All relationships documented
+- [ ] **Tables assigned to domains** (Location, Product, Time, Sales, etc.)
 
-### ERD
-- [ ] Mermaid ERD created
+### ERD Organization (Based on Table Count)
+- [ ] **Table count assessed** (1-8: Master only, 9-20: +Domain, 20+: +Summary)
+- [ ] **Master ERD created** (`erd_master.md`) - ALWAYS required
+- [ ] Master ERD shows ALL tables grouped by domain
+- [ ] Master ERD includes Domain Index table with links
+- [ ] Domain emoji markers used in section headers
+
+### Domain ERDs (If 9+ Tables)
+- [ ] Domain ERDs created for each logical domain (`erd/erd_{domain}.md`)
+- [ ] Each domain ERD shows focused view of domain tables
+- [ ] External tables shown with domain labels (e.g., `["🏪 dim_store (Location)"]`)
+- [ ] Cross-Domain Dependencies table included
+- [ ] Links to Master ERD and related Domain ERDs
+
+### Summary ERD (If 20+ Tables)
+- [ ] Summary ERD created (`erd_summary.md`)
+- [ ] Shows domains as entities with table lists
+- [ ] Domain relationships documented
+
+### All ERDs
 - [ ] All dimensions shown
 - [ ] All facts shown
 - [ ] All relationships shown with cardinality
-- [ ] Primary keys marked
-- [ ] Foreign keys marked
-- [ ] Brief comments on key columns
+- [ ] Primary keys marked (PK only, no inline descriptions)
+- [ ] `by_{column}` pattern used for relationship labels
+- [ ] Relationships grouped at end of diagram
 
-### YAML Schemas
+### YAML Schemas (Domain-Organized)
 - [ ] One YAML file per table
-- [ ] Organized by domain
+- [ ] **Organized by domain folders** (`yaml/{domain}/`)
+- [ ] **Domain folders match ERD domain organization**
 - [ ] Complete column definitions
 - [ ] Primary key defined
 - [ ] Foreign keys defined
 - [ ] Dual-purpose descriptions (business + technical)
 - [ ] Table properties documented
 - [ ] Grain explicitly stated
+- [ ] `domain` field in each YAML matches folder name
 - [ ] **Lineage documentation for EVERY column**
 - [ ] **Transformation type specified** (from standard list)
 - [ ] **Transformation logic documented** (explicit SQL/PySpark)
@@ -1254,13 +2008,47 @@ description: >
 - [ ] Derived columns specify depends_on
 - [ ] Generated columns marked as such
 
-### Lineage Document
+### Lineage Document (COLUMN_LINEAGE.md)
 - [ ] COLUMN_LINEAGE.md generated from YAML files
 - [ ] All tables included
 - [ ] Complete Bronze → Silver → Gold mapping
 - [ ] Transformation summary per table
 - [ ] Sample query patterns provided
 - [ ] Column mapping guidance included
+
+### Column Lineage CSV (MANDATORY)
+- [ ] `COLUMN_LINEAGE.csv` created with all required columns
+- [ ] Every column from every YAML file is represented
+- [ ] Transformation types use standard codes
+- [ ] Transformation logic is executable PySpark/SQL
+- [ ] CSV validated against YAML for consistency
+- [ ] No missing Bronze/Silver source mappings (except for generated columns)
+
+### Source Table Mapping (MANDATORY)
+- [ ] `SOURCE_TABLE_MAPPING.csv` created with all source tables
+- [ ] Every source table has a status (INCLUDED, EXCLUDED, PLANNED)
+- [ ] Every row has a rationale explaining the decision
+- [ ] INCLUDED tables map to specific Gold tables
+- [ ] EXCLUDED tables have standard exclusion rationale
+- [ ] PLANNED tables have phase assignments
+- [ ] Coverage percentage calculated and documented
+
+### Business Onboarding Guide (MANDATORY)
+- [ ] `docs/BUSINESS_ONBOARDING_GUIDE.md` created
+- [ ] Introduction to Business Domain section complete
+- [ ] Business Lifecycle diagram included
+- [ ] Key Business Entities explained
+- [ ] Gold Layer Data Model overview provided
+- [ ] **Business Processes section includes ALL major processes**
+- [ ] **Each process has Source → Gold table mapping**
+- [ ] **Each process has ASCII flow diagram**
+- [ ] **Section 5B: Real-World Stories included (minimum 3 stories)**
+- [ ] **Each story shows exact table updates at each stage**
+- [ ] Analytics Use Cases documented
+- [ ] AI & ML Opportunities section included
+- [ ] Genie/Self-Service section included
+- [ ] Data Quality & Monitoring section included
+- [ ] Getting Started section for each persona (Engineer, Analyst, Scientist, Business User)
 
 ### Documentation
 - [ ] Every column has dual-purpose description
@@ -1284,11 +2072,58 @@ description: >
 
 After completing this design phase, you should have:
 
-1. **ERD (Mermaid)** - Visual representation of dimensional model
-2. **YAML Schema Files** - Complete schema definitions with lineage (one per table)
-3. **Column Lineage Document** - Complete Bronze → Silver → Gold mapping for all columns
-4. **Design Document** - Summary of design decisions and rationale
-5. **Stakeholder Sign-off** - Approval from business owners
+### ERD Deliverables (Based on Table Count)
+
+| Tables | Required Deliverables |
+|--------|----------------------|
+| **1-8** | `erd_master.md` only |
+| **9-20** | `erd_master.md` + `erd/erd_{domain}.md` for each domain |
+| **20+** | `erd_master.md` + `erd_summary.md` + `erd/erd_{domain}.md` for each domain |
+
+### Complete Deliverables List
+
+**ERD Deliverables:**
+1. **Master ERD** (`erd_master.md`) - Complete model with all tables (ALWAYS required)
+2. **Summary ERD** (`erd_summary.md`) - Domain-level overview (if 20+ tables)
+3. **Domain ERDs** (`erd/erd_{domain}.md`) - Focused domain views (if 9+ tables)
+
+**Schema Deliverables:**
+4. **YAML Schema Files** - Complete schema definitions with lineage (organized by domain)
+
+**Lineage & Mapping Deliverables (MANDATORY):**
+5. **Column Lineage CSV** (`COLUMN_LINEAGE.csv`) - ⭐ Machine-readable Bronze → Silver → Gold mapping
+6. **Column Lineage Doc** (`COLUMN_LINEAGE.md`) - Human-readable lineage documentation
+7. **Source Table Mapping** (`SOURCE_TABLE_MAPPING.csv`) - ⭐ All source tables with inclusion/exclusion rationale
+
+**Business Documentation (MANDATORY):**
+8. **Business Onboarding Guide** (`docs/BUSINESS_ONBOARDING_GUIDE.md`) - ⭐ Business processes, stories, table mapping
+9. **Design Summary** (`DESIGN_SUMMARY.md`) - Grain, SCD, transformation decisions
+10. **Design Gap Analysis** (`DESIGN_GAP_ANALYSIS.md`) - Coverage analysis and remaining gaps
+11. **README** (`README.md`) - Quick navigation to all documentation
+
+**Approval:**
+12. **Stakeholder Sign-off** - Approval from business owners
+
+### File Organization
+
+```
+gold_layer_design/
+├── README.md                     # ⭐ Quick navigation hub (ALWAYS)
+├── erd_master.md                 # Complete ERD (ALWAYS)
+├── erd_summary.md                # Domain summary (20+ tables)
+├── erd/                          # Domain ERDs (9+ tables)
+│   └── erd_{domain}.md
+├── yaml/                         # YAML schemas by domain
+│   └── {domain}/
+│       └── {table}.yaml
+├── docs/                         # ⭐ Business documentation
+│   └── BUSINESS_ONBOARDING_GUIDE.md  # ⭐ MANDATORY - Stories + processes
+├── COLUMN_LINEAGE.csv            # ⭐ MANDATORY - Machine-readable lineage
+├── COLUMN_LINEAGE.md             # Human-readable lineage
+├── SOURCE_TABLE_MAPPING.csv      # ⭐ MANDATORY - Source table rationale
+├── DESIGN_SUMMARY.md             # Design decisions
+└── DESIGN_GAP_ANALYSIS.md        # Coverage analysis
+```
 
 **Critical:** The COLUMN_LINEAGE.md document prevents 33% of schema mismatch bugs during implementation!
 
@@ -1301,29 +2136,77 @@ After completing this design phase, you should have:
 ### Official Documentation
 - [Dimensional Modeling](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/)
 - [Unity Catalog Constraints](https://docs.databricks.com/data-governance/unity-catalog/constraints.html)
+- [Mermaid ERD Syntax](https://mermaid.js.org/syntax/entityRelationshipDiagram.html)
 
 ### Framework Rules
-- [12-gold-layer-documentation.mdc](mdc:.cursor/rules/12-gold-layer-documentation.mdc) - Documentation standards
-- [13-mermaid-erd-patterns.mdc](mdc:.cursor/rules/13-mermaid-erd-patterns.mdc) - ERD patterns
-- [24-fact-table-grain-validation.mdc](mdc:.cursor/rules/24-fact-table-grain-validation.mdc) - Grain validation
-- [25-yaml-driven-gold-setup.mdc](mdc:.cursor/rules/25-yaml-driven-gold-setup.mdc) - YAML patterns
+- [12-gold-layer-documentation.mdc](mdc:.cursor/rules/gold/12-gold-layer-documentation.mdc) - Documentation standards
+- [13-mermaid-erd-patterns.mdc](mdc:.cursor/rules/gold/13-mermaid-erd-patterns.mdc) - **Master vs Domain ERD patterns**
+- [24-fact-table-grain-validation.mdc](mdc:.cursor/rules/gold/24-fact-table-grain-validation.mdc) - Grain validation
+- [25-yaml-driven-gold-setup.mdc](mdc:.cursor/rules/gold/25-yaml-driven-gold-setup.mdc) - YAML patterns
 
 ---
 
 ## Summary
 
 **What to Create:**
-1. ERD with Mermaid diagram
-2. YAML schema files with lineage (one per table)
-3. Column-level lineage document (Bronze → Silver → Gold)
-4. Design documentation
-5. Stakeholder approval
+
+**ERD Artifacts:**
+1. **Master ERD** (always) - Complete model with all tables
+2. **Domain ERDs** (if 9+ tables) - Focused domain-specific views
+3. **Summary ERD** (if 20+ tables) - High-level domain overview
+
+**Schema Artifacts:**
+4. **YAML schema files** with lineage (organized by domain)
+
+**Lineage & Mapping (MANDATORY):**
+5. **COLUMN_LINEAGE.csv** - ⭐ Machine-readable column lineage
+6. **COLUMN_LINEAGE.md** - Human-readable lineage documentation
+7. **SOURCE_TABLE_MAPPING.csv** - ⭐ All source tables with inclusion/exclusion rationale
+
+**Business Documentation (MANDATORY):**
+8. **BUSINESS_ONBOARDING_GUIDE.md** - ⭐ Business processes, real-world stories, table mapping
+9. **DESIGN_SUMMARY.md** - Design decisions and rationale
+10. **DESIGN_GAP_ANALYSIS.md** - Coverage analysis
+
+**Approval:**
+11. **Stakeholder sign-off**
+
+**ERD Organization Decision:**
+| Tables | ERD Strategy |
+|--------|--------------|
+| 1-8 | Master only |
+| 9-20 | Master + Domain ERDs |
+| 20+ | Master + Domain + Summary |
 
 **Core Philosophy:** Design = Business contract for analytics (document before implementing)
 
-**New Requirement:** Column-level lineage prevents 33% of Gold merge bugs!
+**Key Requirements:**
+- ✅ Domain-based organization (ERDs + YAML folders)
+- ✅ Column-level lineage prevents 33% of Gold merge bugs
+- ✅ Cross-domain relationships documented
+- ✅ **Business Onboarding Guide with stories showing data flow**
+- ✅ **Source Table Mapping with clear inclusion/exclusion rationale**
+- ✅ **Column Lineage CSV for automated validation**
 
-**Time Estimate:** 3-4 hours for 3-5 tables (includes lineage documentation)
+**Mandatory Documentation Rationale:**
 
-**Next Action:** Complete design with lineage, get stakeholder sign-off, then proceed to implementation
+| Document | Why Mandatory | Impact if Missing |
+|----------|---------------|-------------------|
+| **BUSINESS_ONBOARDING_GUIDE.md** | New team members need context | 2-3 weeks ramp-up time wasted |
+| **SOURCE_TABLE_MAPPING.csv** | Design decisions must be auditable | Scope creep, unclear requirements |
+| **COLUMN_LINEAGE.csv** | Validation requires machine-readable format | 33% of implementation bugs undetected |
+
+**Time Estimate:**
+- 3-4 hours for 1-8 tables (Master ERD only)
+- 5-6 hours for 9-20 tables (Master + Domain ERDs)
+- 6-10 hours for 20+ tables (Full ERD hierarchy + comprehensive documentation)
+
+**Documentation Effort Breakdown (20+ tables):**
+- ERDs + YAML schemas: 3-4 hours
+- Business Onboarding Guide: 2-3 hours
+- Source Table Mapping: 1-2 hours
+- Column Lineage CSV: 1-2 hours
+- Review & validation: 1 hour
+
+**Next Action:** Complete design with ERD hierarchy, mandatory documentation, get stakeholder sign-off, then proceed to implementation
 

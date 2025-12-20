@@ -827,21 +827,127 @@ comment: Total net revenue after discounts and returns. Primary revenue metric f
 
 ---
 
-## ⚠️ CRITICAL: Standardized Metric View Comment Format (v2.0)
+## ⚠️ CRITICAL: Standardized Metric View Comment Format (v3.0)
 
-**Issue:** Metric view comments without usage guidance cause Genie to select wrong views.**
+**Issue:** Metric view comments without structured guidance cause Genie to select wrong views.
 
-### Standardized Comment Structure
+### Comment Format Reference Table
+
+| Element | Purpose | Why It Matters |
+|---|---|---|
+| **PURPOSE** | One-line description of the metric view | Quick understanding for LLM |
+| **BEST FOR** | Example questions (pipe-separated) | LLM matches user query to metric view |
+| **NOT FOR** | Redirect to correct asset (TVF or other view) | Prevents wrong metric view selection |
+| **DIMENSIONS** | Available filter/grouping columns (comma-separated) | Clarifies what can be filtered/grouped |
+| **MEASURES** | Available aggregated metrics (comma-separated) | Clarifies what can be measured |
+| **SOURCE** | Source table(s) with schema | Transparency on data origin |
+| **JOINS** | Joined dimension tables (if any) | Shows data relationships |
+| **NOTE** | Critical caveats or limitations | Prevents common misuse patterns |
+
+### Standardized Comment Template
 
 ```yaml
 comment: >
-  [Primary purpose description].
-  [What this view is BEST FOR].
-  [What this view is NOT FOR and what to use instead].
-  [Source table info for transparency].
+  PURPOSE: [One-line description of what this metric view provides].
+  
+  BEST FOR: [Question 1] | [Question 2] | [Question 3] | [Question 4]
+  
+  NOT FOR: [What this view shouldn't be used for] (use [correct_asset] instead)
+  
+  DIMENSIONS: [dim1], [dim2], [dim3], [dim4], [dim5]
+  
+  MEASURES: [measure1], [measure2], [measure3], [measure4], [measure5]
+  
+  SOURCE: [fact_or_dim_table] ([domain] domain)
+  
+  JOINS: [dim_table1] ([description]), [dim_table2] ([description])
+  
+  NOTE: [Any critical caveats, limitations, or important context]
 ```
 
-### Example 1: View with Limitations (Redirect Pattern)
+### Example 1: Cost Analytics (Complete Format)
+
+```yaml
+comment: >
+  PURPOSE: Comprehensive cost analytics for Databricks billing and usage analysis.
+  
+  BEST FOR: Total spend by workspace | Cost trend over time | SKU cost breakdown | 
+  Tagged vs untagged spend | Serverless vs classic cost comparison
+  
+  NOT FOR: Commit/contract tracking (use commit_tracking) | Real-time cost alerts (use get_daily_cost_summary TVF)
+  
+  DIMENSIONS: usage_date, workspace_name, sku_name, owner, tag_team, tag_project, is_serverless
+  
+  MEASURES: total_cost, total_dbus, cost_7d, cost_30d, tag_coverage_percentage, serverless_percentage
+  
+  SOURCE: fact_usage (billing domain)
+  
+  JOINS: dim_workspace (workspace details), dim_sku (SKU details)
+  
+  NOTE: Cost values are list prices. Actual billed amounts may differ based on contracts.
+```
+
+### Example 2: Job Performance (Reliability Focus)
+
+```yaml
+comment: >
+  PURPOSE: Job execution performance metrics for reliability and efficiency analysis.
+  
+  BEST FOR: Job success rate | Failed jobs today | Slowest jobs | Job failure rate by workspace | 
+  Performance regression detection
+  
+  NOT FOR: Real-time job monitoring (use get_failed_jobs TVF) | Cost per job (use cost_analytics)
+  
+  DIMENSIONS: job_name, workspace_name, result_state, termination_type, duration_tier, error_category
+  
+  MEASURES: success_rate, failure_rate, avg_duration_seconds, p95_duration_seconds, total_runs
+  
+  SOURCE: fact_job_run_timeline (lakeflow domain)
+  
+  JOINS: dim_workspace (workspace details), dim_job (job metadata)
+  
+  NOTE: Duration metrics exclude queued time. For queue analysis, filter by termination_type.
+```
+
+### Example 3: View with Limitations (Redirect Pattern)
+
+```yaml
+comment: >
+  PURPOSE: Security and audit event analytics for compliance and access monitoring.
+  
+  BEST FOR: Who accessed this resource | Security events by user | Failed access attempts | 
+  Sensitive actions in last 24 hours | Event trend over time
+  
+  NOT FOR: Real-time security alerts (use get_security_events TVF) | 
+  Data lineage tracking (use governance_analytics)
+  
+  DIMENSIONS: event_date, service_name, action_name, user_identity, risk_level, hour_of_day
+  
+  MEASURES: total_events, failed_events, success_rate, unique_users, high_risk_events
+  
+  SOURCE: fact_audit_logs (security domain)
+  
+  JOINS: dim_workspace (workspace details)
+  
+  NOTE: Excludes system service accounts. For complete audit trail, query fact_audit_logs directly.
+```
+
+### Element Guidelines
+
+| Element | Format | Example |
+|---|---|---|
+| **PURPOSE** | Single sentence, no period at end | `Comprehensive cost analytics for Databricks billing` |
+| **BEST FOR** | Pipe-separated questions (4-6) | `Total spend | Cost by SKU | Daily trend` |
+| **NOT FOR** | Include redirect with parentheses | `Commit tracking (use commit_tracking)` |
+| **DIMENSIONS** | Comma-separated, 5-8 key columns | `usage_date, workspace_name, sku_name, owner` |
+| **MEASURES** | Comma-separated, 5-8 key metrics | `total_cost, success_rate, avg_duration` |
+| **SOURCE** | Table name with domain in parens | `fact_usage (billing domain)` |
+| **JOINS** | Table name with brief description | `dim_workspace (workspace details)` |
+| **NOTE** | Critical caveat or limitation | `Cost values are list prices` |
+
+### Legacy Format (Still Supported)
+
+The following legacy format is still supported but **new metric views should use the structured format above**:
 
 ```yaml
 comment: >
@@ -851,35 +957,6 @@ comment: >
   → USE get_host_performance TVF INSTEAD for accurate host revenue/booking metrics.
   Source: dim_host with nested joins to dim_property and fact_booking_detail.
 ```
-
-### Example 2: Primary Analytics View
-
-```yaml
-comment: >
-  Revenue and booking analytics with complete transaction metrics.
-  BEST FOR: Revenue by property type, destination, time period; booking trends; payment analysis.
-  Source: fact_booking_daily (aggregated fact table) with joins to dim_property, dim_destination.
-  For host-level revenue, use get_host_performance TVF instead.
-```
-
-### Example 3: Property-Centric View
-
-```yaml
-comment: >
-  Property inventory, attributes, and performance metrics.
-  BEST FOR: Property counts, types, pricing analysis, revenue per property, verified host analysis.
-  Source: dim_property (SCD2) with complete property data.
-  Note: Includes ALL properties regardless of booking activity.
-```
-
-### Key Elements
-
-| Element | Purpose |
-|---|---|
-| **Primary purpose** | What the view is designed for |
-| **BEST FOR** | Types of questions this view handles well |
-| **NOT FOR / USE INSTEAD** | Explicit redirect when view has limitations |
-| **Source info** | Transparency on underlying data (FACT vs DIMENSION) |
 
 ---
 
@@ -1229,11 +1306,15 @@ measures:
 - [ ] Nested columns reference full path (`parent.nested.column`)
 - [ ] Tested with Databricks Runtime 17.1+
 
-### Comment Format
-- [ ] Comment includes PRIMARY PURPOSE
-- [ ] Comment includes BEST FOR (question patterns)
-- [ ] Comment includes NOT FOR / USE INSTEAD (when view has limitations)
-- [ ] Comment includes SOURCE info (transparency on data origin)
+### Comment Format (v3.0 Structured Format)
+- [ ] Comment includes **PURPOSE** (one-line description)
+- [ ] Comment includes **BEST FOR** (4-6 pipe-separated example questions)
+- [ ] Comment includes **NOT FOR** with redirect to correct asset
+- [ ] Comment includes **DIMENSIONS** (5-8 key filterable columns)
+- [ ] Comment includes **MEASURES** (5-8 key aggregated metrics)
+- [ ] Comment includes **SOURCE** (table name with domain)
+- [ ] Comment includes **JOINS** (joined tables with descriptions)
+- [ ] Comment includes **NOTE** (critical caveats/limitations)
 - [ ] Professional language (no "broken", "doesn't work")
 
 ### Python Script Error Handling
@@ -1370,6 +1451,15 @@ def main():
 - ✅ Prevents silent failures
 
 ## Version History
+
+- **v3.0** (Dec 19, 2025) - Standardized structured comment format (TVF-inspired)
+  - Added comprehensive comment format reference table with 8 elements
+  - New elements: PURPOSE, BEST FOR, NOT FOR, DIMENSIONS, MEASURES, SOURCE, JOINS, NOTE
+  - Added standardized comment template for consistency
+  - Added element guidelines with format examples
+  - Updated validation checklist with new comment format requirements
+  - **Key Learning:** Structured comments improve Genie's metric view selection accuracy
+  - Inspired by: TVF comment format from [databricks-table-valued-functions.mdc](mdc:.cursor/rules/semantic-layer/15-databricks-table-valued-functions.mdc)
 
 - **v2.0** (Dec 16, 2025) - Genie optimization patterns from production post-mortem
   - Added standardized metric view comment format (BEST FOR / NOT FOR / SOURCE)
