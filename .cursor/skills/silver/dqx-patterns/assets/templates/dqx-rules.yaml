@@ -1,0 +1,76 @@
+# DQX Quality Checks Template
+# Copy this template and customize for your tables
+
+# Example: Silver Transactions Checks
+- name: transaction_id_not_null
+  criticality: error
+  check:
+    function: is_not_null_and_not_empty
+    arguments:
+      column: transaction_id
+  metadata:
+    check_type: completeness
+    layer: silver
+    entity: transactions
+    business_owner: Data Engineering
+    business_rule: "Transaction ID must be present and non-empty"
+
+- name: positive_price
+  criticality: error
+  check:
+    function: is_greater_than
+    arguments:
+      column: final_sales_price
+      limit: 0  # ✅ Use 'limit', not 'value'; int, not float
+  metadata:
+    check_type: validity
+    layer: silver
+    entity: transactions
+    business_rule: "Prices must be positive"
+
+- name: reasonable_quantity
+  criticality: warn  # Warning only (doesn't drop)
+  check:
+    function: is_in_range
+    arguments:
+      column: quantity_sold
+      min_limit: -50  # ✅ Use 'min_limit'/'max_limit', not 'min_value'/'max_value'
+      max_limit: 100
+  metadata:
+    check_type: reasonableness
+    layer: silver
+    entity: transactions
+    business_rule: "Quantities outside range are unusual"
+
+# Example: Gold Fact Table Checks
+- name: non_negative_net_revenue
+  criticality: error
+  check:
+    function: is_not_less_than
+    arguments:
+      column: net_revenue
+      limit: 0
+  metadata:
+    check_type: validity
+    layer: gold
+    entity: fact_sales_daily
+    business_rule: "Net revenue cannot be negative after returns"
+    failure_impact: "Critical - Invalid financial reporting"
+
+- name: positive_transaction_count
+  criticality: error
+  check:
+    function: is_greater_than
+    arguments:
+      column: transaction_count
+      limit: 0
+  metadata:
+    check_type: validity
+    layer: gold
+    entity: fact_sales_daily
+    business_rule: "Daily aggregates must have at least one transaction"
+
+# Reference: See references/dqx-configuration.md for complete API reference
+# - Function names: https://databrickslabs.github.io/dqx/docs/reference/api/check_funcs/
+# - Parameter names: Use 'limit' (not 'value'), 'allowed' (not 'values'), 'min_limit'/'max_limit' (not 'min_value'/'max_value')
+# - Data types: Use integers (not floats) for limit values

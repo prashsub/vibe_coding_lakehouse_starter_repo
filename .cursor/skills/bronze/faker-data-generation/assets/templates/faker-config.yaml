@@ -1,0 +1,75 @@
+# Faker Data Generation Configuration Template
+
+# Asset Bundle job configuration for data generation tasks
+resources:
+  jobs:
+    generate_bronze_data:
+      name: generate-bronze-data
+      environments:
+        - default
+      tasks:
+        - task_key: generate_dimensions
+          environment_key: default
+          notebook_task:
+            notebook_path: ../src/bronze/generate_dimensions.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              num_records: "1000"
+              corruption_rate: "0.05"  # 5% corruption for DQ testing
+              locale: "en_US"
+        
+        - task_key: generate_facts
+          environment_key: default
+          depends_on:
+            - generate_dimensions
+          notebook_task:
+            notebook_path: ../src/bronze/generate_facts.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              num_records: "10000"
+              corruption_rate: "0.05"  # 5% corruption for DQ testing
+
+# Environment-specific overrides
+environments:
+  default:
+    variables:
+      catalog: "main"
+      schema: "bronze_test"
+  
+  development:
+    variables:
+      catalog: "dev"
+      schema: "bronze_test"
+    jobs:
+      generate_bronze_data:
+        tasks:
+          - task_key: generate_dimensions
+            notebook_task:
+              base_parameters:
+                corruption_rate: "0.10"  # 10% for thorough testing
+  
+  staging:
+    variables:
+      catalog: "staging"
+      schema: "bronze_test"
+    jobs:
+      generate_bronze_data:
+        tasks:
+          - task_key: generate_dimensions
+            notebook_task:
+              base_parameters:
+                corruption_rate: "0.05"  # 5% production-like
+  
+  production:
+    variables:
+      catalog: "prod"
+      schema: "bronze"
+    jobs:
+      generate_bronze_data:
+        tasks:
+          - task_key: generate_dimensions
+            notebook_task:
+              base_parameters:
+                corruption_rate: "0.0"  # No synthetic corruption in production
