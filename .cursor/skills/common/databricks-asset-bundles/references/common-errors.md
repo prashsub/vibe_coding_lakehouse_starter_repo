@@ -456,6 +456,152 @@ DATABRICKS_CONFIG_PROFILE=<profile-name> databricks bundle deploy -t dev
 
 ---
 
+### Error 11: Dashboard Hardcoded Catalog
+
+**Problem:** Dashboard JSON contains hardcoded catalog names, breaking cross-environment deployment.
+
+❌ **WRONG:**
+```yaml
+resources:
+  dashboards:
+    my_dashboard:
+      display_name: "[${bundle.target}] Dashboard"
+      file_path: ../src/dashboards/my_dashboard.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      # ❌ No dataset_catalog/dataset_schema - catalog hardcoded in JSON!
+```
+
+✅ **CORRECT:**
+```yaml
+resources:
+  dashboards:
+    my_dashboard:
+      display_name: "[${bundle.target}] Dashboard"
+      file_path: ../src/dashboards/my_dashboard.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      dataset_catalog: ${var.catalog}       # ✅ CLI 0.281.0+ (Jan 2026)
+      dataset_schema: ${var.gold_schema}    # ✅ Overrides JSON defaults
+```
+
+**Rule:** Always use `dataset_catalog`/`dataset_schema` parameters (CLI v0.281.0+) to avoid hardcoded catalogs in dashboard JSON.
+
+---
+
+### Error 12: Alert v2 Schema Mismatch
+
+**Problem:** SQL Alerts v2 API uses different field names than expected. This is the #1 most common alert deployment failure.
+
+❌ **WRONG:**
+```yaml
+# These field names DO NOT EXIST in Alerts v2:
+condition:                    # ❌ Should be "evaluation"
+  op: LESS_THAN              # ❌ Should be "comparison_operator"
+  operand:
+    column:                   # ❌ Should be "source" at top level
+      name: "r"
+
+schedule:
+  cron_schedule:              # ❌ Fields are directly under schedule
+    quartz_cron_expression: "..."
+
+subscriptions:                # ❌ Should be under evaluation.notification
+  - destination_type: "EMAIL"
+```
+
+✅ **CORRECT:**
+```yaml
+evaluation:                   # ✅ Not "condition"
+  comparison_operator: 'LESS_THAN_OR_EQUAL'  # ✅ Full name
+  source:                     # ✅ Top-level, not nested
+    name: 'c'
+    display: 'c'
+  threshold:
+    value:
+      double_value: 100
+  notification:               # ✅ Subscriptions nested here
+    subscriptions:
+      - user_email: "${workspace.current_user.userName}"
+
+schedule:                     # ✅ Fields directly under schedule
+  pause_status: 'UNPAUSED'
+  quartz_cron_schedule: '0 0 9 * * ?'   # ✅ Not quartz_cron_expression
+  timezone_id: 'America/Los_Angeles'
+```
+
+**Rule:** ALWAYS inspect the schema first: `databricks bundle schema | grep -A 100 'sql.AlertV2'`
+
+---
+
+### Error 13: Volume Permissions Format
+
+**Problem:** Volumes use `grants` not `permissions` -- different from all other resource types.
+
+❌ **WRONG:**
+```yaml
+resources:
+  volumes:
+    my_volume:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.gold_schema}
+      name: "my_volume"
+      volume_type: "MANAGED"
+      permissions:             # ❌ Volumes don't use permissions!
+        - level: CAN_READ
+          group_name: "users"
+```
+
+✅ **CORRECT:**
+```yaml
+resources:
+  volumes:
+    my_volume:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.gold_schema}
+      name: "my_volume"
+      volume_type: "MANAGED"
+      grants:                  # ✅ Volumes use grants
+        - principal: "users"
+          privileges:
+            - READ_VOLUME
+```
+
+**Rule:** Use `grants` (not `permissions`) for volume resources.
+
+---
+
+### Error 14: App Environment Variables in Wrong Location
+
+**Problem:** App environment variables defined in `databricks.yml` instead of `app.yaml`.
+
+❌ **WRONG:**
+```yaml
+# databricks.yml or resource file
+resources:
+  apps:
+    my_app:
+      name: my-app
+      source_code_path: ../src/app
+      env:                     # ❌ Env vars don't go here!
+        DATABRICKS_CATALOG: "main"
+```
+
+✅ **CORRECT:**
+```yaml
+# src/app/app.yaml (env vars go HERE)
+command: ["python", "app.py"]
+env:
+  - name: DATABRICKS_CATALOG
+    value: "main"
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: "your-warehouse-id"
+```
+
+**Rule:** Environment variables for apps go in `app.yaml` (source directory), not in the DAB resource file.
+
+**Debugging apps:** Use `databricks apps logs <app-name>` to see deployment progress, errors, and runtime output.
+
+---
+
 ## Pre-Deployment Validation Script
 
 **Use this script to catch errors before deployment:**
@@ -588,6 +734,24 @@ When creating Asset Bundle configurations:
 - [ ] Update `databricks.yml` include paths when adding subdirectories
 - [ ] Verify no duplicate `.yml` files across `resources/` directory
 
+### Dashboards
+- [ ] Use `dataset_catalog`/`dataset_schema` parameters (CLI v0.281.0+)
+- [ ] No hardcoded catalog names in dashboard JSON
+- [ ] Dashboard JSON exported and stored in `src/dashboards/`
+
+### SQL Alerts
+- [ ] Use `evaluation` (not `condition`) for alert criteria
+- [ ] Use `quartz_cron_schedule` (not `quartz_cron_expression`) in alert schedule
+- [ ] `subscriptions` nested under `evaluation.notification`
+- [ ] Schema verified with `databricks bundle schema | grep -A 100 'sql.AlertV2'`
+
+### Volumes
+- [ ] Use `grants` (not `permissions`) for volume resources
+
+### Apps
+- [ ] Environment variables defined in `app.yaml` (source dir), not `databricks.yml`
+- [ ] App started with `databricks bundle run <app_key>` after deployment
+
 ### Pre-Deployment Validation
 - [ ] Run pre-deployment validation script (catches 80% of errors)
 - [ ] Authenticate with named profile (`databricks auth login --profile <name>`)
@@ -639,9 +803,28 @@ databricks bundle run -t prod setup_orchestrator_job
 databricks bundle run -t prod refresh_orchestrator_job
 ```
 
+### Apps
+
+```bash
+# Start/deploy an app after bundle deploy
+databricks bundle run <app_resource_key> -t dev
+
+# View app logs (deployment progress, errors, runtime output)
+databricks apps logs <app-name> --profile <profile-name>
+```
+
 ### Cleanup
 
 ```bash
-# Destroy all resources in dev
+# Destroy all resources in dev (interactive confirmation)
 databricks bundle destroy -t dev
+
+# Destroy without confirmation prompts
+databricks bundle destroy -t dev --auto-approve
+
+# Force deploy (overwrite remote changes)
+databricks bundle deploy -t dev --force
+
+# Deploy without confirmation prompts
+databricks bundle deploy -t dev --auto-approve
 ```

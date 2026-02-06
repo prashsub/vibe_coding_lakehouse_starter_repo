@@ -1,9 +1,9 @@
 ---
 name: genie-space-patterns
-description: Patterns for setting up Databricks Genie Spaces with comprehensive agent instructions, data assets, and benchmark questions. Use when creating Genie Spaces, configuring agent behavior, selecting data assets, or validating benchmark questions. Includes mandatory 7-section deliverable structure, General Instructions (≤20 lines), data asset organization (Metric Views → TVFs → Tables), benchmark questions with exact SQL, testing patterns, and deployment checklists.
+description: Patterns for setting up Databricks Genie Spaces with comprehensive agent instructions, data assets, and benchmark questions. Use when creating Genie Spaces, configuring agent behavior, selecting data assets, or validating benchmark questions. Includes mandatory 7-section deliverable structure, General Instructions (≤20 lines), data asset organization (Metric Views → TVFs → Tables), benchmark questions with exact SQL, Serverless warehouse mandate, table/column comment requirements for Genie SQL quality, pre-creation table inspection, Conversation API programmatic validation, follow-up vs new conversation patterns, and deployment checklists.
 metadata:
   author: databricks-sa
-  version: "2.0"
+  version: "2.1"
   domain: semantic-layer
 ---
 
@@ -26,6 +26,22 @@ Use this skill when:
 - Writing benchmark questions for validation
 - Troubleshooting Genie query routing issues
 - Optimizing Genie Space performance
+
+### 🔀 Hand Off to `genie-space-export-import-api` Skill When:
+
+| User Says / Task Involves | Load Instead |
+|---|---|
+| "deploy Genie Space via API" | `genie-space-export-import-api` |
+| "export Genie Space", "download Genie Space config" | `genie-space-export-import-api` |
+| "import Genie Space", "restore Genie Space" | `genie-space-export-import-api` |
+| "CI/CD for Genie Spaces" | `genie-space-export-import-api` |
+| "migrate Genie Space to another workspace" | `genie-space-export-import-api` |
+| "back up Genie Space configuration" | `genie-space-export-import-api` |
+| "programmatically create Genie Space from JSON" | `genie-space-export-import-api` |
+| "`serialized_space`", "REST API", "`/api/2.0/genie/spaces`" | `genie-space-export-import-api` |
+
+**This skill** covers *what* goes into a Genie Space (instructions, assets, benchmarks).
+The **export/import API skill** covers *how* to deploy it programmatically.
 
 ---
 
@@ -137,6 +153,68 @@ SELECT * FROM get_customer_segments(...) GROUP BY segment  -- ❌ Unnecessary GR
 SELECT * FROM get_customer_segments('2020-01-01', '2024-12-31')  -- ✅ Direct call with params
 ```
 
+### 9. 🔴 MANDATORY: Serverless SQL Warehouse Only
+
+**ALWAYS assign a Serverless SQL Warehouse to Genie Spaces. NEVER use Classic or Pro warehouses.**
+
+Serverless provides auto-scaling, instant startup, and cost-efficient idle timedowns -- critical for interactive Genie sessions where users expect sub-10-second responses.
+
+**❌ WRONG:** Classic SQL warehouse with manual cluster sizing.
+
+**✅ CORRECT:** Serverless SQL warehouse (auto-detected or explicitly set).
+
+### 10. Table/Column COMMENTs Are Genie Fuel
+
+**Genie uses Unity Catalog TABLE and COLUMN comments to understand data.** Missing comments = degraded SQL generation quality.
+
+**🔴 MANDATORY:** Before adding ANY table as a trusted asset, verify it has:
+- `COMMENT ON TABLE` with a business-friendly description
+- `COMMENT ON COLUMN` for every column, including dimension values and business context
+
+See [Gold Layer Documentation Skill](../../gold/gold-layer-documentation/SKILL.md) for comment standards.
+
+**❌ WRONG:**
+```sql
+CREATE TABLE fact_sales (sale_id BIGINT, amt DECIMAL(18,2));  -- No comments, cryptic names
+```
+
+**✅ CORRECT:**
+```sql
+CREATE TABLE fact_sales (
+  sale_id BIGINT COMMENT 'Unique sale identifier from POS system',
+  total_amount DECIMAL(18,2) COMMENT 'Net sale amount in USD after discounts'
+) COMMENT 'Daily retail sales transactions at store-SKU grain';
+```
+
+### 11. Pre-Creation Table Inspection Is Mandatory
+
+**Before creating a Genie Space, ALWAYS inspect target table schemas.** Do not rely on assumed schemas.
+
+1. Run `DESCRIBE TABLE EXTENDED` or use `get_table_details` for each trusted asset
+2. Verify all tables have TABLE and COLUMN comments
+3. Verify descriptive column names (use `customer_lifetime_value` NOT `clv`)
+4. Verify proper data types (DATE columns for time-based queries)
+
+See [Configuration Guide](references/configuration-guide.md#pre-creation-table-inspection) for the full inspection checklist.
+
+### 12. Validate Programmatically via Conversation API
+
+**After deployment, test benchmark questions programmatically using the Conversation API -- not just the UI.**
+
+```python
+# ✅ Programmatic validation (reproducible, automated)
+result = ask_genie(space_id="your_space_id", question="What were total sales last month?")
+assert result["status"] == "COMPLETED"
+assert result["row_count"] > 0
+```
+
+**Key rules:**
+- Start a NEW conversation for each unrelated benchmark question
+- Use `ask_genie_followup` ONLY for related follow-up questions within the same topic
+- Set timeouts: simple queries (30s), complex joins (60-120s), large scans (120s+)
+
+See [Configuration Guide](references/configuration-guide.md#conversation-api-validation) for full testing patterns.
+
 ---
 
 ## Quick Reference
@@ -211,11 +289,26 @@ See [Configuration Guide](references/configuration-guide.md#section-g-benchmark-
 
 ### Step 5: Deploy and Test
 
-1. Create Genie Space via UI or API
-2. Add trusted assets in order (Metric Views → TVFs → Tables)
-3. Set General Instructions (copy exactly, verify ≤20 lines)
-4. Test benchmark questions
-5. Validate routing and response quality
+**Choose your deployment path:**
+
+| Method | When to Use | Skill |
+|---|---|---|
+| **UI** | One-off setup, manual curation | This skill (continue below) |
+| **REST API / CI/CD** | Automated deployment, cross-workspace migration, version control | **Load [`genie-space-export-import-api`](../genie-space-export-import-api/SKILL.md)** |
+
+**UI deployment steps:**
+1. Inspect all target table schemas (verify comments, column names, data types)
+2. Create Genie Space in Databricks UI with **Serverless SQL Warehouse**
+3. Add trusted assets in order (Metric Views → TVFs → Tables) -- **Gold layer ONLY**
+4. Set General Instructions (copy exactly, verify ≤20 lines)
+5. Test benchmark questions **programmatically** via Conversation API
+6. Validate routing, response quality, and follow-up context
+
+**API deployment steps:** Load the `genie-space-export-import-api` skill for:
+- JSON schema structure (`serialized_space` format)
+- Template variable substitution (`${catalog}`, `${gold_schema}`)
+- Asset inventory-driven generation (prevents "table doesn't exist" errors)
+- Export/import scripts (`export_genie_space.py`, `import_genie_space.py`)
 
 See [Configuration Guide](references/configuration-guide.md#deployment-checklist) for complete steps.
 
@@ -300,6 +393,12 @@ Before submitting ANY Genie Space document:
 - [ ] Questions cover all major use cases (revenue, performance, trends)
 - [ ] No contradictory routing rules in General Instructions
 - [ ] Ambiguous terms explicitly defined
+- [ ] Serverless SQL Warehouse assigned (NOT Classic or Pro)
+- [ ] ALL trusted asset tables have TABLE and COLUMN comments
+- [ ] Column names are descriptive (`customer_lifetime_value` NOT `clv`)
+- [ ] Table schemas inspected before space creation (DESCRIBE TABLE EXTENDED)
+- [ ] Benchmark questions validated programmatically via Conversation API
+- [ ] Only Gold layer tables/views/functions used as trusted assets
 
 ---
 
@@ -329,6 +428,27 @@ Explicitly define terms like "underperforming", "top performing".
 ### ❌ Incorrect TVF Syntax
 Don't wrap TVFs in TABLE(), include all required parameters, avoid unnecessary GROUP BY.
 
+### ❌ Using Classic/Pro SQL Warehouse
+Genie requires fast startup and auto-scaling. ALWAYS use Serverless SQL Warehouse.
+
+### ❌ Tables Without TABLE/COLUMN Comments
+Genie uses UC metadata to understand data. Missing comments = worse SQL generation.
+
+### ❌ Cryptic Column Names
+Use `customer_lifetime_value` not `clv`. Descriptive names improve Genie SQL accuracy.
+
+### ❌ Skipping Pre-Creation Table Inspection
+Always run DESCRIBE TABLE EXTENDED before adding assets to verify schema, comments, and types.
+
+### ❌ UI-Only Testing
+Always validate programmatically via Conversation API for reproducible, automated testing.
+
+### ❌ Reusing Conversations Across Topics
+Start a NEW conversation for each unrelated benchmark question. Reuse via `ask_genie_followup` ONLY for related follow-ups.
+
+### ❌ Adding Silver/Bronze Tables as Trusted Assets
+Only Gold layer assets (metric views, TVFs, Gold tables) should be trusted assets. Silver/Bronze tables have quality issues and no business-level semantics.
+
 ---
 
 ## References
@@ -341,6 +461,7 @@ Don't wrap TVFs in TABLE(), include all required parameters, avoid unnecessary G
 - [Metric Views Documentation](https://docs.databricks.com/metric-views/)
 
 ### Related Skills
+- **`genie-space-export-import-api`** - Programmatic deployment, export/import, CI/CD, migration via REST API
 - `metric-views-patterns` - Metric view YAML structure
 - `databricks-table-valued-functions` - TVF patterns
 - `databricks-asset-bundles` - Asset Bundle deployment
@@ -348,6 +469,19 @@ Don't wrap TVFs in TABLE(), include all required parameters, avoid unnecessary G
 ---
 
 ## Version History
+
+- **v2.1** (Feb 6, 2026) - Genie reference material integration
+  - Added Rule 9: Serverless SQL Warehouse mandatory
+  - Added Rule 10: Table/Column COMMENT requirements for Genie
+  - Added Rule 11: Pre-creation table inspection mandatory
+  - Added Rule 12: Programmatic validation via Conversation API
+  - Added Gold-layer-only trusted assets mandate
+  - Added descriptive column naming requirement
+  - Added follow-up vs new conversation pattern
+  - Added 8 new Common Mistakes to Avoid
+  - Updated validation checklist with 6 new checks
+  - Updated deployment steps with inspection and API testing
+  - **Key Learning:** Genie uses UC metadata (comments, column names) directly -- missing metadata degrades SQL quality
 
 - **v2.0** (Dec 16, 2025) - Genie optimization patterns from production post-mortem
   - Added General Instructions consistency patterns

@@ -169,3 +169,112 @@ def wait_with_progress(minutes: int = 15):
         print(f"⏱️  Progress: {progress_pct:.1f}% | Remaining: {remaining//60}m")
         time.sleep(60)
     print(f"✓ Wait completed - tables should be ready")
+
+
+def wait_for_monitor_initialization(
+    workspace_client: WorkspaceClient,
+    table_name: str,
+    timeout_minutes: int = 20
+):
+    """
+    Wait for a single monitor to initialize by polling status.
+
+    Preferred over wait_with_progress() — proceeds as soon as monitor is active
+    rather than always waiting the maximum time.
+
+    Args:
+        workspace_client: Databricks WorkspaceClient instance
+        table_name: Fully qualified table name
+        timeout_minutes: Maximum wait time (default 20 min)
+
+    Returns:
+        bool: True if monitor reached ACTIVE status, False on timeout
+    """
+    from databricks.sdk.service.catalog import MonitorInfoStatus
+
+    print(f"\nWaiting for {table_name} monitor (timeout: {timeout_minutes} min)...")
+
+    start_time = time.time()
+    timeout_seconds = timeout_minutes * 60
+    check_interval = 60
+
+    while (time.time() - start_time) < timeout_seconds:
+        try:
+            monitor_info = workspace_client.quality_monitors.get(table_name=table_name)
+
+            if monitor_info.status == MonitorInfoStatus.MONITOR_STATUS_ACTIVE:
+                elapsed_minutes = (time.time() - start_time) / 60
+                print(f"✓ Monitor active after {elapsed_minutes:.1f} minutes")
+                return True
+
+            elapsed = int((time.time() - start_time) / 60)
+            print(f"  Status: {monitor_info.status} ({elapsed}/{timeout_minutes} min)")
+            time.sleep(check_interval)
+
+        except Exception as e:
+            print(f"  Error checking status: {str(e)}")
+            time.sleep(check_interval)
+
+    print(f"✗ Timeout waiting for monitor initialization")
+    return False
+
+
+def wait_for_all_monitors(
+    workspace_client: WorkspaceClient,
+    catalog: str,
+    schema: str,
+    table_names: list,
+    timeout_minutes: int = 20
+):
+    """
+    Wait for multiple monitors to initialize concurrently.
+
+    Polls all pending monitors each cycle and removes them as they
+    reach ACTIVE status. Returns when all are active or timeout.
+
+    Args:
+        workspace_client: Databricks WorkspaceClient instance
+        catalog: Catalog name
+        schema: Schema name
+        table_names: List of table names (without catalog.schema prefix)
+        timeout_minutes: Maximum wait time (default 20 min)
+
+    Returns:
+        bool: True if all monitors active, False if any timed out
+    """
+    from databricks.sdk.service.catalog import MonitorInfoStatus
+
+    print(f"\nWaiting for {len(table_names)} monitor(s) (timeout: {timeout_minutes} min)...")
+
+    start_time = time.time()
+    timeout_seconds = timeout_minutes * 60
+    check_interval = 60
+
+    fully_qualified_tables = [f"{catalog}.{schema}.{t}" for t in table_names]
+    pending_tables = set(fully_qualified_tables)
+
+    while pending_tables and (time.time() - start_time) < timeout_seconds:
+        elapsed_minutes = (time.time() - start_time) / 60
+
+        for table in list(pending_tables):
+            try:
+                monitor_info = workspace_client.quality_monitors.get(table_name=table)
+
+                if monitor_info.status == MonitorInfoStatus.MONITOR_STATUS_ACTIVE:
+                    print(f"✓ {table} - ACTIVE")
+                    pending_tables.remove(table)
+                else:
+                    print(f"  {table} - {monitor_info.status} ({elapsed_minutes:.1f} min)")
+            except Exception as e:
+                print(f"  {table} - Error: {str(e)}")
+
+        if pending_tables:
+            time.sleep(check_interval)
+
+    if pending_tables:
+        print(f"\n✗ Timeout: {len(pending_tables)} monitor(s) still pending")
+        return False
+
+    elapsed = (time.time() - start_time) / 60
+    print(f"\n✓ All monitors active after {elapsed:.1f} minutes!")
+    return True

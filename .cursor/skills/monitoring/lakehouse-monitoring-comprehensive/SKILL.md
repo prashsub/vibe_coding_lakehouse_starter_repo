@@ -1,6 +1,6 @@
 ---
 name: lakehouse-monitoring-comprehensive
-description: Comprehensive guide for Databricks Lakehouse Monitoring - setup, custom metrics, querying, and best practices. Use when setting up Lakehouse Monitoring for Gold layer tables, creating custom business metrics, querying monitoring tables for dashboards, or troubleshooting monitor initialization failures. Includes setup patterns with graceful degradation, custom metric syntax (AGGREGATE, DERIVED, DRIFT), table-level business KPIs with input_columns=[":table"], query patterns for dashboards, async operations handling, monitor cleanup, and documentation for Genie integration.
+description: Comprehensive guide for Databricks Lakehouse Monitoring with quick-start workflow (2 hours), fill-in-the-blank requirements template, concrete fact/dimension monitor examples, and complete deployment patterns. Use when setting up Lakehouse Monitoring for Gold layer tables, creating custom business metrics, designing monitoring strategy, querying monitoring tables for dashboards, or troubleshooting monitor initialization failures. Includes setup patterns with graceful degradation, custom metric syntax (AGGREGATE, DERIVED, DRIFT), table-level business KPIs with input_columns=[":table"], query patterns for dashboards, async operations handling, monitor cleanup, Genie documentation integration, and production deployment workflow.
 metadata:
   author: databricks-sa
   version: "1.0"
@@ -296,6 +296,47 @@ WHERE log_type = 'INPUT'
 ORDER BY window.start DESC
 ```
 
+## Workflow
+
+### Time Estimate: 2 Hours
+
+| Phase | Duration | Activities |
+|-------|----------|------------|
+| Phase 1: Design | 30 min | Identify tables, define metrics, plan alerts |
+| Phase 2: Setup | 1 hour | Create monitors with custom metrics |
+| Phase 3: Wait | 30 min | Wait for async initialization (15-20 min) |
+| Phase 4: Validate | 30 min | Query metrics, verify drift detection |
+
+### Phase 1: Design Monitoring Strategy
+
+**Before writing code**, fill in the requirements template:
+
+1. Copy `assets/templates/monitoring-requirements-template.md`
+2. Identify 2-5 critical Gold tables to monitor
+3. Define custom metrics per table (see `references/metric-design-guide.md`)
+4. Define alert thresholds
+
+### Phase 2: Monitor Setup
+
+1. Use `scripts/setup_monitors_template.py` as your starting point
+2. Define monitor functions per table (see `references/example-monitor-definitions.md`)
+3. Apply patterns from `references/monitor-configuration.md`
+4. Ensure all metrics follow rules in `references/custom-metrics.md`
+
+### Phase 3: Initialization Wait
+
+1. Monitors initialize asynchronously (15-20 minutes)
+2. Use `scripts/wait_for_initialization.py` to poll for ACTIVE status
+3. Do NOT query metrics until monitors are ACTIVE
+
+### Phase 4: Validation
+
+1. Query profile metrics table (see `references/deployment-guide.md`)
+2. Verify custom metrics appear as columns in profile/drift tables
+3. Document monitoring tables for Genie (see `references/deployment-guide.md`)
+
+See `references/quick-start-guide.md` for the complete fast-track walkthrough.
+
 ## Reference Files
 
 ### [monitor-configuration.md](references/monitor-configuration.md)
@@ -332,6 +373,29 @@ Deployment and documentation guide including:
 - Query patterns for dashboards
 - Complete workflow examples
 
+### [quick-start-guide.md](references/quick-start-guide.md)
+Quick-start walkthrough and implementation checklist including:
+- 2-hour fast-track workflow with copy-paste code snippets
+- Critical patterns summary (SDK objects, output_data_type, DERIVED/DRIFT syntax)
+- Metric query pattern SQL for profile and drift tables
+- Phase-based implementation checklist with time budgets
+
+### [metric-design-guide.md](references/metric-design-guide.md)
+Monitoring strategy design guide including:
+- Fill-in-the-blank requirements template
+- Tables-to-monitor planning with priority levels
+- Custom metrics templates per table type (fact and dimension)
+- Metric categories checklists (what to monitor for each table type)
+- Alert strategy patterns (thresholds and actions)
+- Metric syntax quick reference (AGGREGATE, DERIVED, DRIFT)
+
+### [example-monitor-definitions.md](references/example-monitor-definitions.md)
+Concrete production-ready monitor definitions including:
+- Fact table monitor (9 metrics: revenue, units, transactions, returns, derived ratios, drift)
+- Dimension table monitor with SCD2 (4 metrics: row counts, distinct entities, versioning)
+- All using correct MonitorMetric SDK objects and syntax patterns
+- Complete code with docstrings explaining business purpose
+
 ## Scripts
 
 ### [create_monitor.py](scripts/create_monitor.py)
@@ -358,6 +422,29 @@ monitor = create_table_monitor(
     custom_metrics=[...]
 )
 ```
+
+### [setup_monitors_template.py](scripts/setup_monitors_template.py)
+Complete notebook template for production monitor setup including:
+- argparse parameter handling (catalog, gold_schema)
+- Enhanced cleanup (monitor definition + output tables)
+- Monitor creation with correct SDK objects
+- Error tracking (created/failed lists)
+- Summary reporting and failure escalation
+
+### [wait_for_initialization.py](scripts/wait_for_initialization.py)
+Multi-table monitor initialization polling script including:
+- Status polling with `MonitorInfoStatus.MONITOR_STATUS_ACTIVE` (preferred over timer)
+- Multi-table concurrent wait support
+- Configurable timeout (default 20 minutes)
+- Progress reporting with elapsed time
+
+## Assets
+
+### [monitoring-requirements-template.md](assets/templates/monitoring-requirements-template.md)
+Fill-in-the-blank planning template — copy and complete BEFORE starting monitoring setup. Includes project context, tables-to-monitor with priority levels, custom metrics per table, and alert strategy.
+
+### [monitoring-job-template.yml](assets/templates/monitoring-job-template.yml)
+Databricks Asset Bundle job template for monitoring setup with two-task structure (setup_monitors → wait_for_initialization), serverless configuration, and base_parameters.
 
 ## Troubleshooting
 

@@ -525,3 +525,62 @@ Ensure benchmark questions cover:
 - [ ] Key business calculations (growth %, rates, averages, rankings)
 - [ ] Edge cases (missing data, zero values, negative values)
 - [ ] Multi-dimensional analysis (2+ dimensions combined)
+- [ ] At least 2 follow-up conversation chains (drill-down from general → specific)
+
+---
+
+## Conversation API Testing Patterns
+
+### 🔴 MANDATORY: Programmatic Validation
+
+**After deployment, ALWAYS validate benchmark questions via the Conversation API.** UI-only testing is not reproducible and misses edge cases.
+
+### Testing Strategy
+
+| Phase | Method | Purpose |
+|---|---|---|
+| **Pre-deploy** | Test SQL manually | Verify SQL runs and returns expected results |
+| **Post-deploy** | `ask_genie()` per question | Verify Genie generates correct SQL from natural language |
+| **Follow-up** | `ask_genie_followup()` chains | Verify context is maintained correctly |
+| **Regression** | Re-run after updates | Verify updates don't break existing questions |
+
+### New Conversation vs Follow-up Decision
+
+**Start a NEW conversation (`ask_genie()`) when:**
+- Testing an unrelated benchmark question
+- Switching business domains (revenue → customer → host)
+- Running regression tests (each question should be independent)
+
+**Use follow-up (`ask_genie_followup()`) when:**
+- Testing drill-down capability ("Break that down by region")
+- Testing context retention ("Same for last year")
+- Validating pronoun resolution ("Which ones had the highest growth?")
+
+### Handling Genie Responses
+
+| Response Status | Action |
+|---|---|
+| `COMPLETED` | ✅ Validate row_count > 0 and SQL looks correct |
+| `FAILED` | ❌ Rephrase question or fix instructions/assets |
+| `TIMEOUT` | ⚠️ Increase timeout or simplify question |
+| `CANCELLED` | ⚠️ Re-run (transient issue) |
+| `text_response` (clarification) | ⚠️ Add more context to instructions or rephrase question |
+
+### When Genie Asks for Clarification
+
+If `text_response` is returned instead of SQL results, Genie needs more context:
+
+1. **Add the ambiguous term** to General Instructions → Term Definitions
+2. **Add a sample question** that demonstrates the expected pattern
+3. **Add routing rules** that map the question type to the correct asset
+4. **Re-test** via Conversation API
+
+```python
+result = ask_genie(space_id, "Show me the top performers")
+
+if result.get("text_response"):
+    # Genie asked for clarification -- fix instructions
+    print(f"Genie asked: {result['text_response']}")
+    # Action: Add to General Instructions:
+    #   "top performers" = highest revenue unless "rated" specified
+```

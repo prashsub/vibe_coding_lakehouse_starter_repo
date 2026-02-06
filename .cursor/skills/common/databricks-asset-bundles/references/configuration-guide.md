@@ -30,7 +30,11 @@ variables:
   
   warehouse_id:
     description: SQL Warehouse ID for serverless execution
-    default: "<warehouse_id>"
+    # ✅ PREFERRED: Use lookup to resolve by name (no hardcoded IDs)
+    lookup:
+      warehouse: "Shared SQL Warehouse"
+    # Alternative: hardcode ID (less portable)
+    # default: "<warehouse_id>"
 
 targets:
   dev:
@@ -212,6 +216,35 @@ resources:
         compute_type: serverless
 ```
 
+### Modern Library Pattern: Glob Include
+
+For pipelines with multiple notebooks, use `glob` instead of listing each notebook individually:
+
+```yaml
+resources:
+  pipelines:
+    <pipeline_key>:
+      name: "[${bundle.target}] <Pipeline Name>"
+      root_path: ../src/<layer>_pipeline
+      catalog: ${var.catalog}
+      schema: ${var.<layer>_schema}
+      
+      # ✅ MODERN: Glob pattern includes all files in directory
+      libraries:
+        - glob:
+            include: ../src/pipelines/<pipeline_folder>/transformations/**
+      
+      serverless: true
+      photon: true
+      edition: ADVANCED
+```
+
+**When to use glob vs explicit notebooks:**
+- **Glob**: When pipeline has many notebooks in a directory structure
+- **Explicit**: When you need precise control over which notebooks are included
+
+---
+
 ### Root Path Configuration (Lakeflow Pipelines Editor)
 
 **ALWAYS define a root_path for DLT pipelines** to follow Lakeflow Pipelines Editor best practices.
@@ -262,6 +295,160 @@ src/
 **References:**
 - [Lakeflow Pipelines Editor - Root Folder](https://docs.databricks.com/aws/en/ldp/multi-file-editor#root-folder)
 - [Bundle Pipeline Resources](https://docs.azure.cn/en-us/databricks/dev-tools/bundles/resources#pipelines)
+
+## Dashboard Resource Pattern
+
+**Support for `dataset_catalog` and `dataset_schema` parameters added in Databricks CLI 0.281.0 (January 2026)**
+
+```yaml
+resources:
+  dashboards:
+    <dashboard_key>:
+      display_name: "[${bundle.target}] <Dashboard Title>"
+      file_path: ../src/dashboards/<dashboard>.lvdash.json  # Relative to resources/
+      warehouse_id: ${var.warehouse_id}
+      
+      # ✅ RECOMMENDED: Default catalog/schema for all datasets in the dashboard
+      # Avoids hardcoded catalog references in dashboard JSON
+      dataset_catalog: ${var.catalog}
+      dataset_schema: ${var.gold_schema}
+      
+      permissions:
+        - level: CAN_RUN
+          group_name: "users"
+```
+
+**Permission levels:** `CAN_READ`, `CAN_RUN`, `CAN_EDIT`, `CAN_MANAGE`
+
+**Key Rules:**
+- Always use `dataset_catalog`/`dataset_schema` to avoid hardcoded catalog names in dashboard JSON
+- Dashboard JSON files go in `src/dashboards/` directory
+- Use `[${bundle.target}]` prefix in `display_name` for environment differentiation
+- Export dashboards from UI, then replace hardcoded catalogs with the parameter approach
+
+---
+
+## SQL Alerts v2 Resource Pattern
+
+**The Alert v2 API schema differs significantly from other resources. Always verify with `databricks bundle schema | grep -A 100 'sql.AlertV2'`.**
+
+```yaml
+resources:
+  alerts:
+    <alert_key>:
+      display_name: "[${bundle.target}] <Alert Name>"
+      query_text: "SELECT count(*) as c FROM ${var.catalog}.${var.gold_schema}.<table>"
+      warehouse_id: ${var.warehouse_id}
+
+      # ✅ CORRECT: Use "evaluation" (NOT "condition")
+      evaluation:
+        comparison_operator: 'LESS_THAN_OR_EQUAL'  # Triggers when condition is TRUE
+        source:                    # NOT nested under "operand.column"
+          name: 'c'
+          display: 'c'
+        threshold:
+          value:
+            double_value: 100
+        notification:              # Subscriptions nested HERE (not top-level)
+          notify_on_ok: false
+          subscriptions:
+            - user_email: "${workspace.current_user.userName}"
+
+      # ✅ CORRECT: Fields directly under schedule (NOT under cron_schedule)
+      schedule:
+        pause_status: 'UNPAUSED'                        # REQUIRED
+        quartz_cron_schedule: '0 0 9 * * ?'             # REQUIRED (daily 9 AM)
+        timezone_id: 'America/Los_Angeles'              # REQUIRED
+
+      permissions:
+        - level: CAN_RUN
+          group_name: "users"
+```
+
+**Critical gotchas:**
+- Use `evaluation` not `condition`
+- Use `source.name` not `operand.column.name`
+- Use `quartz_cron_schedule` not `quartz_cron_expression` (different from jobs!)
+- `subscriptions` go under `evaluation.notification`, not top-level
+- Alerts trigger when condition evaluates to **TRUE** -- choose operator accordingly
+- Comparison operators: `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN`, `LESS_THAN_OR_EQUAL`
+
+---
+
+## Volume Resource Pattern
+
+```yaml
+resources:
+  volumes:
+    <volume_key>:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.gold_schema}
+      name: "<volume_name>"
+      volume_type: "MANAGED"
+```
+
+**Volumes use `grants` not `permissions`** -- this is a different format from all other resources:
+
+```yaml
+# ❌ WRONG for volumes
+permissions:
+  - level: CAN_READ
+    group_name: "users"
+
+# ✅ CORRECT for volumes
+grants:
+  - principal: "users"
+    privileges:
+      - READ_VOLUME
+```
+
+---
+
+## Apps Resource Pattern
+
+**Apps resource support added in Databricks CLI 0.239.0 (January 2025)**
+
+Apps have a minimal DAB configuration. Environment variables go in `app.yaml` (source directory), NOT in `databricks.yml`.
+
+### Generate from Existing App (Recommended)
+
+```bash
+databricks bundle generate app --existing-app-name my-app --key my_app --profile DEFAULT
+```
+
+### Manual Configuration
+
+**resources/my_app.app.yml:**
+```yaml
+resources:
+  apps:
+    <app_key>:
+      name: <app-name>-${bundle.target}     # Environment-specific naming
+      description: "<App description>"
+      source_code_path: ../src/app           # Relative to resources/ dir
+```
+
+**src/app/app.yaml** (environment variables go here, NOT in databricks.yml):
+```yaml
+command:
+  - "python"
+  - "app.py"
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: "your-warehouse-id"
+  - name: DATABRICKS_CATALOG
+    value: "main"
+  - name: DATABRICKS_SCHEMA
+    value: "my_schema"
+```
+
+**Key differences from other resources:**
+- Environment variables live in `app.yaml` (source dir), not `databricks.yml`
+- Configuration is minimal (name, description, source path)
+- Apps require `databricks bundle run <app_key>` to start after deployment
+- Debug with `databricks apps logs <app-name>` for deployment and runtime errors
+
+---
 
 ## SQL Warehouse Job Pattern
 

@@ -263,6 +263,47 @@ WHERE log_type = 'INPUT'
 ORDER BY date DESC
 ```
 
+### Query Pattern 4: Basic Profile Metrics (Built-in)
+
+```sql
+-- Built-in profile statistics (row count, null rates)
+-- These are available without custom metrics
+SELECT
+  window.start,
+  window.end,
+  column_name,
+  null_count,
+  row_count,
+  (null_count / NULLIF(row_count, 0)) * 100 as null_percentage
+FROM {catalog}.{monitoring_schema}.{table}_profile_metrics
+WHERE log_type = 'INPUT'
+  AND column_name = ':table'
+ORDER BY window.start DESC
+LIMIT 10;
+```
+
+### Query Pattern 5: Ad-Hoc Ratio Calculation (Alternative to DERIVED)
+
+When you need to calculate ratios that aren't pre-defined as DERIVED metrics, you can compute them directly from AGGREGATE columns in the same row:
+
+```sql
+-- Ad-hoc ratio calculation from AGGREGATE metrics in same row
+SELECT
+  window.start,
+  window.end,
+  total_daily_revenue / NULLIF(total_transactions, 0) as avg_transaction_value,
+  total_daily_revenue / NULLIF(total_daily_units, 0) as avg_unit_price,
+  (total_return_amount / NULLIF(total_daily_revenue + total_return_amount, 0)) * 100 as return_rate_pct
+FROM {catalog}.{monitoring_schema}.{table}_profile_metrics
+WHERE log_type = 'INPUT'
+  AND column_name = ':table'
+  AND COALESCE(slice_key, 'No Slice') = :slice_key
+ORDER BY window.start DESC
+LIMIT 10;
+```
+
+**Note:** The direct SELECT approach (Query Pattern 2) is preferred when DERIVED metrics are defined in the monitor. The ad-hoc approach is useful for exploratory analysis when you need ratios that aren't pre-defined as DERIVED metrics.
+
 ## Complete Workflow Example
 
 ```python

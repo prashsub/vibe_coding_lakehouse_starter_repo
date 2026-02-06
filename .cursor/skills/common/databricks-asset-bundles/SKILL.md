@@ -1,9 +1,9 @@
 ---
 name: databricks-asset-bundles
-description: Standard patterns for Databricks Asset Bundles configuration files for serverless jobs, DLT pipelines, and workflows. Use when creating, configuring, or deploying Databricks Asset Bundles for infrastructure-as-code deployments. Covers mandatory serverless environment configuration, hierarchical job architecture (atomic/composite/orchestrator), DLT pipeline patterns, Python notebook parameter passing (dbutils.widgets.get vs argparse), deployment error prevention, and pre-deployment validation. Critical for preventing common deployment errors and ensuring production-ready serverless-first configurations.
+description: Standard patterns for Databricks Asset Bundles configuration files for serverless jobs, DLT pipelines, dashboards, alerts, apps, and workflows. Use when creating, configuring, or deploying DABs for infrastructure-as-code deployments. Covers mandatory serverless environment configuration, hierarchical job architecture (atomic/composite/orchestrator), DLT pipeline patterns, dashboard resources with dataset_catalog/dataset_schema, SQL Alerts v2 API schema, Apps lifecycle, Python notebook parameter passing (dbutils.widgets.get vs argparse), deployment error prevention, and pre-deployment validation.
 metadata:
   author: databricks-sa
-  version: "1.0"
+  version: "2.0"
   domain: infrastructure
 ---
 
@@ -16,8 +16,11 @@ Databricks Asset Bundles provide infrastructure-as-code for deploying Databricks
 ## When to Use This Skill
 
 - Creating or configuring Databricks Asset Bundle YAML files
-- Deploying serverless jobs, DLT pipelines, or workflows
+- Deploying serverless jobs, DLT pipelines, dashboards, alerts, apps, or workflows
 - Setting up hierarchical job architectures (atomic/composite/orchestrator)
+- Configuring dashboard resources with `dataset_catalog`/`dataset_schema` (CLI 0.281.0+)
+- Setting up SQL Alerts v2 (schema differs significantly from other resources)
+- Configuring Databricks Apps in DABs (env vars in `app.yaml`, not `databricks.yml`)
 - Troubleshooting deployment errors or configuration issues
 - Converting notebooks to use proper parameter passing patterns
 - Validating bundle configurations before deployment
@@ -240,9 +243,9 @@ Relative paths depend on YAML file location:
 
 ## Reference Files
 
-- **[Configuration Guide](references/configuration-guide.md)**: Complete YAML configuration patterns, environment setup, variables, targets, DLT pipelines, schedules, notifications, permissions, library dependencies
+- **[Configuration Guide](references/configuration-guide.md)**: Complete YAML configuration patterns, environment setup, variables (with warehouse_id lookup), targets, DLT pipelines (with glob libraries), dashboards (dataset_catalog/dataset_schema), SQL Alerts v2, volumes (grants not permissions), Apps, schedules, notifications, permissions, library dependencies
 - **[Job Patterns](references/job-patterns.md)**: Hierarchical job architecture (atomic/composite/orchestrator), task types, parameter passing (dbutils.widgets.get vs argparse), orchestrator patterns, SQL tasks, multi-task dependencies
-- **[Common Errors](references/common-errors.md)**: Anti-patterns, deployment error prevention (10 common errors), troubleshooting guide, validation checklist, pre-deployment validation script
+- **[Common Errors](references/common-errors.md)**: Anti-patterns, deployment error prevention (14 common errors including dashboard hardcoded catalog, alert v2 schema mismatch, volume permissions, app env vars), troubleshooting guide, validation checklist, pre-deployment validation script
 
 ## Scripts
 
@@ -256,6 +259,7 @@ Relative paths depend on YAML file location:
 
 Before deploying any bundle:
 
+### Jobs & Pipelines
 - [ ] Serverless environment configured (`environments:` block + `environment_key` in tasks)
 - [ ] Using `notebook_task` (NOT `python_task`)
 - [ ] Using `base_parameters` dictionary format (NOT CLI-style `parameters`)
@@ -265,7 +269,21 @@ Before deploying any bundle:
 - [ ] All jobs have `job_level` tag (atomic/composite/orchestrator)
 - [ ] Path resolution matches directory structure
 - [ ] DLT pipelines have `root_path` defined
+
+### Dashboards
+- [ ] Uses `dataset_catalog`/`dataset_schema` params (no hardcoded catalogs in JSON)
+
+### SQL Alerts
+- [ ] Uses `evaluation` (not `condition`), `quartz_cron_schedule` (not `quartz_cron_expression`)
+- [ ] Schema verified with `databricks bundle schema | grep -A 100 'sql.AlertV2'`
+
+### Volumes & Apps
+- [ ] Volumes use `grants` (not `permissions`)
+- [ ] App env vars in `app.yaml` (not `databricks.yml`)
+
+### Pre-Deploy
 - [ ] Run pre-deployment validation script
+- [ ] `databricks bundle validate` passes
 
 ## Deployment Commands
 
@@ -276,11 +294,27 @@ databricks bundle validate
 # Deploy to dev
 databricks bundle deploy -t dev
 
+# Deploy with auto-approve (skip confirmation prompts)
+databricks bundle deploy -t dev --auto-approve
+
+# Force deploy (overwrite remote changes)
+databricks bundle deploy -t dev --force
+
 # Run specific job
 databricks bundle run -t dev <job_name>
 
+# Start an app after deployment
+databricks bundle run -t dev <app_resource_key>
+
+# View app logs for debugging
+databricks apps logs <app-name> --profile <profile-name>
+
 # Deploy to production
 databricks bundle deploy -t prod
+
+# Destroy all resources (cleanup)
+databricks bundle destroy -t dev
+databricks bundle destroy -t dev --auto-approve
 ```
 
 ## References

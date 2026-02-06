@@ -85,7 +85,7 @@ When a domain is detected, load the domain index summary from [references/domain
 | **Gold Layer** | Gold, merge, fact, dimension, SCD2 | Gold Layer Index |
 | **Infrastructure** | deploy, Asset Bundle, job, workflow, imports | Infrastructure Index |
 | **Monitoring** | monitoring, dashboard, alert | Monitoring Index |
-| **Silver Layer** | DLT, Silver, expectations, quality | Silver Layer Index |
+| **Silver Layer** | DLT, Silver, expectations, quality, create Silver, Bronze to Silver, Silver pipeline | Silver Layer Index |
 | **Bronze Layer** | Bronze, Faker, synthetic, ingestion | Bronze Layer Index |
 | **ML** | MLflow, model, training, inference | ML Index |
 
@@ -103,6 +103,7 @@ Load the specific SKILL.md for the task. All are lightweight (~1-2K tokens each)
 | `mlflow-mlmodels-patterns` | ~1.1K | 6 files | 1 file | 1 template |
 | `databricks-aibi-dashboards` | ~1.4K | 3 files | 3 files | 1 template |
 | `metric-views-patterns` | ~1.4K | 3 files | 1 file | 1 template |
+| `silver-layer-creation` | ~1.8K | 3 files | — | 1 template |
 | `dlt-expectations-patterns` | ~1.7K | 2 files | — | 1 template |
 | `genie-space-patterns` | ~1.5K | 4 files | — | 1 template |
 | `genie-space-export-import-api` | ~1.1K | 3 files | 2 files | — |
@@ -117,7 +118,10 @@ Load the specific SKILL.md for the task. All are lightweight (~1-2K tokens each)
 | `gold-layer-schema-validation` | ~1.1K | 2 files | 1 file | — |
 | `gold-delta-merge-deduplication` | ~1.4K | 1 file | 1 file | — |
 | `yaml-driven-gold-setup` | ~1.8K | 1 file | — | 1 template |
+| `gold-layer-design` | ~1.4K | 6 files | 1 file | 3 templates |
+| `gold-layer-implementation` | ~1.5K | 6 files | 3 files | 3 templates |
 | `gold-layer-merge-patterns` | ~1.3K | — | — | 3 templates |
+| `bronze-layer-setup` | ~1.5K | 3 files | 2 files | 2 templates |
 | `faker-data-generation` | ~1.0K | 1 file | 1 file | 1 template |
 | `databricks-python-imports` | ~1.9K | — | — | — |
 | `databricks-table-properties` | ~1.0K | — | — | 1 template |
@@ -168,6 +172,8 @@ Need starter file → Copy assets/templates/template.yaml
 | "TVF", "function" | Semantic | databricks-table-valued-functions |
 | "Genie Space", "Genie setup" | Semantic | genie-space-patterns |
 | "Genie API", "export/import" | Semantic | genie-space-export-import-api |
+| "design Gold", "dimensional model", "Gold from scratch" | Gold | gold-layer-design |
+| "implement Gold", "Gold tables", "Gold merge scripts" | Gold | gold-layer-implementation |
 | "Gold merge", "MERGE" | Gold | gold-layer-merge-patterns |
 | "duplicate key" | Gold | gold-delta-merge-deduplication |
 | "Gold documentation" | Gold | gold-layer-documentation |
@@ -183,9 +189,11 @@ Need starter file → Copy assets/templates/template.yaml
 | "monitoring", "Lakehouse" | Monitor | lakehouse-monitoring-comprehensive |
 | "dashboard", "AI/BI" | Monitor | databricks-aibi-dashboards |
 | "alert", "SQL alert" | Monitor | sql-alerting-patterns |
+| "Silver layer", "create Silver", "Bronze to Silver", "Silver pipeline" | Silver | silver-layer-creation |
 | "DLT", "expectations" | Silver | dlt-expectations-patterns |
 | "DQX", "validation" | Silver | dqx-patterns |
-| "Faker", "synthetic" | Bronze | faker-data-generation |
+| "Bronze setup", "Bronze tables", "test data", "demo data" | Bronze | bronze-layer-setup |
+| "Faker", "synthetic", "corruption" | Bronze | faker-data-generation |
 | "MLflow", "model" | ML | mlflow-mlmodels-patterns |
 | "exploration notebook" | Explore | adhoc-exploration-notebooks |
 | "project plan" | Plan | project-plan-methodology |
@@ -223,6 +231,10 @@ Need starter file → Copy assets/templates/template.yaml
 │       └── scripts/organize_docs.sh
 │
 ├── bronze/
+│   ├── bronze-layer-setup/SKILL.md                       # End-to-end Bronze setup
+│   │   ├── references/{requirements-template,data-source-approaches,validation-queries}.md
+│   │   ├── scripts/{setup_tables,copy_from_source}.py
+│   │   └── assets/templates/{bronze-setup-job,bronze-data-generator-job}.yaml
 │   └── faker-data-generation/SKILL.md                    # Synthetic data with Faker
 │       ├── references/faker-providers.md
 │       ├── scripts/generate_data.py
@@ -261,6 +273,14 @@ Need starter file → Copy assets/templates/template.yaml
 │       └── scripts/{export,import}_genie_space.py
 │
 ├── gold/
+│   ├── gold-layer-design/SKILL.md                        # ORCHESTRATOR: Gold design
+│   │   ├── references/{dimensional-modeling-guide,erd-organization-strategy,...}.md
+│   │   ├── scripts/generate_lineage_csv.py
+│   │   └── assets/templates/{business-onboarding,column-lineage,source-table-mapping}.*
+│   ├── gold-layer-implementation/SKILL.md                # ORCHESTRATOR: Gold implementation
+│   │   ├── references/{setup-script-patterns,merge-script-patterns,fk-constraint-patterns,...}.md
+│   │   ├── scripts/{setup_tables,merge_gold_tables,add_fk_constraints}_template.py
+│   │   └── assets/templates/{gold-setup-job,gold-merge-job}-template.yml
 │   ├── gold-layer-merge-patterns/SKILL.md                # MERGE operations
 │   │   └── assets/templates/{scd-type1,scd-type2,fact-table}-merge.py
 │   ├── gold-delta-merge-deduplication/SKILL.md           # Dedup before MERGE
@@ -281,6 +301,9 @@ Need starter file → Copy assets/templates/template.yaml
 │       └── assets/templates/gold-table-template.yaml
 │
 ├── silver/
+│   ├── silver-layer-creation/SKILL.md                    # Silver layer orchestrator
+│   │   ├── references/{silver-table-patterns,monitoring-patterns,pipeline-configuration}.md
+│   │   └── assets/templates/requirements-template.md
 │   ├── dlt-expectations-patterns/SKILL.md                # DLT expectations
 │   │   ├── references/{expectation-patterns,quarantine-patterns}.md
 │   │   └── assets/templates/expectations-config.yaml

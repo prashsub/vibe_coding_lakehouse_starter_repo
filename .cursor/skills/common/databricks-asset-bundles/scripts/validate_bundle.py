@@ -139,6 +139,70 @@ def check_missing_environment_key(resources_dir: Path) -> list[str]:
     return errors
 
 
+def check_alert_schema(resources_dir: Path) -> list[str]:
+    """Check for common Alert v2 schema mistakes."""
+    errors = []
+    
+    for yml_file in resources_dir.rglob("*.yml"):
+        try:
+            content = yml_file.read_text()
+            if "alerts:" not in content:
+                continue
+            
+            lines = content.split('\n')
+            for i, line in enumerate(lines, 1):
+                # Check for wrong field name: "condition:" instead of "evaluation:"
+                if re.search(r'^\s+condition:', line) and 'alerts:' in content:
+                    errors.append(f"{yml_file}:{i}: Alert uses 'condition:' (should be 'evaluation:')")
+                # Check for wrong cron field in alerts
+                if re.search(r'^\s+quartz_cron_expression:', line) and 'alerts:' in content:
+                    errors.append(f"{yml_file}:{i}: Alert uses 'quartz_cron_expression' (should be 'quartz_cron_schedule')")
+                # Check for top-level subscriptions (should be under evaluation.notification)
+                if re.search(r'^\s{4}subscriptions:', line) and 'alerts:' in content:
+                    errors.append(f"{yml_file}:{i}: Alert 'subscriptions' may be at wrong level (should be under evaluation.notification)")
+        except Exception as e:
+            errors.append(f"{yml_file}: Error reading file: {e}")
+    
+    return errors
+
+
+def check_volume_permissions(resources_dir: Path) -> list[str]:
+    """Check for volumes using permissions instead of grants."""
+    errors = []
+    
+    for yml_file in resources_dir.rglob("*.yml"):
+        try:
+            content = yml_file.read_text()
+            if "volumes:" not in content:
+                continue
+            if "permissions:" in content:
+                lines = content.split('\n')
+                for i, line in enumerate(lines, 1):
+                    if re.search(r'^\s+permissions:', line):
+                        errors.append(f"{yml_file}:{i}: Volume uses 'permissions:' (should be 'grants:')")
+        except Exception as e:
+            errors.append(f"{yml_file}: Error reading file: {e}")
+    
+    return errors
+
+
+def check_dashboard_hardcoded_catalog(resources_dir: Path) -> list[str]:
+    """Warn if dashboards are missing dataset_catalog/dataset_schema."""
+    warnings = []
+    
+    for yml_file in resources_dir.rglob("*.yml"):
+        try:
+            content = yml_file.read_text()
+            if "dashboards:" not in content:
+                continue
+            if "file_path:" in content and "dataset_catalog:" not in content:
+                warnings.append(f"{yml_file}: Dashboard missing 'dataset_catalog:' (catalog may be hardcoded in JSON)")
+        except Exception as e:
+            warnings.append(f"{yml_file}: Error reading file: {e}")
+    
+    return warnings
+
+
 def main():
     """Run all validation checks."""
     print("🔍 Pre-Deployment Validation")
@@ -220,6 +284,39 @@ def main():
         all_errors.extend(env_key_errors)
     else:
         print("✅ All tasks have environment_key")
+    
+    # 7. Check for Alert v2 schema mistakes
+    print("\n7. Checking for Alert v2 schema mistakes...")
+    alert_errors = check_alert_schema(resources_dir)
+    if alert_errors:
+        print("❌ ERROR: Found Alert v2 schema issues")
+        for error in alert_errors:
+            print(f"   {error}")
+        all_errors.extend(alert_errors)
+    else:
+        print("✅ No Alert schema issues")
+    
+    # 8. Check for Volume permissions format
+    print("\n8. Checking for Volume permissions format...")
+    volume_errors = check_volume_permissions(resources_dir)
+    if volume_errors:
+        print("❌ ERROR: Found Volumes using permissions (should be grants)")
+        for error in volume_errors:
+            print(f"   {error}")
+        all_errors.extend(volume_errors)
+    else:
+        print("✅ Volume permissions correct")
+    
+    # 9. Check for Dashboard hardcoded catalogs
+    print("\n9. Checking for Dashboard catalog parameterization...")
+    dashboard_warnings = check_dashboard_hardcoded_catalog(resources_dir)
+    if dashboard_warnings:
+        print("⚠️  WARNING: Dashboards may have hardcoded catalogs")
+        for warning in dashboard_warnings:
+            print(f"   {warning}")
+        # These are warnings, not errors - don't fail the build
+    else:
+        print("✅ Dashboard catalogs parameterized")
     
     # Summary
     print("\n" + "=" * 50)

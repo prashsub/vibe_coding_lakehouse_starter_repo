@@ -23,7 +23,11 @@ variables:
   
   warehouse_id:
     description: SQL Warehouse ID for serverless execution
-    default: "<warehouse_id>"
+    # ✅ PREFERRED: Lookup by name (portable across environments)
+    lookup:
+      warehouse: "Shared SQL Warehouse"
+    # Alternative: hardcode ID (less portable)
+    # default: "<warehouse_id>"
 
 targets:
   dev:

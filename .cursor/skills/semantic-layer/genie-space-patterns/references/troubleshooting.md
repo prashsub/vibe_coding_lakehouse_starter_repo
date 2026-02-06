@@ -240,7 +240,141 @@ Assets added in wrong order or tables prioritized.
 
 ---
 
+### Issue 8: Poor SQL Generation Due to Missing Table/Column Comments
+
+**Symptoms:**
+- Genie generates incorrect SQL (wrong columns, wrong joins)
+- Genie asks for clarification on simple questions
+- Genie doesn't recognize business terms users expect
+
+**Root Cause:**
+Missing or inadequate `COMMENT ON TABLE` and `COMMENT ON COLUMN` in Unity Catalog. Genie reads these comments to understand data semantics.
+
+**Solution:**
+
+```sql
+-- Step 1: Check which columns lack comments
+SELECT column_name, comment
+FROM information_schema.columns
+WHERE table_catalog = '${catalog}'
+  AND table_schema = '${gold_schema}'
+  AND table_name = '${table_name}'
+  AND comment IS NULL;
+
+-- Step 2: Add business-friendly comments
+COMMENT ON TABLE ${catalog}.${gold_schema}.fact_sales IS
+  'Daily retail sales transactions at store-SKU grain. Includes net revenue after discounts.';
+
+COMMENT ON COLUMN ${catalog}.${gold_schema}.fact_sales.total_amount IS
+  'Net sale amount in USD after discounts and before tax. Always >= 0.';
+
+COMMENT ON COLUMN ${catalog}.${gold_schema}.fact_sales.transaction_date IS
+  'Date the sale occurred. Used for time-based filtering (today, last month, YTD).';
+```
+
+**Prevention:**
+- Run the [Pre-Addition Verification Query](./trusted-assets.md#pre-addition-verification-query) before adding any asset
+- Follow the [Gold Layer Documentation Skill](../../gold/gold-layer-documentation/SKILL.md) standards
+- Zero NULL comments policy: every column must have a comment
+
+**Verification:**
+- [ ] Run information_schema query -- zero NULL comments
+- [ ] Comments use business language (not technical jargon)
+- [ ] Comments include valid values for enums/categories
+- [ ] Re-test benchmark questions after adding comments
+
+---
+
+### Issue 9: Slow Genie Responses (Wrong Warehouse Type)
+
+**Symptoms:**
+- Genie responses take 30+ seconds for simple queries
+- Warehouse startup delay before first response
+- Inconsistent response times
+
+**Root Cause:**
+Using Classic or Pro SQL Warehouse instead of Serverless.
+
+**Solution:**
+
+1. Verify warehouse type:
+   ```python
+   # Check current warehouse assignment
+   space = get_genie(space_id="your_space_id")
+   # Verify warehouse_id points to a Serverless warehouse
+   ```
+
+2. Switch to Serverless:
+   ```python
+   create_or_update_genie(
+       display_name="Your Space Name",  # Must match exactly
+       table_identifiers=[...],
+       warehouse_id="serverless_warehouse_id"
+   )
+   ```
+
+**Prevention:**
+- ALWAYS use Serverless SQL Warehouses for Genie Spaces
+- If auto-detecting, verify the selected warehouse is Serverless type
+- See [Warehouse Selection](./configuration-guide.md#warehouse-selection) for mandatory patterns
+
+**Verification:**
+- [ ] Warehouse type is Serverless (not Classic or Pro)
+- [ ] Simple queries respond in < 10 seconds
+- [ ] No manual cluster sizing needed
+
+---
+
+### Issue 10: Follow-up Context Contamination
+
+**Symptoms:**
+- Follow-up questions return unexpected results
+- Genie applies filters from previous unrelated questions
+- "Break that down by X" references wrong context
+
+**Root Cause:**
+Reusing `conversation_id` across unrelated questions. Genie carries forward context from the conversation, so unrelated questions inherit wrong filters/context.
+
+**Solution:**
+
+```python
+# ❌ WRONG: Same conversation for unrelated questions
+result1 = ask_genie(space_id, "Sales by region last month")
+result2 = ask_genie_followup(space_id, result1["conversation_id"],
+    "How many employees do we have?")  # ❌ Unrelated -- may inherit "last month" filter!
+
+# ✅ CORRECT: New conversation for new topic
+result1 = ask_genie(space_id, "Sales by region last month")
+result2 = ask_genie(space_id, "How many employees do we have?")  # ✅ Fresh context
+
+# ✅ CORRECT: Follow-up for related drill-down
+result1 = ask_genie(space_id, "Sales by region last month")
+result2 = ask_genie_followup(space_id, result1["conversation_id"],
+    "Which products drove the highest sales in the top region?")  # ✅ Related
+```
+
+**Prevention:**
+- Use `ask_genie()` (new conversation) for each unrelated question
+- Use `ask_genie_followup()` ONLY when the question explicitly references prior context
+- In automated testing, always use new conversations for each benchmark question
+
+**Verification:**
+- [ ] Each benchmark question uses a separate conversation
+- [ ] Follow-up tests explicitly reference prior context ("that", "same for", "break down")
+- [ ] No cross-topic context leakage in test results
+
+---
+
 ## Debugging Steps
+
+### Step 0: Verify Pre-Requisites
+
+Before debugging Genie behavior, check foundational requirements:
+- [ ] Serverless SQL Warehouse assigned (NOT Classic or Pro)
+- [ ] ALL trusted asset tables have TABLE and COLUMN comments (zero NULLs)
+- [ ] Column names are descriptive (no abbreviations like `clv`, `amt`, `dt`)
+- [ ] ONLY Gold layer assets used as trusted assets (no Silver/Bronze)
+- [ ] Table schemas were inspected before space creation
 
 ### Step 1: Verify 7-Section Structure
 
@@ -387,6 +521,12 @@ If issues persist:
 ---
 
 ## Version History
+
+- **v1.1** (Feb 2026) - New issues from reference material integration
+  - Added Issue 8: Poor SQL due to missing comments
+  - Added Issue 9: Slow responses from wrong warehouse type
+  - Added Issue 10: Follow-up context contamination
+  - Added Step 0: Pre-requisite verification to debugging steps
 
 - **v1.0** (Dec 2025) - Initial troubleshooting guide
   - Common issues and solutions

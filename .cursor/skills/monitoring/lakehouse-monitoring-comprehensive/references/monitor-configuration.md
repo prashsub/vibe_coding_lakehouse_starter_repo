@@ -173,6 +173,99 @@ wait_with_progress(minutes=15)  # ✅ Wait for async table creation
 document_monitoring_tables(spark, catalog, schema)  # ✅ Now tables exist
 ```
 
+### Preferred: Status Polling (Instead of Timer)
+
+**The polling approach is preferred** because it proceeds as soon as monitors are ready rather than always waiting the maximum time.
+
+```python
+from databricks.sdk.service.catalog import MonitorInfoStatus
+
+def wait_for_monitor_initialization(
+    w: WorkspaceClient,
+    table_name: str,
+    timeout_minutes: int = 20
+):
+    """
+    Wait for monitor to initialize by polling actual status.
+
+    Preferred over wait_with_progress() — proceeds as soon as ready.
+    """
+    start_time = time.time()
+    timeout_seconds = timeout_minutes * 60
+    check_interval = 60  # Check every minute
+
+    while (time.time() - start_time) < timeout_seconds:
+        try:
+            monitor_info = w.quality_monitors.get(table_name=table_name)
+
+            if monitor_info.status == MonitorInfoStatus.MONITOR_STATUS_ACTIVE:
+                elapsed_minutes = (time.time() - start_time) / 60
+                print(f"✓ Monitor active after {elapsed_minutes:.1f} minutes")
+                return True
+
+            elapsed = int((time.time() - start_time) / 60)
+            print(f"  Status: {monitor_info.status} (waited {elapsed}/{timeout_minutes} min)")
+            time.sleep(check_interval)
+
+        except Exception as e:
+            print(f"  Error checking status: {str(e)}")
+            time.sleep(check_interval)
+
+    print(f"✗ Timeout waiting for monitor initialization")
+    return False
+
+
+def wait_for_all_monitors(
+    w: WorkspaceClient,
+    catalog: str,
+    schema: str,
+    table_names: list,
+    timeout_minutes: int = 20
+):
+    """
+    Wait for multiple monitors to initialize concurrently.
+
+    Polls all pending monitors each cycle and removes them as they
+    reach ACTIVE status.
+    """
+    start_time = time.time()
+    timeout_seconds = timeout_minutes * 60
+    check_interval = 60
+
+    fully_qualified_tables = [f"{catalog}.{schema}.{t}" for t in table_names]
+    pending_tables = set(fully_qualified_tables)
+
+    while pending_tables and (time.time() - start_time) < timeout_seconds:
+        elapsed_minutes = (time.time() - start_time) / 60
+
+        for table in list(pending_tables):
+            try:
+                monitor_info = w.quality_monitors.get(table_name=table)
+
+                if monitor_info.status == MonitorInfoStatus.MONITOR_STATUS_ACTIVE:
+                    print(f"✓ {table} - ACTIVE")
+                    pending_tables.remove(table)
+                else:
+                    print(f"  {table} - {monitor_info.status} (waited {elapsed_minutes:.1f} min)")
+            except Exception as e:
+                print(f"  {table} - Error: {str(e)}")
+
+        if pending_tables:
+            time.sleep(check_interval)
+
+    return len(pending_tables) == 0
+
+# Use in workflow (preferred approach)
+create_sales_monitor(workspace_client, catalog, schema)
+success = wait_for_monitor_initialization(
+    workspace_client,
+    f"{catalog}.{schema}.fact_sales_daily",
+    timeout_minutes=20
+)
+if success:
+    document_monitoring_tables(spark, catalog, schema)  # ✅ Now tables exist
+```
+
 ## Complete Monitor Cleanup Pattern
 
 **Critical Rule: Delete Monitor AND Output Tables**

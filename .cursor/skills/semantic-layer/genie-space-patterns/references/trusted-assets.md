@@ -237,6 +237,94 @@ WHERE property_type = 'Apartment';
 
 ---
 
+## 🔴 MANDATORY: Gold Layer Assets ONLY
+
+**NEVER add Bronze or Silver tables as Genie trusted assets.**
+
+| Layer | Allow as Trusted Asset? | Reason |
+|-------|------------------------|--------|
+| **Gold** | ✅ YES | Business-level semantics, LLM-friendly comments, proper naming |
+| **Silver** | ❌ NO | Technical cleansing layer, no business context, streaming internals |
+| **Bronze** | ❌ NO | Raw ingestion, data quality issues, no governance metadata |
+
+**Why this matters:**
+- Gold tables have `COMMENT ON TABLE` and `COMMENT ON COLUMN` that Genie uses for SQL generation
+- Gold tables have descriptive column names (`customer_lifetime_value` not `clv`)
+- Gold tables have PK/FK constraints that help Genie understand joins
+- Silver/Bronze tables expose internal ETL structure that confuses Genie
+
+---
+
+## 🔴 MANDATORY: Table/Column Comments for Genie
+
+**Genie reads Unity Catalog metadata to understand your data.** Every trusted asset MUST have:
+
+### Table Comments
+```sql
+-- ✅ CORRECT: Business-friendly, describes grain and scope
+COMMENT ON TABLE ${catalog}.${gold_schema}.fact_sales IS
+  'Daily retail sales transactions at store-SKU grain. Includes net revenue, discounts, and returns.';
+
+-- ❌ WRONG: Missing comment or technical jargon
+-- (no comment set)
+-- 'Silver deduplicated output from CDC stream'
+```
+
+### Column Comments
+```sql
+-- ✅ CORRECT: Business meaning, valid values, format hints
+COMMENT ON COLUMN ${catalog}.${gold_schema}.fact_sales.total_amount IS
+  'Net sale amount in USD after discounts and before tax. Always >= 0.';
+
+COMMENT ON COLUMN ${catalog}.${gold_schema}.dim_customer.segment IS
+  'Customer segment: Enterprise, Mid-Market, SMB, or Individual. Assigned by annual spend tier.';
+
+-- ❌ WRONG: No comment or technical description
+-- (no comment set)
+-- 'decimal(18,2) nullable'
+```
+
+### Pre-Addition Verification Query
+```sql
+-- Run this for EVERY table before adding as trusted asset
+SELECT
+  t.table_name,
+  t.comment AS table_comment,
+  c.column_name,
+  c.comment AS column_comment
+FROM information_schema.tables t
+JOIN information_schema.columns c
+  ON t.table_catalog = c.table_catalog
+  AND t.table_schema = c.table_schema
+  AND t.table_name = c.table_name
+WHERE t.table_catalog = '${catalog}'
+  AND t.table_schema = '${gold_schema}'
+  AND t.table_name = '${table_name}'
+ORDER BY c.ordinal_position;
+
+-- ❌ REJECT if table_comment IS NULL
+-- ❌ REJECT if ANY column_comment IS NULL
+```
+
+---
+
+## Column Naming Requirements for Genie
+
+**Genie generates better SQL when column names are self-documenting.**
+
+| ❌ WRONG (Cryptic) | ✅ CORRECT (Descriptive) | Why It Matters |
+|---|---|---|
+| `clv` | `customer_lifetime_value` | Genie maps "lifetime value" → column name |
+| `amt` | `total_amount` | Genie maps "total" or "amount" → column name |
+| `dt` | `transaction_date` | Genie maps "date" or "when" → column name |
+| `ws_id` | `workspace_id` | Genie maps "workspace" → column name |
+| `cat` | `product_category` | Genie maps "category" → column name |
+| `is_biz` | `is_business_booking` | Genie maps "business booking" → column name |
+
+**Rule:** If a column name requires a comment to be understood, the name itself is too cryptic. Rename it.
+
+---
+
 ## Asset Documentation Checklist
 
 For each Metric View:
@@ -246,6 +334,8 @@ For each Metric View:
 - [ ] List of key measures (categorized)
 - [ ] Window measures (if applicable)
 - [ ] 3-5 example use cases/questions
+- [ ] Source table has TABLE and COLUMN comments
+- [ ] All column names are descriptive (no abbreviations)
 
 For each TVF:
 - [ ] Fully qualified name (catalog.schema.function_name)
@@ -254,6 +344,7 @@ For each TVF:
 - [ ] Return column descriptions
 - [ ] When to use (specific scenarios)
 - [ ] Example query
+- [ ] Function COMMENT set with purpose and parameter guidance
 
 For each Table:
 - [ ] Fully qualified name (catalog.schema.table_name)
@@ -261,6 +352,9 @@ For each Table:
 - [ ] Key columns
 - [ ] Grain (for fact tables)
 - [ ] When to use (specific scenarios)
+- [ ] TABLE COMMENT set with business-friendly description
+- [ ] ALL COLUMN COMMENTs set (zero NULL comments)
+- [ ] Column names are self-documenting (no abbreviations)
 
 ---
 
@@ -306,3 +400,7 @@ Before adding assets to Genie Space:
 - [ ] Performance acceptable (< 10 sec for typical queries)
 - [ ] Assets organized in recommended order
 - [ ] No duplicate or redundant assets
+- [ ] ONLY Gold layer assets included (no Silver/Bronze)
+- [ ] Every table has TABLE COMMENT (verified via information_schema)
+- [ ] Every column has COLUMN COMMENT (zero NULLs)
+- [ ] All column names are descriptive (no abbreviations)

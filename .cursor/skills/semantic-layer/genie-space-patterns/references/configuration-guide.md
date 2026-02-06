@@ -19,6 +19,75 @@ Complete guide for configuring Databricks Genie Spaces with the mandatory 7-sect
 
 ---
 
+## Pre-Creation Table Inspection
+
+**🔴 MANDATORY: Before creating ANY Genie Space, inspect all target table schemas.**
+
+### Inspection Checklist
+
+For every table you plan to add as a trusted asset:
+
+```sql
+-- Step 1: Verify table exists and has a comment
+DESCRIBE TABLE EXTENDED ${catalog}.${gold_schema}.${table_name};
+
+-- Step 2: Check all columns have comments
+SELECT
+  column_name,
+  data_type,
+  comment
+FROM information_schema.columns
+WHERE table_catalog = '${catalog}'
+  AND table_schema = '${gold_schema}'
+  AND table_name = '${table_name}'
+ORDER BY ordinal_position;
+
+-- ❌ REJECT if ANY column has NULL comment
+-- ❌ REJECT if ANY column name is abbreviated (clv, amt, dt, etc.)
+```
+
+### What to Verify
+
+| Check | Pass Criteria | Fail Action |
+|-------|--------------|-------------|
+| Table comment exists | `COMMENT` is not NULL | Add via `COMMENT ON TABLE` |
+| All column comments exist | Zero NULL comments | Add via `COMMENT ON COLUMN` |
+| Column names are descriptive | No abbreviations | Rename columns or create view |
+| Date columns are DATE/TIMESTAMP | Proper date types | Fix in Gold layer DDL |
+| Primary keys defined | PK constraint exists | Add constraint |
+| Layer is Gold | Table is in Gold schema | Do NOT use Silver/Bronze |
+
+### Programmatic Inspection (Python)
+
+```python
+def inspect_table_for_genie(spark, catalog, schema, table_name):
+    """Validate a table is ready to be a Genie trusted asset."""
+    full_name = f"{catalog}.{schema}.{table_name}"
+    
+    # Check table comment
+    table_info = spark.sql(f"DESCRIBE TABLE EXTENDED {full_name}")
+    comment_row = table_info.filter("col_name = 'Comment'").collect()
+    if not comment_row or not comment_row[0]['data_type']:
+        raise ValueError(f"❌ Table {full_name} has no COMMENT")
+    
+    # Check column comments
+    cols = spark.sql(f"""
+        SELECT column_name, comment 
+        FROM information_schema.columns
+        WHERE table_catalog = '{catalog}'
+          AND table_schema = '{schema}'
+          AND table_name = '{table_name}'
+    """).collect()
+    
+    missing = [r['column_name'] for r in cols if not r['comment']]
+    if missing:
+        raise ValueError(f"❌ Columns without comments: {missing}")
+    
+    print(f"✅ {full_name} passed Genie readiness check")
+```
+
+---
+
 ## Section A: Space Name
 
 **REQUIRED FORMAT:**
@@ -274,6 +343,157 @@ SELECT * FROM ${catalog}.${gold_schema}.get_revenue_by_period('2024-01-01', '202
 | "X last month" | TVF | Specific dates |
 | "X for Q4 2024" | TVF | Specific dates |
 | "X trend for [period]" | TVF | Date range |
+
+---
+
+## Warehouse Selection
+
+### 🔴 MANDATORY: Serverless SQL Warehouse Only
+
+**ALWAYS use a Serverless SQL Warehouse for Genie Spaces.**
+
+| Warehouse Type | Allowed for Genie? | Why |
+|---|---|---|
+| **Serverless** | ✅ YES | Auto-scaling, instant startup, cost-efficient idle |
+| **Pro** | ❌ NO | Manual sizing, startup delay, over-provisioning risk |
+| **Classic** | ❌ NO | Legacy, no auto-scaling, poor interactive experience |
+
+**Setting the warehouse:**
+
+```python
+# ✅ CORRECT: Let tool auto-detect a Serverless warehouse
+create_or_update_genie(
+    display_name="Sales Analytics",
+    table_identifiers=[...],
+    # warehouse_id auto-detected (prefers running Serverless)
+)
+
+# ✅ CORRECT: Explicit Serverless warehouse ID
+create_or_update_genie(
+    display_name="Sales Analytics",
+    table_identifiers=[...],
+    warehouse_id="abc123def456"  # Must be Serverless type
+)
+```
+
+**Auto-detection priority:**
+1. Running Serverless warehouses first
+2. Starting warehouses second
+3. Smaller sizes preferred (cost-efficient)
+
+---
+
+## Conversation API Validation
+
+### 🔴 MANDATORY: Programmatic Testing After Deployment
+
+**After creating a Genie Space, validate ALL benchmark questions programmatically.**
+
+### Basic Validation Pattern
+
+```python
+def validate_genie_space(space_id: str, benchmark_questions: list[dict]):
+    """Validate Genie Space with benchmark questions via Conversation API."""
+    results = []
+    
+    for bq in benchmark_questions:
+        # ✅ NEW conversation for each unrelated question
+        result = ask_genie(
+            space_id=space_id,
+            question=bq["question"],
+            timeout_seconds=60
+        )
+        
+        passed = (
+            result["status"] == "COMPLETED"
+            and result["row_count"] > 0
+        )
+        
+        results.append({
+            "question": bq["question"],
+            "status": result["status"],
+            "rows": result.get("row_count", 0),
+            "sql": result.get("sql", "N/A"),
+            "passed": passed
+        })
+        
+        if not passed:
+            print(f"❌ FAILED: {bq['question']}")
+            print(f"   Status: {result['status']}")
+            print(f"   Error: {result.get('error', 'No rows returned')}")
+        else:
+            print(f"✅ PASSED: {bq['question']}")
+    
+    pass_rate = sum(1 for r in results if r["passed"]) / len(results) * 100
+    print(f"\n{'='*60}")
+    print(f"Pass rate: {pass_rate:.0f}% ({sum(1 for r in results if r['passed'])}/{len(results)})")
+    print(f"Target: 90%+")
+    
+    return results
+```
+
+### Follow-up Conversation Testing
+
+```python
+# ✅ CORRECT: Test follow-up context works
+result1 = ask_genie(space_id, "What were total sales last month?")
+result2 = ask_genie_followup(
+    space_id=space_id,
+    conversation_id=result1["conversation_id"],
+    question="Break that down by region"
+)
+# "that" should resolve to "total sales last month"
+assert result2["status"] == "COMPLETED"
+assert result2["row_count"] > 1  # Multiple regions expected
+```
+
+### Timeout Configuration
+
+| Query Complexity | Timeout | Examples |
+|---|---|---|
+| Simple aggregation | 30 seconds | "Total sales", "Count of customers" |
+| Multi-dimension GROUP BY | 60 seconds | "Sales by region and product" |
+| Complex joins / CTEs | 120 seconds | "Customer LTV with cohort analysis" |
+| Large data scans | 180 seconds | "All transactions for last year" |
+
+### When to Start New vs Follow-up Conversations
+
+| Scenario | Action | Why |
+|---|---|---|
+| Unrelated benchmark question | `ask_genie()` (new) | Prevents context contamination |
+| "Break that down by X" | `ask_genie_followup()` | Needs prior context |
+| "Same for last year" | `ask_genie_followup()` | Needs prior context |
+| Different domain entirely | `ask_genie()` (new) | Different routing needed |
+
+---
+
+## Genie Space Update Pattern
+
+**To update an existing Genie Space (add tables, change questions, update instructions):**
+
+```python
+# The tool finds the existing space by display_name and updates it
+create_or_update_genie(
+    display_name="Sales Analytics",  # Must match existing name exactly
+    table_identifiers=[
+        "catalog.gold.fact_sales",
+        "catalog.gold.dim_customer",
+        "catalog.gold.dim_product",
+        "catalog.gold.new_table_added"  # Added new table
+    ],
+    description="Updated description with new table context",
+    sample_questions=[
+        "What were total sales last month?",
+        "New question about the new table"  # Added new question
+    ]
+)
+```
+
+**Key rules for updates:**
+- `display_name` must EXACTLY match the existing space name
+- Provide the COMPLETE list of `table_identifiers` (not just additions)
+- Provide the COMPLETE list of `sample_questions` (not just additions)
+- Re-run Conversation API validation after updates
 
 ---
 

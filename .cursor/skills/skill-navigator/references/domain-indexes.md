@@ -31,7 +31,18 @@ This document contains detailed domain index summaries for the skill navigation 
 
 ## Gold Layer Index
 
-**Skills in domain:** 7 skills
+**Skills in domain:** 9 skills (including 2 orchestrators)
+
+### Orchestrator Skills (start here for end-to-end workflows)
+
+| Skill | SKILL.md | references/ | scripts/ | assets/ |
+|---|---|---|---|---|
+| `gold-layer-design` | ~1.4K | dimensional-modeling-guide, erd-organization-strategy, yaml-schema-patterns, lineage-documentation-guide, business-documentation-guide, validation-checklists | generate_lineage_csv.py | business-onboarding-template.md, column-lineage-template.csv, source-table-mapping-template.csv |
+| `gold-layer-implementation` | ~1.5K | setup-script-patterns, merge-script-patterns, fk-constraint-patterns, asset-bundle-job-patterns, common-issues, validation-queries | setup_tables_template.py, merge_gold_tables_template.py, add_fk_constraints_template.py | gold-setup-job-template.yml, gold-merge-job-template.yml, implementation-checklist.md |
+
+**Orchestrator workflow:** `gold-layer-design` → (creates YAML schemas, ERDs, docs) → `gold-layer-implementation` → (creates tables, merge scripts, jobs)
+
+### Specialized Skills (loaded by orchestrators or directly)
 
 | Skill | SKILL.md | references/ | scripts/ | assets/ |
 |---|---|---|---|---|
@@ -48,8 +59,11 @@ This document contains detailed domain index summaries for the skill navigation 
 2. Use explicit column mapping (Silver → Gold names may differ)
 3. Fact tables: verify grain (transaction vs aggregated)
 4. SCD2 dimensions need `is_current` filtering
+5. Design → Implementation flow: YAML schemas must exist before implementation
 
 **When to load full skills:**
+- Designing Gold from scratch → Load `gold-layer-design` (orchestrates all other Gold skills)
+- Implementing Gold from YAML → Load `gold-layer-implementation` (orchestrates setup, merge, constraints)
 - Duplicate key errors → Load `gold-delta-merge-deduplication`, then `references/dedup-patterns.md`
 - Creating Gold tables → Load `yaml-driven-gold-setup`, copy `assets/templates/gold-table-template.yaml`
 - Documentation → Load `gold-layer-documentation`, then `references/llm-optimization.md`
@@ -130,16 +144,26 @@ This document contains detailed domain index summaries for the skill navigation 
 
 ## Bronze Layer Index
 
-**Skills in domain:** 1 skill
+**Skills in domain:** 2 skills
 
 | Skill | SKILL.md | references/ | scripts/ | assets/ |
 |---|---|---|---|---|
+| `bronze-layer-setup` | ~1.5K | requirements-template, data-source-approaches, validation-queries | setup_tables.py, copy_from_source.py | bronze-setup-job.yaml, bronze-data-generator-job.yaml |
 | `faker-data-generation` | ~1.0K | faker-providers | generate_data.py | faker-config.yaml |
 
 **Key Patterns:**
-1. Use Faker with configurable corruption rates
-2. Generate realistic but identifiable test data
-3. Include edge cases for Silver layer testing
+1. Bronze layer optimized for testing/demos (not production ingestion)
+2. Three data source approaches: Faker (recommended), Existing tables, External copy
+3. Generate dimensions first, then facts (FK integrity)
+4. All tables need `CLUSTER BY AUTO`, CDF enabled, governance TBLPROPERTIES
+5. Use Faker with configurable corruption rates for DQ testing
+6. Date dimensions generated via SQL SEQUENCE (not Faker)
+
+**When to load full skills:**
+- Setting up Bronze layer → Load `bronze-layer-setup`, then `references/requirements-template.md`
+- Faker patterns (corruption, providers) → Load `faker-data-generation`, then `references/faker-providers.md`
+- Table DDL templates → Load `bronze-layer-setup`, copy `scripts/setup_tables.py`
+- Asset Bundle jobs → Load `bronze-layer-setup`, copy templates from `assets/templates/`
 
 ---
 

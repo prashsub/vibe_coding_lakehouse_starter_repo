@@ -106,6 +106,269 @@ BILLING_REGIONS = ['us-east-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1']
 BILLING_CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY']
 ```
 
+## Non-Linear Distribution Patterns
+
+**NEVER use `random.uniform()` for numeric values. Real data follows skewed distributions.**
+
+### Distribution Selection Guide
+
+| Data Type | Distribution | Function | Example |
+|---|---|---|---|
+| Monetary (prices, salaries, amounts) | Log-normal | `np.random.lognormal(mean, sigma, size)` | Orders cluster around median, long tail of large orders |
+| Durations (resolution time, session) | Exponential | `np.random.exponential(scale, size)` | Most fast, some very slow |
+| Popularity (views, downloads) | Pareto/Power law | `(np.random.pareto(a, size) + 1) * base` | Few items very popular, most not |
+| Counts (items per order) | Poisson | `np.random.poisson(lam, size)` | Clusters around average |
+| Categories (region, tier, status) | Weighted categorical | `np.random.choice(items, size, p=weights)` | Unequal probabilities |
+| Ratings (1-5 stars) | Skewed choice | `np.random.choice([1,2,3,4,5], p=weights)` | Most 4-5, few 1-2 |
+
+### Implementation
+
+```python
+import numpy as np
+
+# Log-normal: monetary values (mean and sigma control the shape)
+# mean=4.5, sigma=0.8 → median ~$90, range $10-$2000
+small_amounts = np.random.lognormal(mean=4.5, sigma=0.8, size=N)
+
+# mean=7, sigma=0.8 → median ~$1100, range $100-$30000
+enterprise_amounts = np.random.lognormal(mean=7, sigma=0.8, size=N)
+
+# Exponential: durations (scale = average value)
+resolution_hours = np.random.exponential(scale=24, size=N)  # avg 24 hours
+session_minutes = np.random.exponential(scale=15, size=N)   # avg 15 minutes
+
+# Pareto: popularity/ranking (a controls tail heaviness)
+page_views = (np.random.pareto(a=2.5, size=N) + 1) * 10
+
+# Weighted categorical: always specify probabilities
+regions = np.random.choice(
+    ['North', 'South', 'East', 'West'],
+    size=N, p=[0.40, 0.25, 0.20, 0.15]
+)
+
+tiers = np.random.choice(
+    ['Free', 'Pro', 'Enterprise'],
+    size=N, p=[0.60, 0.30, 0.10]
+)
+```
+
+---
+
+## Time-Based Pattern Functions
+
+**Generated data MUST include temporal patterns to look realistic in dashboards.**
+
+### Daily Volume Multiplier
+
+```python
+import holidays
+from datetime import datetime, timedelta
+
+# Dynamic date range: last 6 months from today
+END_DATE = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+START_DATE = END_DATE - timedelta(days=180)
+
+# Holiday calendar
+US_HOLIDAYS = holidays.US(years=[START_DATE.year, END_DATE.year])
+
+def get_daily_multiplier(date, us_holidays=US_HOLIDAYS):
+    """
+    Calculate realistic daily volume multiplier.
+    
+    Combines: weekday/weekend, holidays, seasonality, event spikes, and noise.
+    Returns a multiplier (e.g., 0.3 for holiday, 3.0 for incident spike).
+    """
+    multiplier = 1.0
+    
+    # Weekend drop (60% of weekday volume)
+    if date.weekday() >= 5:
+        multiplier *= 0.6
+    
+    # Holiday drop (30% of normal)
+    if date in us_holidays:
+        multiplier *= 0.3
+    
+    # Q4 seasonality (gradually increases Oct-Dec)
+    multiplier *= 1 + 0.15 * (date.month - 6) / 6
+    
+    # Random daily noise (±10%)
+    multiplier *= np.random.normal(1, 0.1)
+    
+    return max(0.1, multiplier)
+```
+
+### Event Spike Pattern
+
+```python
+# Define an incident/event within the date range
+INCIDENT_END = END_DATE - timedelta(days=21)     # 3 weeks ago
+INCIDENT_START = INCIDENT_END - timedelta(days=10)  # Lasted 10 days
+
+def get_daily_multiplier_with_spike(date, us_holidays=US_HOLIDAYS):
+    """Volume multiplier including event spike."""
+    multiplier = get_daily_multiplier(date, us_holidays)
+    
+    # Incident spike: 3x normal volume
+    if INCIDENT_START <= date <= INCIDENT_END:
+        multiplier *= 3.0
+    
+    return multiplier
+```
+
+### Distributing Records Across Dates
+
+```python
+import pandas as pd
+
+BASE_DAILY = N_RECORDS / 180  # Spread across 6 months
+
+date_range = pd.date_range(START_DATE, END_DATE, freq='D')
+daily_volumes = [
+    int(BASE_DAILY * get_daily_multiplier(d.to_pydatetime()))
+    for d in date_range
+]
+
+# Generate records distributed by daily volume
+records = []
+record_idx = 0
+for day, count in zip(date_range, daily_volumes):
+    for _ in range(count):
+        if record_idx >= N_RECORDS:
+            break
+        record = generate_record(day.to_pydatetime(), record_idx)
+        records.append(record)
+        record_idx += 1
+```
+
+---
+
+## Row Coherence Patterns
+
+**Attributes within a single row MUST correlate logically. Independent random values are unrealistic.**
+
+### Tier-Driven Coherence
+
+```python
+def generate_coherent_record(customer_id, tier, date):
+    """Generate a record where tier drives all dependent attributes."""
+    
+    # Amount correlates with tier
+    if tier == 'Enterprise':
+        amount = np.random.lognormal(7, 0.8)        # ~$1100 median
+        priority = np.random.choice(['Critical', 'High', 'Medium'], p=[0.3, 0.5, 0.2])
+    elif tier == 'Pro':
+        amount = np.random.lognormal(5, 0.7)        # ~$150 median
+        priority = np.random.choice(['High', 'Medium', 'Low'], p=[0.3, 0.5, 0.2])
+    else:  # Free
+        amount = np.random.lognormal(3.5, 0.6)      # ~$33 median
+        priority = np.random.choice(['Medium', 'Low'], p=[0.4, 0.6])
+    
+    # Resolution time correlates with priority
+    resolution_scale = {'Critical': 4, 'High': 12, 'Medium': 36, 'Low': 72}
+    resolution_hours = np.random.exponential(scale=resolution_scale[priority])
+    
+    # CSAT correlates with resolution time
+    if resolution_hours < 4:
+        csat = np.random.choice([4, 5], p=[0.3, 0.7])
+    elif resolution_hours < 24:
+        csat = np.random.choice([3, 4, 5], p=[0.2, 0.5, 0.3])
+    else:
+        csat = np.random.choice([1, 2, 3, 4], p=[0.1, 0.3, 0.4, 0.2])
+    
+    return {
+        "customer_id": customer_id,
+        "amount": round(amount, 2),
+        "priority": priority,
+        "resolution_hours": round(resolution_hours, 1),
+        "csat_score": csat,
+        "created_at": date.strftime("%Y-%m-%d"),
+    }
+```
+
+### Event-Driven Coherence
+
+```python
+def generate_ticket_during_incident(customer_id, tier, date, is_incident):
+    """During incidents, category distribution shifts and CSAT degrades."""
+    
+    if is_incident:
+        # Auth dominates during incident
+        category = np.random.choice(
+            ['Auth', 'Network', 'Billing', 'Account'],
+            p=[0.65, 0.15, 0.1, 0.1]
+        )
+    else:
+        category = np.random.choice(
+            ['Auth', 'Network', 'Billing', 'Account'],
+            p=[0.25, 0.30, 0.25, 0.20]
+        )
+    
+    # CSAT degrades during incident for Auth category
+    if is_incident and category == 'Auth':
+        csat = np.random.choice([1, 2, 3, 4, 5], p=[0.15, 0.25, 0.35, 0.2, 0.05])
+    else:
+        csat = np.random.choice([1, 2, 3, 4, 5], p=[0.02, 0.08, 0.20, 0.40, 0.30])
+    
+    return {"category": category, "csat_score": csat}
+```
+
+---
+
+## Weighted Sampling for Facts
+
+**Dimension characteristics MUST drive fact generation. Enterprise customers generate more activity.**
+
+```python
+# Build weighted lookup from dimension DataFrame
+customer_ids = customers_pdf["customer_id"].tolist()
+customer_tier_map = dict(zip(customers_pdf["customer_id"], customers_pdf["tier"]))
+
+# Weight: Enterprise=5x, Pro=2x, Free=1x
+tier_weights = customers_pdf["tier"].map({'Enterprise': 5.0, 'Pro': 2.0, 'Free': 1.0})
+customer_weights = (tier_weights / tier_weights.sum()).tolist()
+
+# Generate fact records with weighted selection
+for i in range(N_ORDERS):
+    cid = np.random.choice(customer_ids, p=customer_weights)
+    tier = customer_tier_map[cid]
+    
+    # Amount depends on selected customer's tier (row coherence)
+    amount = np.random.lognormal(
+        7 if tier == 'Enterprise' else 5 if tier == 'Pro' else 3.5,
+        0.7
+    )
+    
+    records.append({
+        "order_id": f"ORD-{i:06d}",
+        "customer_id": cid,
+        "amount": round(amount, 2),
+    })
+```
+
+---
+
+## Validation Section (End of Script)
+
+**ALWAYS include validation prints at the end of generation scripts:**
+
+```python
+print("\n=== VALIDATION ===")
+print(f"Customers: {len(customers_pdf):,}")
+print(f"  Tier distribution: {customers_pdf['tier'].value_counts(normalize=True).round(2).to_dict()}")
+print(f"Orders: {len(orders_pdf):,}")
+print(f"  Avg amount by tier: {orders_pdf.merge(customers_pdf[['customer_id','tier']]).groupby('tier')['amount'].mean().round(2).to_dict()}")
+print(f"Tickets: {len(tickets_pdf):,}")
+
+# Check incident spike
+if 'INCIDENT_START' in dir():
+    incident_tickets = tickets_pdf[tickets_pdf['created_at'].between(
+        INCIDENT_START.strftime("%Y-%m-%d"), INCIDENT_END.strftime("%Y-%m-%d")
+    )]
+    print(f"  Incident period: {len(incident_tickets):,} ({len(incident_tickets)/len(tickets_pdf)*100:.1f}%)")
+```
+
+---
+
 ## Corruption Patterns by Category
 
 ### 1. Missing Required Fields

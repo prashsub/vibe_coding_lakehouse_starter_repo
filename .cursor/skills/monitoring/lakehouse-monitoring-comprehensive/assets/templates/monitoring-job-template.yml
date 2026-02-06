@@ -1,0 +1,59 @@
+# Lakehouse Monitoring Job Template
+#
+# Two-task structure:
+# 1. setup_monitors: Creates monitors with custom metrics
+# 2. wait_for_initialization: Polls until monitors reach ACTIVE status
+#
+# Usage: Copy and customize for your project.
+# Reference: .cursor/skills/common/databricks-asset-bundles/SKILL.md
+
+resources:
+  jobs:
+    lakehouse_monitoring_job:
+      name: "[${bundle.target}] Lakehouse Monitoring Setup"
+      description: "Creates Lakehouse Monitors for Gold layer tables with custom business metrics"
+
+      tags:
+        environment: ${bundle.target}
+        layer: monitoring
+        job_type: setup
+
+      # Serverless environment
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+            dependencies:
+              - "databricks-sdk>=0.28.0"
+
+      tasks:
+        # Task 1: Create monitors
+        - task_key: setup_monitors
+          description: "Create Lakehouse Monitors with custom metrics for Gold tables"
+          environment_key: default
+          notebook_task:
+            notebook_path: ../../src/${var.project_name}_monitoring/setup_monitors.py
+            base_parameters:
+              catalog: ${var.catalog}
+              gold_schema: ${var.gold_schema}
+
+        # Task 2: Wait for initialization (depends on Task 1)
+        - task_key: wait_for_initialization
+          description: "Wait for monitors to reach ACTIVE status (15-20 min)"
+          depends_on:
+            - task_key: setup_monitors
+          environment_key: default
+          notebook_task:
+            notebook_path: ../../src/${var.project_name}_monitoring/wait_for_initialization.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.gold_schema}
+              timeout: "20"
+
+      # Email notifications on failure
+      email_notifications:
+        on_failure:
+          - ${var.notification_email}
+
+      # Timeout: 45 minutes (setup + initialization wait)
+      timeout_seconds: 2700
