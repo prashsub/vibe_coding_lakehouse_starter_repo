@@ -1,9 +1,9 @@
 ---
 name: databricks-table-valued-functions
-description: Patterns and best practices for creating Table-Valued Functions (TVFs) in Databricks optimized for Genie Space natural language queries. Use when creating TVFs for Genie Spaces, troubleshooting TVF compilation errors, or ensuring Genie compatibility. Includes schema validation patterns, SQL requirements (STRING parameters, parameter ordering, LIMIT workarounds), LLM-friendly comment format, null safety, SCD2 handling, and cartesian product prevention.
+description: End-to-end guide for planning, creating, deploying, and validating Table-Valued Functions (TVFs) in Databricks optimized for Genie Space natural language queries. Use when creating TVFs for Genie Spaces, planning TVF requirements from business questions, troubleshooting TVF compilation errors, or ensuring Genie compatibility. Includes requirements gathering templates, schema validation patterns, SQL requirements (STRING parameters, parameter ordering, LIMIT workarounds), v3.0 bullet-point comment format, null safety, SCD2 handling, cartesian product prevention, 5 complete domain-adaptable examples, Asset Bundle deployment patterns, and post-deployment validation queries.
 metadata:
   author: databricks-sa
-  version: "1.0"
+  version: "2.0"
   domain: semantic-layer
 ---
 
@@ -11,24 +11,94 @@ metadata:
 
 ## Overview
 
-Table-Valued Functions (TVFs) in Databricks have specific requirements when used with Genie Spaces for natural language queries. This skill standardizes TVF creation to ensure Genie compatibility and SQL compliance.
+Table-Valued Functions (TVFs) provide **pre-built, parameterized queries** that Genie can invoke for natural language access to your data. This skill covers the entire TVF lifecycle: planning, creation, deployment, and validation.
+
+**Why TVFs Matter:**
+- **Pre-built queries** ensure consistent business logic across all consumers
+- **LLM-friendly metadata** helps Genie understand when to use each function
+- **Proper SQL patterns** prevent compile-time errors and data inflation bugs
+- **Parameterized access** gives users instant answers to common questions
 
 **Key Capabilities:**
+- Plan TVFs from business questions using requirements gathering templates
 - Create TVFs with Genie-compatible parameter types (STRING for dates)
 - Validate schemas before writing SQL to prevent 100% of compilation errors
-- Structure comments for optimal Genie natural language query matching
+- Structure comments (v3.0 bullet-point format) for optimal Genie query matching
 - Handle SCD2 dimensions with proper `is_current` filtering
 - Prevent cartesian products in aggregation CTEs
 - Use proper parameter ordering and LIMIT workarounds
+- Deploy TVFs via Asset Bundle jobs
+- Validate TVFs with post-deployment queries
+
+**What TVFs Provide:**
+- ✅ Parameterized queries with input parameters
+- ✅ LLM-friendly metadata for Genie understanding
+- ✅ Genie-compatible types (STRING for dates, not DATE)
+- ✅ Top N patterns using WHERE rank <= param (not LIMIT param)
+- ✅ Null safety with NULLIF for all divisions
+- ❌ No DATE parameters (Genie doesn't support DATE type)
+- ❌ No LIMIT with parameters (use ROW_NUMBER + WHERE instead)
 
 ## When to Use This Skill
 
 Use this skill when:
+- Planning which TVFs to create from business questions
 - Creating TVFs for Genie Spaces
 - Troubleshooting TVF compilation errors
 - Ensuring Genie compatibility
 - Validating schemas before writing SQL
+- Deploying TVFs via Asset Bundles
 - Preventing common SQL errors (parameter types, LIMIT clauses, cartesian products)
+
+## Quick Start (2-3 hours)
+
+**Goal:** Create 10-15 pre-built, parameterized SQL queries for common business questions.
+
+**What You'll Create:**
+1. `table_valued_functions.sql` — SQL file with 10-15 TVF definitions
+2. `tvf_job.yml` — Asset Bundle job (SQL task) for deployment
+
+**Fast Track:**
+```sql
+CREATE OR REPLACE FUNCTION get_top_stores_by_revenue(
+    start_date STRING COMMENT 'Start date (format: YYYY-MM-DD)',
+    end_date STRING COMMENT 'End date (format: YYYY-MM-DD)',
+    top_n INT DEFAULT 10 COMMENT 'Number of top stores to return'
+)
+RETURNS TABLE(
+    rank INT COMMENT 'Store rank by revenue',
+    store_name STRING COMMENT 'Store display name',
+    total_revenue DECIMAL(18,2) COMMENT 'Total revenue for period'
+)
+COMMENT '
+• PURPOSE: Returns top N stores ranked by revenue for a date range
+• BEST FOR: "What are the top 10 stores by revenue?" | "Show me best performing stores"
+• RETURNS: Individual store rows (rank, store_name, total_revenue)
+• PARAMS: start_date, end_date, top_n (default: 10)
+• SYNTAX: SELECT * FROM get_top_stores_by_revenue(''2024-01-01'', ''2024-12-31'', 10)
+'
+RETURN ...;
+```
+
+**Common Business Naming Patterns:**
+
+| Pattern | Template | Example |
+|---|---|---|
+| **Top N** | `get_top_{entity}_by_{metric}(start_date, end_date, top_n)` | `get_top_stores_by_revenue(...)` |
+| **Trending** | `get_{metric}_trend(start_date, end_date)` | `get_daily_sales_trend(...)` |
+| **Comparison** | `get_{metric}_by_{dimension}(start_date, end_date)` | `get_sales_by_state(...)` |
+| **Performance** | `get_{entity}_performance(entity_id, start_date, end_date)` | `get_store_performance(...)` |
+
+**Critical SQL Rules:**
+- STRING for date parameters (never DATE)
+- Required parameters first, DEFAULT parameters last
+- ROW_NUMBER + WHERE for Top N (never LIMIT with parameter)
+
+**Output:** 10-15 TVFs callable by Genie and queryable via SQL
+
+See `references/tvf-planning-guide.md` for question categorization and domain examples.
+See `references/tvf-examples.md` for 5 complete, production-ready TVF implementations.
+See `assets/templates/tvf-requirements-template.md` to plan your TVFs before coding.
 
 ## Critical Rules
 
@@ -286,6 +356,65 @@ See `references/genie-integration.md` for detailed examples.
 - [ ] Function tested in Genie Space (if applicable)
 - [ ] **Results validated against metric view** (ratio ≈ 1.0, not 254x)
 
+## Implementation Workflow
+
+### Phase 1: Planning (30 min)
+- [ ] Fill out requirements template (`assets/templates/tvf-requirements-template.md`)
+- [ ] List 10-15 common business questions from stakeholders
+- [ ] Categorize questions (revenue, product, entity, trend)
+- [ ] Map questions to TVF names and parameters using naming patterns
+- [ ] Identify required vs optional parameters
+
+See `references/tvf-planning-guide.md` for question categories and domain examples.
+
+### Phase 2: SQL Development (1-2 hours)
+- [ ] Consult YAML schemas FIRST (Rule #0 — see `references/tvf-patterns.md`)
+- [ ] Create `table_valued_functions.sql` following file organization pattern
+- [ ] Implement each TVF following the template (`assets/templates/tvf-template.sql`)
+- [ ] Verify all date parameters are STRING type
+- [ ] Verify parameter ordering (required first)
+- [ ] Verify Top N uses ROW_NUMBER + WHERE (not LIMIT)
+- [ ] Verify all divisions use NULLIF
+
+See `references/tvf-examples.md` for 5 complete TVF examples covering different patterns.
+
+### Phase 3: Metadata (30 min)
+- [ ] Add function-level COMMENT using v3.0 bullet-point format
+- [ ] Add 2+ example questions per function (BEST FOR)
+- [ ] Add COMMENT to every parameter (include format for STRING dates)
+- [ ] Add COMMENT to every returned column
+- [ ] Add NOT FOR / PREFERRED OVER cross-references where applicable
+
+See `references/genie-integration.md` for comment format details and Genie misuse prevention.
+
+### Phase 4: Testing (30 min)
+- [ ] Compile each function (no syntax errors)
+- [ ] Execute with valid parameters
+- [ ] Test edge cases (empty results, null values)
+- [ ] Validate results against metric view (ratio ≈ 1.0)
+- [ ] Verify results match expectations
+
+See `scripts/validate_tvfs.sql` for ready-to-run validation queries.
+
+### Phase 5: Deployment
+- [ ] Add to Asset Bundle job (`sql_task` with `warehouse_id`)
+- [ ] Deploy: `databricks bundle deploy -t dev`
+- [ ] Run: `databricks bundle run gold_setup_job -t dev`
+- [ ] Test in Genie Space (if applicable)
+
+See `references/tvf-patterns.md` (Asset Bundle Deployment section) for job YAML patterns.
+
+**Time Estimates:**
+
+| Phase | Duration | Activities |
+|---|---|---|
+| Phase 1: Planning | 30 min | Requirements gathering, question mapping |
+| Phase 2: SQL Development | 1-2 hours | Write 10-15 TVFs with schema validation |
+| Phase 3: Metadata | 30 min | v3.0 comments, parameter/column documentation |
+| Phase 4: Testing | 30 min | Compile, execute, validate against metric views |
+| Phase 5: Deployment | 30 min | Asset Bundle deploy, Genie Space testing |
+| **Total** | **2-3 hours** | For 10-15 TVFs |
+
 ## Common Mistakes to Avoid
 
 ❌ **Don't:**
@@ -304,12 +433,19 @@ See `references/genie-integration.md` for detailed examples.
 
 ## Reference Files
 
-- **`references/tvf-patterns.md`** - SQL patterns, parameter types, cartesian product prevention
-- **`references/genie-integration.md`** - Genie compatibility, comment format, tips
+- **`references/tvf-patterns.md`** — SQL patterns, parameter types, cartesian product prevention, schema validation, SQL file organization, Asset Bundle deployment
+- **`references/genie-integration.md`** — Genie compatibility, v3.0 comment format, misuse prevention, professional language standards
+- **`references/tvf-examples.md`** — 5 complete production-ready TVF examples (ranking, drilldown, product, geographic, temporal)
+- **`references/tvf-planning-guide.md`** — Question categorization, TVF planning tables, domain-specific examples (Retail, Healthcare, Finance, Hospitality)
 
 ## Assets
 
-- **`assets/templates/tvf-template.sql`** - Starter SQL template for new TVFs
+- **`assets/templates/tvf-template.sql`** — Starter SQL template for new TVFs with v3.0 comment format
+- **`assets/templates/tvf-requirements-template.md`** — Requirements gathering template (fill in before coding)
+
+## Scripts
+
+- **`scripts/validate_tvfs.sql`** — Post-deployment validation queries (list, describe, test, compare to metric views)
 
 ## References
 
@@ -324,7 +460,8 @@ See `references/genie-integration.md` for detailed examples.
 
 ## Version History
 
-- **v3.0** (Dec 16, 2025) - Standardized TVF comment format for Genie optimization
-- **v2.1** (Dec 15, 2025) - Critical bug prevention: Cartesian product in aggregations
-- **v2.0** (Dec 2025) - Major enhancement: Schema-first development patterns
+- **v2.0** (Feb 2026) - Merged comprehensive TVF creation workflow: Quick Start, requirements gathering template, 5 complete examples, planning guide with domain-specific examples, implementation workflow (5 phases), Asset Bundle deployment patterns, validation queries, common business naming patterns
+- **v1.3** (Dec 16, 2025) - Standardized TVF comment format v3.0 for Genie optimization
+- **v1.2** (Dec 15, 2025) - Critical bug prevention: Cartesian product in aggregations
+- **v1.1** (Dec 2025) - Major enhancement: Schema-first development patterns
 - **v1.0** (Oct 2025) - Initial rule based on 15 TVF deployment learnings

@@ -1,0 +1,1017 @@
+---
+description: MLflow GenAI Evaluation patterns - LLM judges, custom scorers, and agent evaluation
+globs: src/agents/**/*.py
+alwaysApply: false
+---
+# MLflow GenAI Evaluation Patterns for Agents
+
+## Pattern Recognition
+Agent evaluation using MLflow 3.0+ `mlflow.genai.evaluate()` with LLM-as-judge scorers and custom evaluation metrics. Based on production implementation of Databricks Health Monitor Agent evaluation system.
+
+## Core Principles
+
+### 1. Evaluation Dataset as Ground Truth
+- Use JSON/YAML-based evaluation datasets with expected outputs
+- Structure: queries + optional context + expected outputs
+- Link datasets to MLflow runs for reproducibility
+- Version control evaluation datasets in Git
+
+### 2. Multiple Evaluation Judges
+- Combine built-in and custom LLM judges
+- Use weighted scoring for deployment decisions
+- Each judge evaluates specific quality dimensions
+- Custom judges can use domain-specific criteria
+
+### 3. Traceability and Observability
+- All evaluations logged to dedicated MLflow experiment
+- Each evaluation creates a new run with metrics
+- Scored outputs CSV artifact contains per-query results
+- Traces show detailed judge reasoning
+
+---
+
+## ⚠️ CRITICAL: Evaluation Run Naming Convention
+
+**ALWAYS use consistent run naming** for querying latest evaluation results.
+
+```python
+# ✅ CORRECT: Consistent prefix + timestamp
+run_name = f"eval_pre_deploy_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+mlflow.genai.evaluate(
+    model=model_uri,
+    data=eval_dataset,
+    model_type="databricks-agent",
+    evaluators=evaluators,
+    evaluator_config=evaluator_config,
+    experiment_name="/Shared/health_monitor_agent_evaluation",
+    run_name=run_name,  # ✅ Consistent naming
+)
+
+# Query latest evaluation
+runs = mlflow.search_runs(
+    filter_string="tags.mlflow.runName LIKE 'eval_pre_deploy_%'",  # ✅ Predictable
+    order_by=["start_time DESC"],
+    max_results=1
+)
+```
+
+**Why this matters:**
+- Automated checks can find latest evaluation results
+- Consistent naming enables programmatic threshold validation
+- CI/CD pipelines can query recent evaluation metrics
+
+---
+
+## Built-in MLflow Judges
+
+### 1. Relevance Judge
+Evaluates whether response addresses the user's query.
+
+```python
+from mlflow.metrics.genai import relevance
+
+evaluators = [
+    ("relevance", relevance, 1.0),  # (name, scorer, weight)
+]
+
+# Threshold check
+thresholds = {
+    "relevance/mean": 0.4,  # Minimum acceptable relevance score
+}
+```
+
+**Measures:**
+- Query understanding
+- Response alignment with question
+- Answer completeness
+
+### 2. Safety Judge
+Evaluates response safety and harmfulness.
+
+```python
+from mlflow.metrics.genai import safety
+
+evaluators = [
+    ("safety", safety, 1.0),
+]
+
+# Threshold check
+thresholds = {
+    "safety/mean": 0.7,  # High threshold - critical for production
+}
+```
+
+**Measures:**
+- Harmful content detection
+- Bias identification
+- Inappropriate responses
+
+### 3. Guidelines Judge
+Evaluates adherence to custom guidelines/instructions.
+
+```python
+from mlflow.metrics.genai import Guidelines
+
+# Define custom guidelines (list of strings)
+guidelines = [
+    """Response Structure and Formatting:
+    - MUST start with a direct answer in the first 1-2 sentences
+    - MUST use markdown formatting with proper headings (##)
+    - MUST use **bold** for key metrics and findings
+    - MUST use tables for comparisons
+    - MUST follow standard structure: Summary → Analysis → Recommendations → Data Sources""",
+    
+    """Data Accuracy and Specificity:
+    - MUST include specific numbers (actual costs in $, DBUs, percentages)
+    - MUST include time context (when data is from)
+    - MUST include trend direction (↑/↓ or "increased"/"decreased")
+    - MUST cite sources explicitly: [Cost Genie], [Security Genie], etc.""",
+    
+    """No Data Fabrication (CRITICAL):
+    - MUST NEVER fabricate or guess at numbers
+    - If Genie returns an error, MUST say so explicitly
+    - MUST NEVER hallucinate data that looks real but is fabricated""",
+    
+    """Actionability and Recommendations:
+    - MUST provide specific, actionable next steps
+    - MUST include concrete implementation details
+    - MUST prioritize recommendations by urgency
+    - MUST include estimated impact or savings where applicable""",
+]
+
+evaluators = [
+    ("guidelines", Guidelines(guidelines=guidelines), 1.0),
+]
+
+# Threshold check
+thresholds = {
+    "guidelines/mean": 0.5,  # Lowered from strict 8-section guidelines
+}
+```
+
+**Guidelines Best Practices:**
+- Keep to 4-6 essential sections (not 8+)
+- Focus on critical quality dimensions
+- Make criteria objectively verifiable
+- Include examples of correct/incorrect patterns
+
+---
+
+## ⚠️ CRITICAL: Databricks SDK for Scorer LLM Calls
+
+**ALWAYS use Databricks SDK (NOT `langchain_databricks`) for LLM calls in custom scorers.**
+
+### Why Databricks SDK?
+
+| Issue | langchain_databricks | Databricks SDK |
+|---|---|---|
+| **Serverless Compute** | ❌ Package install failures | ✅ No install needed |
+| **Authentication** | ❌ Varies by environment | ✅ Automatic in notebooks |
+| **Deployment Jobs** | ❌ Unreliable auth | ✅ Reliable auth |
+| **Support** | ⚠️ Community package | ✅ Official Databricks SDK |
+
+### Pattern: LLM Call Helper for Scorers
+
+```python
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
+import json
+
+def _call_llm_for_scoring(
+    prompt: str,
+    endpoint: str = "databricks-claude-3-7-sonnet"
+) -> dict:
+    """
+    Call LLM using Databricks SDK for scorer evaluation.
+    
+    Args:
+        prompt: Evaluation prompt for the LLM
+        endpoint: Model serving endpoint name
+        
+    Returns:
+        Parsed JSON response from LLM
+        
+    Why Databricks SDK:
+    - ✅ Automatic authentication in notebooks
+    - ✅ No package installation issues on serverless
+    - ✅ More reliable in deployment jobs
+    - ✅ Direct SDK support from Databricks
+    """
+    w = WorkspaceClient()  # Automatic auth
+    
+    response = w.serving_endpoints.query(
+        name=endpoint,
+        messages=[ChatMessage(role=ChatMessageRole.USER, content=prompt)],
+        temperature=0  # Deterministic for scoring
+    )
+    
+    # Parse JSON response
+    return json.loads(response.choices[0].message.content)
+```
+
+**Usage in Scorers:**
+
+```python
+@scorer
+def custom_domain_scorer(inputs: Dict, outputs: Dict, expectations: Optional[Dict] = None) -> Score:
+    """Custom scorer using Databricks SDK for LLM calls."""
+    
+    response_text = _extract_response_text(outputs)  # See next section
+    query = inputs.get("request", "")
+    
+    # Build scorer prompt
+    prompt = f"""Evaluate this response for domain accuracy.
+
+Query: {query}
+Response: {response_text}
+
+Return JSON: {{"score": 0.0-1.0, "rationale": "explanation"}}
+"""
+    
+    # ✅ Call LLM via Databricks SDK
+    result = _call_llm_for_scoring(prompt)
+    
+    return Score(
+        value=result["score"],
+        rationale=result["rationale"]
+    )
+```
+
+---
+
+## ⚠️ CRITICAL: Response Extraction for `mlflow.genai.evaluate()`
+
+**The Problem:** `mlflow.genai.evaluate()` serializes `ResponsesAgentResponse` to a dict before passing to scorers. Custom scorers that expect the agent's native response format will fail or return 0.0.
+
+### What Scorers Receive
+
+When using `mlflow.genai.evaluate()`, the `outputs` parameter is NOT the agent's native response object:
+
+```python
+# What scorers receive from mlflow.genai.evaluate():
+outputs = {
+    'id': 'resp_...',
+    'object': 'response',
+    'output': [
+        {
+            'type': 'message',
+            'id': 'msg_...',
+            'content': [
+                {'type': 'output_text', 'text': 'The actual response text...'}
+            ]
+        }
+    ],
+    'custom_outputs': {...}
+}
+```
+
+### The Solution: Universal Response Extraction Helper
+
+**MANDATORY: Include this helper in ALL custom scorers:**
+
+```python
+from typing import Union, Any
+
+def _extract_response_text(outputs: Union[dict, Any]) -> str:
+    """
+    Extract response text from mlflow.genai.evaluate() serialized format.
+    
+    Handles multiple formats:
+    - ResponsesAgentResponse (direct predict)
+    - Serialized dict from mlflow.genai.evaluate()
+    - Legacy string formats
+    
+    Args:
+        outputs: Agent outputs in various formats
+        
+    Returns:
+        Extracted response text string
+        
+    Why This Is Critical:
+    - Without this, scorers receive serialized dicts
+    - Attempting to parse as native object returns empty string
+    - Results in all scores = 0.0 (silent failure)
+    - Required 5+ deployment iterations to discover root cause
+    """
+    # Case 1: Already a string (unlikely)
+    if isinstance(outputs, str):
+        return outputs
+    
+    # Case 2: ResponsesAgentResponse object (direct predict)
+    if hasattr(outputs, 'output'):
+        # Get first output item content
+        if outputs.output and len(outputs.output) > 0:
+            output_item = outputs.output[0]
+            if hasattr(output_item, 'content') and output_item.content:
+                return output_item.content[0].text
+    
+    # Case 3: Serialized dict from mlflow.genai.evaluate() (MOST COMMON)
+    if isinstance(outputs, dict):
+        # Try output list first (MLflow 3.0+ format)
+        if 'output' in outputs:
+            output_list = outputs['output']
+            if output_list and len(output_list) > 0:
+                output_item = output_list[0]
+                if 'content' in output_item:
+                    content_list = output_item['content']
+                    if content_list and len(content_list) > 0:
+                        return content_list[0].get('text', '')
+        
+        # Fallback: try direct response key (legacy format)
+        if 'response' in outputs:
+            return outputs['response']
+        
+        # Fallback: try messages format
+        if 'messages' in outputs:
+            messages = outputs['messages']
+            if messages and len(messages) > 0:
+                return messages[-1].get('content', '')
+    
+    # Last resort: return empty string (will score as 0)
+    # Log warning to help debug
+    print(f"⚠️ Warning: Could not extract response text from outputs type: {type(outputs)}")
+    return ""
+```
+
+### Usage in Custom Scorers
+
+**ALWAYS extract response text first:**
+
+```python
+@scorer
+def custom_domain_scorer(inputs: Dict, outputs: Dict, expectations: Optional[Dict] = None) -> Score:
+    """
+    Custom scorer that works with mlflow.genai.evaluate().
+    
+    CRITICAL: Must extract response text properly before scoring.
+    """
+    # ✅ STEP 1: Extract response text (MANDATORY)
+    response_text = _extract_response_text(outputs)
+    
+    # ✅ STEP 2: Extract query
+    query = inputs.get("request", "")
+    
+    # ✅ STEP 3: Score the response
+    score_value = calculate_score(response_text, query)
+    
+    return Score(value=score_value, rationale="...")
+```
+
+### Without This Helper (What Goes Wrong)
+
+```python
+# ❌ BAD: Direct attribute access fails silently
+@scorer
+def broken_scorer(inputs: Dict, outputs: Dict, expectations: Optional[Dict] = None) -> Score:
+    # This will return empty string or KeyError:
+    response_text = outputs.get("response", "")  # ❌ Key doesn't exist!
+    
+    # Or this will fail:
+    response_text = outputs["choices"][0]["message"]["content"]  # ❌ Not this format!
+    
+    # Result: All scores = 0.0 (silent failure)
+    return Score(value=0.0, rationale="Failed to extract response")
+```
+
+**Why This Matters:**
+- ❌ Without this: 9+ custom scorers return 0.0 for ALL responses
+- ❌ Took 5+ deployment iterations to identify root cause
+- ❌ Silent failure - no error messages, just 0.0 scores
+- ✅ With this: Scorers work correctly first time
+
+---
+
+## Custom LLM Judges (Domain-Specific)
+
+### Pattern: @mlflow.trace + @scorer Decorator
+
+**Custom judges use two decorators:**
+1. `@mlflow.trace` - Enable detailed tracing of judge execution
+2. `@scorer` - Register as MLflow scorer with metadata
+
+**CRITICAL: Custom judges MUST use both `_extract_response_text()` helper AND Databricks SDK for LLM calls.**
+
+```python
+import mlflow
+from mlflow.models import Score
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
+import json
+from typing import Dict, Optional, Any
+
+@mlflow.trace(name="cost_accuracy_judge", span_type="JUDGE")
+@scorer
+def cost_accuracy_judge(
+    inputs: Dict,
+    outputs: Dict,
+    expectations: Optional[Dict] = None
+) -> Score:
+    """
+    Custom judge evaluating cost accuracy in agent responses.
+    
+    Args:
+        inputs: User query and context
+        outputs: Agent response (serialized by mlflow.genai.evaluate)
+        expectations: Optional expected outputs
+        
+    Returns:
+        Score object with value (0-1), rationale
+    """
+    # ✅ CRITICAL: Extract response text properly
+    response_text = _extract_response_text(outputs)
+    
+    # Get query
+    query = inputs.get("request", "")
+    
+    # Define evaluation prompt for LLM judge
+    judge_prompt = f"""You are an expert judge evaluating cost accuracy in Databricks platform responses.
+
+Evaluate whether the response contains accurate cost information based on these criteria:
+
+1. **Specific Numbers**: Uses actual dollar amounts ($X.XX) or DBU values, not vague terms
+2. **Proper Units**: Costs in $ or DBUs, not percentages or relative terms
+3. **Time Context**: Specifies time period (daily, weekly, monthly, MTD, YTD)
+4. **Source Citation**: References [Cost Genie] or system.billing tables
+5. **Trend Direction**: Shows increase/decrease with ↑/↓ or descriptive text
+
+**Query**: {query}
+
+**Response**: {response_text}
+
+Assign a score from 0.0 (poor) to 1.0 (excellent) and provide rationale.
+
+Output format (JSON):
+{{{{
+  "score": <0.0-1.0>,
+  "rationale": "<Explain why you gave this score with specific examples>"
+}}}}
+"""
+    
+    # ✅ CRITICAL: Use Databricks SDK for LLM call (NOT langchain_databricks)
+    result = _call_llm_for_scoring(judge_prompt, endpoint="databricks-claude-3-7-sonnet")
+    
+    # Return Score object
+    return Score(
+        value=result["score"],
+        rationale=result["rationale"]
+    )
+```
+
+### Custom Judge Best Practices
+
+1. **Use Foundation Model Endpoints**
+   - `endpoints:/databricks-claude-sonnet-4-5` (recommended)
+   - `endpoints:/databricks-meta-llama-3-1-405b-instruct`
+   - NOT pay-per-token endpoints (evaluation is high-volume)
+
+2. **Structured Output Format**
+   - ALWAYS return: `{"score": float, "justification": str, "metadata": dict}`
+   - Normalize scores to 0-1 range
+   - Include raw scores in metadata
+
+3. **Clear Evaluation Criteria**
+   - Define 4-6 specific, objective criteria
+   - Use examples of good/bad responses
+   - Make criteria domain-specific (cost, security, performance, etc.)
+
+4. **Temperature = 0.0 for Consistency**
+   - Deterministic judge responses
+   - Reproducible evaluations
+
+---
+
+## Complete Evaluation Pattern
+
+### File: `src/agents/setup/deployment_job.py`
+
+```python
+import mlflow
+import pandas as pd
+from datetime import datetime
+from typing import Dict, List, Tuple, Optional, Any
+from mlflow.metrics.genai import relevance, safety, Guidelines
+from mlflow.metrics import make_genai_metric_from_prompt
+
+# ===========================================================================
+# EVALUATION CONFIGURATION
+# ===========================================================================
+
+EVAL_EXPERIMENT = "/Shared/health_monitor_agent_evaluation"
+EVAL_DATASET_PATH = "path/to/evaluation_dataset.json"
+
+# ===========================================================================
+# CUSTOM JUDGES (Domain-Specific)
+# ===========================================================================
+
+@mlflow.trace(name="cost_accuracy_judge", span_type="JUDGE")
+@scorer
+def cost_accuracy_judge(
+    trace: mlflow.entities.Trace,
+    parameters: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Judge for cost accuracy evaluation."""
+    # ... implementation from above ...
+    pass
+
+@mlflow.trace(name="security_compliance_judge", span_type="JUDGE")
+@scorer
+def security_compliance_judge(
+    trace: mlflow.entities.Trace,
+    parameters: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Judge for security compliance evaluation."""
+    # ... similar implementation ...
+    pass
+
+# ===========================================================================
+# THRESHOLD CONFIGURATION
+# ===========================================================================
+
+DEPLOYMENT_THRESHOLDS = {
+    # Built-in judges
+    "relevance/mean": 0.4,
+    "safety/mean": 0.7,
+    "guidelines/mean": 0.5,
+    
+    # Custom domain judges
+    "cost_accuracy/mean": 0.6,
+    "security_compliance/mean": 0.6,
+    "reliability_accuracy/mean": 0.5,
+    "performance_accuracy/mean": 0.6,
+    "quality_accuracy/mean": 0.6,
+    
+    # Response quality
+    "response_length/mean": 0.1,  # Not too short
+    "no_errors/mean": 0.3,  # Minimal error rate
+}
+
+# ===========================================================================
+# METRIC ALIASES (Backward Compatibility)
+# ===========================================================================
+
+# Built-in scorers use different metric names across MLflow versions
+# CRITICAL: Handle both naming conventions to prevent deployment failures
+METRIC_ALIASES = {
+    "relevance/mean": ["relevance_to_query/mean"],  # MLflow 3.0 vs 3.1
+    "safety/mean": ["safety/mean"],  # No alias needed
+    "guidelines/mean": ["guidelines/mean"],  # No alias needed
+}
+
+def check_thresholds(metrics: Dict[str, float], thresholds: Dict[str, float]) -> bool:
+    """
+    Check if evaluation metrics meet deployment thresholds.
+    
+    Handles metric name variations across MLflow versions using METRIC_ALIASES.
+    
+    Args:
+        metrics: Dict of metric names to values from evaluation
+        thresholds: Dict of metric names to minimum thresholds
+        
+    Returns:
+        True if all thresholds met, False otherwise
+        
+    Why This Is Critical:
+    - MLflow 3.0 uses "relevance/mean"
+    - MLflow 3.1 uses "relevance_to_query/mean"
+    - Without aliases, threshold checks fail silently
+    - Deployment succeeds with failing scores (BAD!)
+    """
+    for metric_name, threshold in thresholds.items():
+        # Try primary name first
+        if metric_name in metrics:
+            if metrics[metric_name] < threshold:
+                print(f"❌ {metric_name}: {metrics[metric_name]:.3f} < {threshold} (FAIL)")
+                return False
+            else:
+                print(f"✅ {metric_name}: {metrics[metric_name]:.3f} >= {threshold} (PASS)")
+        # Try aliases
+        elif metric_name in METRIC_ALIASES:
+            found = False
+            for alias in METRIC_ALIASES[metric_name]:
+                if alias in metrics:
+                    if metrics[alias] < threshold:
+                        print(f"❌ {metric_name} (as {alias}): {metrics[alias]:.3f} < {threshold} (FAIL)")
+                        return False
+                    else:
+                        print(f"✅ {metric_name} (as {alias}): {metrics[alias]:.3f} >= {threshold} (PASS)")
+                    found = True
+                    break
+            if not found:
+                print(f"⚠️ {metric_name} and aliases {METRIC_ALIASES[metric_name]} not found, skipping")
+        else:
+            print(f"⚠️ {metric_name} not found in metrics, skipping")
+    
+    return True
+
+# ===========================================================================
+# MAIN EVALUATION FUNCTION
+# ===========================================================================
+
+def run_agent_evaluation(
+    model_uri: str,
+    catalog: str,
+    schema: str,
+) -> Tuple[bool, Dict[str, float]]:
+    """
+    Run comprehensive agent evaluation with LLM judges.
+    
+    Args:
+        model_uri: URI of the agent model in MLflow
+        catalog: Unity Catalog name
+        schema: Schema name
+        
+    Returns:
+        Tuple of (passed: bool, metrics: dict)
+    """
+    print("\n" + "=" * 80)
+    print("AGENT EVALUATION - LLM Judges")
+    print("=" * 80)
+    
+    # Set evaluation experiment
+    mlflow.set_experiment(EVAL_EXPERIMENT)
+    
+    # Load evaluation dataset
+    eval_df = pd.read_json(EVAL_DATASET_PATH)
+    print(f"✓ Loaded evaluation dataset: {len(eval_df)} queries")
+    
+    # ========== DEFINE EVALUATORS ==========
+    
+    # Built-in judges
+    evaluators: List[Tuple[str, Any, float]] = [
+        ("relevance", relevance, 1.0),
+        ("safety", safety, 1.0),
+        ("guidelines", Guidelines(guidelines=[
+            # Define 4-6 essential guidelines
+            """Response Structure: MUST use markdown with proper headings""",
+            """Data Accuracy: MUST include specific numbers with time context""",
+            """No Fabrication: MUST NEVER guess at numbers or fabricate data""",
+            """Actionability: MUST provide specific, actionable recommendations""",
+        ]), 1.0),
+    ]
+    
+    # Custom domain judges
+    evaluators.extend([
+        ("cost_accuracy", cost_accuracy_judge, 1.0),
+        ("security_compliance", security_compliance_judge, 1.0),
+        # ... more custom judges ...
+    ])
+    
+    print(f"✓ Registered {len(evaluators)} evaluators")
+    
+    # ========== RUN EVALUATION ==========
+    
+    run_name = f"eval_pre_deploy_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    with mlflow.start_run(run_name=run_name) as run:
+        # Log evaluation parameters
+        mlflow.log_params({
+            "model_uri": model_uri,
+            "eval_dataset": EVAL_DATASET_PATH,
+            "num_queries": len(eval_df),
+            "catalog": catalog,
+            "schema": schema,
+        })
+        
+        # Run evaluation
+        results = mlflow.genai.evaluate(
+            model=model_uri,
+            data=eval_df,
+            model_type="databricks-agent",
+            evaluators=evaluators,
+            evaluator_config={
+                "col_mapping": {
+                    "inputs": "request",  # Column in eval dataset
+                    "output": "response",  # Column in eval dataset
+                }
+            },
+        )
+        
+        print(f"✓ Evaluation complete: {run.info.run_id}")
+        
+        # ========== EXTRACT METRICS ==========
+        
+        metrics = results.metrics
+        print("\n📊 Evaluation Metrics:")
+        print("-" * 80)
+        
+        # ========== CHECK THRESHOLDS (with metric aliases support) ==========
+        
+        # ✅ Use check_thresholds() to handle metric name variations
+        all_passed = check_thresholds(metrics, DEPLOYMENT_THRESHOLDS)
+        
+        print("\n" + "-" * 80)
+        if all_passed:
+            print("✅ All thresholds passed - APPROVED for deployment")
+        else:
+            print("❌ Some thresholds failed - NOT approved for deployment")
+        
+        return all_passed, metrics
+```
+
+---
+
+## Viewing Judge Criteria and Results
+
+### Option 1: MLflow Experiment UI
+
+1. Navigate to MLflow Experiment
+2. Click on evaluation run
+3. **Evaluation** tab shows:
+   - Aggregate metrics per judge
+   - Mean, P90, other aggregations
+4. **Traces** tab shows:
+   - Individual query executions
+   - Judge reasoning (justification text)
+   - Detailed span-level tracing
+
+### Option 2: Download Scored Outputs CSV
+
+```python
+from mlflow import MlflowClient
+
+client = MlflowClient()
+
+# Get latest evaluation run
+runs = mlflow.search_runs(
+    experiment_ids=[experiment_id],
+    filter_string="tags.mlflow.runName LIKE 'eval_pre_deploy_%'",
+    order_by=["start_time DESC"],
+    max_results=1
+)
+
+run_id = runs.iloc[0]['run_id']
+
+# List artifacts
+artifacts = client.list_artifacts(run_id)
+for artifact in artifacts:
+    if "scored_outputs" in artifact.path:
+        # Download CSV
+        local_path = client.download_artifacts(run_id, artifact.path)
+        
+        # Read and analyze
+        import pandas as pd
+        df = pd.read_csv(local_path)
+        
+        # Columns include:
+        # - request: Original query
+        # - response: Agent output
+        # - relevance: Relevance score
+        # - relevance/justification: Why this score
+        # - safety: Safety score
+        # - guidelines: Guidelines score
+        # - cost_accuracy: Custom judge score
+        # ... etc ...
+        
+        print(df[['request', 'relevance', 'safety', 'guidelines']].head())
+```
+
+### Option 3: Source Code Reference
+
+Judge definitions are in:
+- **Built-in judges**: MLflow library (`mlflow.metrics.genai`)
+- **Custom judges**: `src/agents/setup/deployment_job.py` (search for `@scorer`)
+
+---
+
+## Common Mistakes to Avoid
+
+### ❌ DON'T: Missing Response Extraction Helper
+
+```python
+# BAD: Direct attribute access fails with mlflow.genai.evaluate()
+@scorer
+def broken_scorer(inputs: Dict, outputs: Dict, expectations: Optional[Dict] = None) -> Score:
+    # This will return empty string or KeyError:
+    response_text = outputs.get("response", "")  # ❌ Key doesn't exist in serialized format!
+    
+    # Or this will fail:
+    response_text = outputs["choices"][0]["message"]["content"]  # ❌ Wrong structure!
+    
+    # Result: All scores = 0.0 (silent failure)
+    return Score(value=0.0, rationale="Failed to extract response")
+```
+
+### ✅ DO: Use Response Extraction Helper
+
+```python
+# GOOD: Universal helper handles all formats
+@scorer
+def working_scorer(inputs: Dict, outputs: Dict, expectations: Optional[Dict] = None) -> Score:
+    # ✅ Extract response text properly
+    response_text = _extract_response_text(outputs)
+    
+    # Now score normally
+    score_value = calculate_score(response_text)
+    return Score(value=score_value, rationale="...")
+```
+
+**Why This Matters:**
+- Without helper: 9+ custom scorers return 0.0 for ALL responses
+- Silent failure - no error messages
+- Took 5+ deployment iterations to discover
+
+---
+
+### ❌ DON'T: Use langchain_databricks in Scorers
+
+```python
+# BAD: Causes serverless deployment failures
+from langchain_databricks import ChatDatabricks
+
+@scorer
+def broken_llm_scorer(inputs: Dict, outputs: Dict, expectations: Optional[Dict] = None) -> Score:
+    # ❌ Package install issues on serverless
+    llm = ChatDatabricks(endpoint="...", temperature=0)
+    result = llm.invoke(prompt)  # ❌ May fail with auth errors
+    
+    return Score(value=0.0, rationale="Failed")
+```
+
+### ✅ DO: Use Databricks SDK in Scorers
+
+```python
+# GOOD: Reliable across all environments
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
+
+@scorer
+def working_llm_scorer(inputs: Dict, outputs: Dict, expectations: Optional[Dict] = None) -> Score:
+    response_text = _extract_response_text(outputs)
+    
+    # ✅ Databricks SDK - automatic auth, no install issues
+    result = _call_llm_for_scoring(prompt)
+    
+    return Score(value=result["score"], rationale=result["rationale"])
+```
+
+**Why This Matters:**
+- Prevents serverless deployment failures (3+ iterations)
+- Automatic authentication in all environments
+- More reliable than community packages
+
+---
+
+### ❌ DON'T: Ignore Metric Name Variations
+
+```python
+# BAD: Only checks one metric name
+all_passed = metrics.get("relevance/mean", 0) >= 0.4
+
+# Problem: MLflow 3.1 uses "relevance_to_query/mean" instead
+# Result: Deployment succeeds even when relevance fails!
+```
+
+### ✅ DO: Use Metric Aliases
+
+```python
+# GOOD: Handles both naming conventions
+METRIC_ALIASES = {
+    "relevance/mean": ["relevance_to_query/mean"],
+}
+
+all_passed = check_thresholds(metrics, DEPLOYMENT_THRESHOLDS)
+# ✅ Checks both "relevance/mean" AND "relevance_to_query/mean"
+```
+
+**Why This Matters:**
+- Prevents silent deployment of failing agents
+- Works across MLflow 3.0 and 3.1
+- Prevents surprises after MLflow upgrades
+
+---
+
+### ❌ DON'T: Too Many Guidelines Sections
+
+```python
+# BAD: 8 comprehensive guidelines = low scores
+guidelines = [
+    "Section 1: Response Structure (200 words)",
+    "Section 2: Data Accuracy (150 words)",
+    "Section 3: No Fabrication (180 words)",
+    "Section 4: Actionability (160 words)",
+    "Section 5: Domain Expertise (200 words)",
+    "Section 6: Cross-Domain Intelligence (150 words)",
+    "Section 7: Professional Tone (120 words)",
+    "Section 8: Completeness (170 words)",
+]
+
+# Result: guidelines/mean = 0.20 (too strict!)
+```
+
+### ✅ DO: 4-6 Essential Guidelines
+
+```python
+# GOOD: 4 focused, critical guidelines = higher, more meaningful scores
+guidelines = [
+    """Data Accuracy and Specificity:
+    - MUST include specific numbers (costs, DBUs, percentages)
+    - MUST include time context (when data is from)
+    - MUST include trend direction (increased/decreased)""",
+    
+    """No Data Fabrication (CRITICAL):
+    - MUST NEVER fabricate numbers
+    - If Genie errors, MUST state explicitly""",
+    
+    """Actionability and Recommendations:
+    - MUST provide specific, actionable next steps
+    - MUST include concrete implementation details""",
+    
+    """Professional Enterprise Tone:
+    - MUST maintain professional tone
+    - MUST use proper formatting (markdown, tables)""",
+]
+
+# Result: guidelines/mean = 0.5+ (achievable, meaningful)
+```
+
+### ❌ DON'T: Missing Run Name Convention
+
+```python
+# BAD: Random run names
+results = mlflow.genai.evaluate(
+    model=model_uri,
+    data=eval_df,
+    # No run_name specified - gets auto-generated UUID
+)
+
+# Can't query latest evaluation programmatically!
+```
+
+### ✅ DO: Consistent Run Naming
+
+```python
+# GOOD: Predictable prefix + timestamp
+run_name = f"eval_pre_deploy_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+results = mlflow.genai.evaluate(
+    model=model_uri,
+    data=eval_df,
+    run_name=run_name,  # ✅ Queryable pattern
+)
+```
+
+### ❌ DON'T: Pay-Per-Token Endpoints for Judges
+
+```python
+# BAD: Expensive for high-volume evaluation
+cost_metric = make_genai_metric_from_prompt(
+    model="pay-per-token-endpoint",  # ❌ Gets expensive fast!
+)
+```
+
+### ✅ DO: Foundation Model Endpoints
+
+```python
+# GOOD: Included in workspace DBU consumption
+cost_metric = make_genai_metric_from_prompt(
+    model="endpoints:/databricks-claude-sonnet-4-5",  # ✅ Cost-effective
+    parameters={"temperature": 0.0},  # Deterministic
+)
+```
+
+---
+
+## Validation Checklist
+
+Before running agent evaluation:
+
+### Dataset & Configuration
+- [ ] Evaluation dataset loaded with correct schema (request, response columns)
+- [ ] 4-6 essential guidelines defined (not 8+)
+- [ ] Run name follows convention: `eval_pre_deploy_YYYYMMDD_HHMMSS`
+- [ ] Evaluation experiment set correctly
+
+### Custom Scorers (CRITICAL)
+- [ ] ✅ **`_extract_response_text()` helper included in ALL custom scorers**
+- [ ] ✅ **Databricks SDK used for LLM calls (NOT `langchain_databricks`)**
+- [ ] ✅ **`_call_llm_for_scoring()` helper defined and used**
+- [ ] Custom judges use `@mlflow.trace` and `@scorer` decorators
+- [ ] Custom judges return `Score` object with `value` and `rationale`
+- [ ] Foundation model endpoints used (not pay-per-token)
+- [ ] Temperature = 0.0 for judge consistency
+
+### Threshold Checking
+- [ ] ✅ **`METRIC_ALIASES` defined for backward compatibility**
+- [ ] ✅ **`check_thresholds()` function used (handles aliases)**
+- [ ] Thresholds defined for all judges
+- [ ] Results checked against thresholds before deployment
+
+---
+
+## References
+
+### Official Documentation
+- [MLflow GenAI Evaluate](https://mlflow.org/docs/latest/llms/llm-evaluate/)
+- [MLflow Custom Metrics](https://mlflow.org/docs/latest/llms/llm-evaluate/index.html#creating-custom-llm-evaluation-metrics)
+- [Databricks Agent Evaluation](https://docs.databricks.com/en/generative-ai/agent-evaluation/)
+- [LLM-as-Judge Pattern](https://mlflow.org/docs/latest/llms/llm-evaluate/index.html#llm-as-judge-metrics)
+
+### Related Rules
+- [28-mlflow-genai-patterns.mdc](mdc:.cursor/rules/ml/28-mlflow-genai-patterns.mdc) - MLflow GenAI general patterns
+- [27-mlflow-mlmodels-patterns.mdc](mdc:.cursor/rules/ml/27-mlflow-mlmodels-patterns.mdc) - MLflow model patterns
+
+### Implementation Reference
+- `src/agents/setup/deployment_job.py` - Complete evaluation implementation
+- `src/agents/evaluation/judges.py` - Custom judge definitions
+- `docs/agent-framework-design/actual-implementation/12-viewing-judge-criteria-mlflow.md` - Judge visibility guide

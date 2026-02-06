@@ -1,0 +1,937 @@
+---
+description: Production monitoring patterns for continuous agent quality assessment with registered scorers, sampling, and trace archival
+globs: src/agents/monitoring/**/*.py
+alwaysApply: false
+---
+# Production Monitoring Patterns for GenAI Agents
+
+## Pattern Recognition
+Continuous quality monitoring for production agents using MLflow 3.0+ registered scorers with sampling, on-demand assessment with `mlflow.genai.assess()`, and Unity Catalog trace archival. Based on production implementation of Health Monitor Agent monitoring system.
+
+**Reference:** [Microsoft Docs - Monitor GenAI in Production](https://learn.microsoft.com/en-us/azure/databricks/mlflow3/genai/eval-monitor/production-monitoring)
+
+---
+
+## Two Approaches to Production Monitoring
+
+### Approach 1: Registered Scorers (Continuous, Sampled)
+
+**Scorers automatically run on a sample of production traffic in the background.**
+
+```python
+from mlflow.genai.scorers import Safety, ScorerSamplingConfig
+
+# Register the scorer with a unique name
+safety_judge = Safety().register(name="my_safety_judge")
+
+# Start monitoring with 70% sampling rate
+safety_judge = safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.7))
+
+# Scorer now runs automatically on 70% of traces!
+```
+
+**When to use:**
+- ✅ Continuous background monitoring
+- ✅ Control cost with sampling rates
+- ✅ Minimal performance impact on serving
+- ✅ Trending and alerting over time
+
+### Approach 2: On-Demand Assessment (Synchronous, Per-Request)
+
+**Explicitly assess each response using `mlflow.genai.assess()`.**
+
+```python
+from mlflow.genai import assess
+from mlflow.genai.scorers import Relevance, Safety
+
+# Assess a single response synchronously
+assessment = assess(
+    inputs={"query": "Why did costs spike?"},
+    outputs={"response": "Costs increased due to..."},
+    scorers=[Relevance(), Safety()]
+)
+
+# Check scores immediately
+if assessment.scores["relevance"] < 0.6:
+    trigger_quality_alert()
+```
+
+**When to use:**
+- ✅ Real-time quality checks
+- ✅ Critical requests requiring validation
+- ✅ Per-request SLA enforcement
+- ✅ Immediate feedback needed
+
+---
+
+## Pattern 1: Registered Scorers with Sampling
+
+### Basic Pattern
+
+```python
+from mlflow.genai.scorers import (
+    Safety, 
+    RelevanceToQuery,
+    Guidelines,
+    ScorerSamplingConfig
+)
+
+# Set experiment context
+mlflow.set_experiment("/Shared/health_monitor_agent_production")
+
+# ========== Register and Start Scorers ==========
+
+# Critical safety check - 100% sampling
+safety_judge = Safety().register(name="production_safety")
+safety_judge = safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=1.0))
+
+# Relevance check - 50% sampling
+relevance_judge = RelevanceToQuery().register(name="production_relevance")
+relevance_judge = relevance_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.5))
+
+# Custom guidelines - 30% sampling
+guidelines_judge = Guidelines(
+    guidelines=[
+        "Response must include specific numbers",
+        "Response must cite data sources"
+    ]
+).register(name="production_guidelines")
+guidelines_judge = guidelines_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.3))
+
+print("✓ Production monitoring active")
+```
+
+### Sampling Strategy
+
+| Scorer Type | Recommended Sample Rate | Reason |
+|---|---|---|
+| **Safety** | 1.0 (100%) | Critical - must check all responses |
+| **Security compliance** | 1.0 (100%) | Critical - compliance requirement |
+| **Relevance** | 0.5-0.8 (50-80%) | Important but expensive |
+| **Guidelines** | 0.3-0.5 (30-50%) | Development feedback |
+| **Custom LLM judges** | 0.05-0.2 (5-20%) | Very expensive |
+| **Heuristic scorers** | 1.0 (100%) | Cheap - can run on all |
+
+### Scorer Lifecycle Management
+
+```python
+from mlflow.genai.scorers import Safety, ScorerSamplingConfig
+
+# ========== CREATE ==========
+safety_judge = Safety()
+
+# ========== REGISTER ==========
+# Name must be unique to experiment
+safety_judge = safety_judge.register(name="production_safety")
+
+# ========== START ==========
+safety_judge = safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.7))
+
+# Check status
+print(f"Scorer running: {safety_judge.sample_rate}")  # 0.7
+
+# ========== UPDATE ==========
+# Change sampling rate without stopping
+safety_judge = safety_judge.update(sampling_config=ScorerSamplingConfig(sample_rate=1.0))
+
+print(f"Updated rate: {safety_judge.sample_rate}")  # 1.0
+
+# ========== STOP ==========
+# Stop scoring but keep registration
+safety_judge = safety_judge.stop()
+
+print(f"Scorer stopped: {safety_judge.sample_rate}")  # None
+
+# Can restart later
+safety_judge = safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.5))
+
+# ========== DELETE ==========
+# Completely remove scorer from experiment
+from databricks.agents.scorers import delete_scorer
+delete_scorer(name="production_safety", experiment_id=experiment_id)
+```
+
+**⚠️ CRITICAL: Immutable Pattern**
+
+Always assign the result of lifecycle methods:
+
+```python
+# ❌ WRONG: Doesn't update the object
+safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.7))
+
+# ✅ CORRECT: Immutable pattern
+safety_judge = safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.7))
+```
+
+---
+
+## Pattern 2: Custom Scorers for Production
+
+### Domain-Specific Custom Scorer
+
+```python
+from mlflow.genai.scorers import scorer
+
+@scorer
+def cost_data_presence(inputs, outputs):
+    """
+    Check if cost response contains actual dollar amounts.
+    
+    Fast heuristic scorer suitable for 100% sampling.
+    """
+    response = outputs.get("response", "")
+    
+    # Check for dollar amounts
+    import re
+    dollar_pattern = r'\$[\d,]+\.?\d*'
+    has_cost_data = bool(re.search(dollar_pattern, response))
+    
+    # Check for DBU references
+    has_dbu_data = "dbu" in response.lower()
+    
+    score = 1.0 if (has_cost_data or has_dbu_data) else 0.0
+    
+    return score
+
+# Register and start
+cost_scorer = cost_data_presence.register(name="cost_data_check")
+cost_scorer = cost_scorer.start(sampling_config=ScorerSamplingConfig(sample_rate=1.0))
+```
+
+### Response Quality Scorer
+
+```python
+@scorer(aggregations=["mean", "min", "max", "p90"])
+def response_length(outputs):
+    """
+    Measure response length - detects too-short responses.
+    
+    Aggregations enable trend analysis over time.
+    """
+    response = outputs.get("response", "")
+    return len(response)
+
+# Register with aggregations
+length_scorer = response_length.register(name="response_length_check")
+length_scorer = length_scorer.start(sampling_config=ScorerSamplingConfig(sample_rate=1.0))
+```
+
+### Error Detection Scorer
+
+```python
+@scorer
+def no_errors_scorer(outputs):
+    """
+    Detect error responses - returns 0 if error present, 1 otherwise.
+    """
+    response = outputs.get("response", "").lower()
+    metadata = outputs.get("metadata", {})
+    
+    # Check for error indicators
+    error_indicators = [
+        "error" in response,
+        "failed" in response and "genie" in response,
+        metadata.get("source") == "error",
+        "will not generate fake data" in response,
+    ]
+    
+    # Return 1.0 if NO errors, 0.0 if errors present
+    return 0.0 if any(error_indicators) else 1.0
+
+error_scorer = no_errors_scorer.register(name="no_errors")
+error_scorer = error_scorer.start(sampling_config=ScorerSamplingConfig(sample_rate=1.0))
+```
+
+---
+
+## Pattern 3: On-Demand Assessment with assess()
+
+### Real-Time Quality Check
+
+```python
+from mlflow.genai import assess
+from mlflow.genai.scorers import Relevance, Safety
+
+def assess_agent_response(query: str, response: str, metadata: dict = None):
+    """
+    Assess agent response in real-time.
+    
+    Use for critical requests requiring immediate validation.
+    """
+    assessment = assess(
+        inputs={"query": query},
+        outputs={
+            "response": response,
+            "metadata": metadata or {}
+        },
+        scorers=[
+            Relevance(),
+            Safety(),
+            response_quality_scorer,  # Custom scorer
+        ]
+    )
+    
+    # Assessment contains scores for each scorer
+    relevance_score = assessment.scores.get("relevance", 0)
+    safety_score = assessment.scores.get("safety", 0)
+    
+    # Make decisions based on scores
+    if safety_score < 0.7:
+        # Don't return response to user!
+        return None, "Response flagged for safety review"
+    
+    if relevance_score < 0.4:
+        # Log low-quality response
+        log_quality_issue(query, response, relevance_score)
+    
+    return response, None  # OK to return
+```
+
+### Integration in Agent Predict
+
+```python
+from mlflow.pyfunc import ResponsesAgent
+from mlflow.types.responses import ResponsesAgentRequest, ResponsesAgentResponse
+
+class MonitoredHealthAgent(ResponsesAgent):
+    """Agent with built-in production monitoring."""
+    
+    def __init__(self):
+        super().__init__()
+        self.monitor = ProductionMonitor()
+    
+    @mlflow.trace(name="monitored_predict", span_type="AGENT")
+    def predict(self, request: ResponsesAgentRequest) -> ResponsesAgentResponse:
+        """Predict with automatic quality assessment."""
+        query = request.input[-1].get("content", "")
+        
+        # Generate response
+        response_text = self._generate_response(query)
+        
+        # ✅ Assess quality before returning
+        assessment = self.monitor.assess_response(
+            query=query,
+            response=response_text,
+            metadata={"source": "agent"}
+        )
+        
+        # Log assessment to trace
+        mlflow.update_current_trace(attributes={
+            "assessment.overall_score": str(assessment.overall_score),
+            "assessment.needs_review": str(assessment.needs_review)
+        })
+        
+        # Return response with assessment metadata
+        return ResponsesAgentResponse(
+            output=[self.create_text_output_item(
+                text=response_text,
+                id=str(uuid.uuid4())
+            )],
+            custom_outputs={
+                "assessment": {
+                    "overall_score": assessment.overall_score,
+                    "needs_review": assessment.needs_review,
+                    "scores": assessment.scores
+                }
+            }
+        )
+```
+
+---
+
+## Pattern 4: Trace Archival to Unity Catalog
+
+### Enable Trace Archival
+
+**Save traces and assessments to Delta table for long-term analytics.**
+
+```python
+from mlflow.tracing.archival import (
+    enable_databricks_trace_archival,
+    disable_databricks_trace_archival
+)
+
+# ========== ENABLE ARCHIVAL ==========
+
+# Archive traces to Unity Catalog Delta table
+enable_databricks_trace_archival(
+    delta_table_fullname="my_catalog.agent_schema.archived_traces",
+    experiment_id="YOUR_EXPERIMENT_ID"
+)
+
+print("✓ Trace archival enabled")
+
+# Traces now automatically copied to Delta table with:
+# - Trace data (inputs, outputs, spans)
+# - Assessment scores from registered scorers
+# - Timestamp, user_id, request_id
+# - Full lineage for analysis
+
+# ========== DISABLE ARCHIVAL ==========
+
+# Stop archiving (table remains, just stops new writes)
+disable_databricks_trace_archival(experiment_id="YOUR_EXPERIMENT_ID")
+```
+
+### Archive Table Schema
+
+**Auto-created when archival enabled:**
+
+```sql
+-- MLflow automatically creates this schema
+CREATE TABLE my_catalog.agent_schema.archived_traces (
+    request_id STRING,
+    trace_id STRING,
+    timestamp TIMESTAMP,
+    experiment_id STRING,
+    
+    -- Input/Output
+    inputs STRING,  -- JSON string
+    outputs STRING,  -- JSON string
+    
+    -- Assessment scores (from registered scorers)
+    assessments MAP<STRING, STRUCT<
+        score: DOUBLE,
+        rationale: STRING,
+        timestamp: TIMESTAMP
+    >>,
+    
+    -- Span data
+    spans ARRAY<STRUCT<...>>,
+    
+    -- Metadata
+    tags MAP<STRING, STRING>,
+    user_id STRING,
+    
+    -- Partition for query performance
+    date DATE GENERATED ALWAYS AS (CAST(timestamp AS DATE))
+)
+PARTITIONED BY (date)
+CLUSTER BY AUTO;
+```
+
+### Query Archived Traces
+
+```sql
+-- Find low-quality responses
+SELECT 
+    date,
+    COUNT(*) as total_traces,
+    AVG(assessments['relevance'].score) as avg_relevance,
+    AVG(assessments['safety'].score) as avg_safety,
+    SUM(CASE WHEN assessments['relevance'].score < 0.6 THEN 1 ELSE 0 END) as low_quality_count
+FROM my_catalog.agent_schema.archived_traces
+WHERE date >= CURRENT_DATE() - INTERVAL 7 DAYS
+GROUP BY date
+ORDER BY date DESC;
+```
+
+---
+
+## Pattern 5: Metric Backfill (Historical Analysis)
+
+### Basic Backfill Pattern
+
+```python
+from databricks.agents.scorers import backfill_scorers
+
+# Assume scorers already registered and started
+safety_judge = Safety().register(name="safety_check")
+safety_judge = safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.5))
+
+# ========== BACKFILL USING CURRENT SAMPLE RATES ==========
+
+# Retroactively apply scorers to historical traces
+job_id = backfill_scorers(
+    scorers=["safety_check", "response_length"]  # List of scorer names
+)
+
+print(f"✓ Backfill job started: {job_id}")
+print("  Scorers will run on historical traces using registered sample rates")
+```
+
+### Backfill with Custom Time Range
+
+```python
+from databricks.agents.scorers import backfill_scorers, BackfillScorerConfig
+from datetime import datetime, timedelta
+
+# Define custom sample rates for backfill
+custom_scorers = [
+    BackfillScorerConfig(scorer=safety_judge, sample_rate=0.8),
+    BackfillScorerConfig(scorer=response_length, sample_rate=0.9)
+]
+
+# Backfill last 30 days with higher sampling
+job_id = backfill_scorers(
+    experiment_id="YOUR_EXPERIMENT_ID",
+    scorers=custom_scorers,
+    start_time=datetime.now() - timedelta(days=30),
+    end_time=datetime.now()
+)
+
+print(f"✓ Backfill job started: {job_id}")
+print("  Analyzing 30 days of historical traces")
+```
+
+### Recent Data Backfill (Last Week)
+
+```python
+# Quick pattern for backfilling last week
+one_week_ago = datetime.now() - timedelta(days=7)
+
+job_id = backfill_scorers(
+    scorers=[
+        BackfillScorerConfig(scorer=safety_judge, sample_rate=0.8),
+        BackfillScorerConfig(scorer=relevance_judge, sample_rate=0.9)
+    ],
+    start_time=one_week_ago
+)
+```
+
+**When to backfill:**
+- ✅ New scorer added, need historical baseline
+- ✅ Scorer definition updated, want to compare
+- ✅ Investigating quality issues in past timeframe
+- ✅ Creating dashboards requiring historical data
+
+---
+
+## Pattern 6: Complete Production Monitoring Setup
+
+### File: `src/agents/monitoring/register_scorers.py`
+
+```python
+# Databricks notebook source
+"""
+Register Production Scorers for Health Monitor Agent
+
+Sets up continuous quality monitoring with sampling for production agent.
+
+Reference: https://learn.microsoft.com/en-us/azure/databricks/mlflow3/genai/eval-monitor/production-monitoring
+"""
+
+import mlflow
+from mlflow.genai.scorers import (
+    Safety,
+    RelevanceToQuery,
+    Guidelines,
+    ScorerSamplingConfig,
+    scorer
+)
+
+# ===========================================================================
+# PARAMETERS
+# ===========================================================================
+
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("agent_schema", "")
+
+catalog = dbutils.widgets.get("catalog")
+agent_schema = dbutils.widgets.get("agent_schema")
+
+PRODUCTION_EXPERIMENT = "/Shared/health_monitor_agent_production"
+
+# ===========================================================================
+# CUSTOM SCORERS (Heuristic - Fast, 100% Sampling OK)
+# ===========================================================================
+
+@scorer
+def cost_data_presence(inputs, outputs):
+    """Check if cost response contains dollar amounts or DBU data."""
+    import re
+    response = outputs.get("response", "")
+    
+    has_dollar = bool(re.search(r'\$[\d,]+\.?\d*', response))
+    has_dbu = "dbu" in response.lower()
+    
+    return 1.0 if (has_dollar or has_dbu) else 0.0
+
+
+@scorer(aggregations=["mean", "min", "max", "p90"])
+def response_length(outputs):
+    """Measure response length - detect too-short responses."""
+    response = outputs.get("response", "")
+    return len(response)
+
+
+@scorer
+def no_errors(outputs):
+    """Detect error responses."""
+    response = outputs.get("response", "").lower()
+    metadata = outputs.get("metadata", {})
+    
+    error_indicators = [
+        "error" in response,
+        "failed" in response and "genie" in response,
+        metadata.get("source") == "error",
+    ]
+    
+    return 0.0 if any(error_indicators) else 1.0
+
+
+# ===========================================================================
+# MAIN SETUP
+# ===========================================================================
+
+def main():
+    """Register and start all production scorers."""
+    
+    print("\n" + "=" * 80)
+    print("PRODUCTION MONITORING SETUP")
+    print("=" * 80)
+    
+    mlflow.set_experiment(PRODUCTION_EXPERIMENT)
+    experiment = mlflow.get_experiment_by_name(PRODUCTION_EXPERIMENT)
+    print(f"Experiment: {PRODUCTION_EXPERIMENT}")
+    print(f"Experiment ID: {experiment.experiment_id}")
+    
+    # ========== REGISTER BUILT-IN JUDGES ==========
+    
+    # Safety - CRITICAL, 100% sampling
+    print("\n1️⃣ Registering Safety judge (100% sampling)...")
+    safety_judge = Safety().register(name="production_safety")
+    safety_judge = safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=1.0))
+    print(f"   ✓ Safety judge active: {safety_judge.sample_rate}")
+    
+    # Relevance - IMPORTANT, 80% sampling
+    print("\n2️⃣ Registering Relevance judge (80% sampling)...")
+    relevance_judge = RelevanceToQuery().register(name="production_relevance")
+    relevance_judge = relevance_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.8))
+    print(f"   ✓ Relevance judge active: {relevance_judge.sample_rate}")
+    
+    # Guidelines - MODERATE, 50% sampling
+    print("\n3️⃣ Registering Guidelines judge (50% sampling)...")
+    guidelines_judge = Guidelines(
+        guidelines=[
+            "Response must include specific numbers (costs, DBUs, percentages)",
+            "Response must cite data sources ([Cost Genie], [Security Genie], etc.)",
+            "Response must provide actionable recommendations",
+            "Response must use professional tone with proper markdown formatting"
+        ]
+    ).register(name="production_guidelines")
+    guidelines_judge = guidelines_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.5))
+    print(f"   ✓ Guidelines judge active: {guidelines_judge.sample_rate}")
+    
+    # ========== REGISTER CUSTOM SCORERS ==========
+    
+    # Cost data presence - FAST, 100% sampling
+    print("\n4️⃣ Registering cost data checker (100% sampling)...")
+    cost_scorer = cost_data_presence.register(name="cost_data_check")
+    cost_scorer = cost_scorer.start(sampling_config=ScorerSamplingConfig(sample_rate=1.0))
+    print(f"   ✓ Cost scorer active: {cost_scorer.sample_rate}")
+    
+    # Response length - FAST, 100% sampling
+    print("\n5️⃣ Registering response length scorer (100% sampling)...")
+    length_scorer = response_length.register(name="response_length")
+    length_scorer = length_scorer.start(sampling_config=ScorerSamplingConfig(sample_rate=1.0))
+    print(f"   ✓ Length scorer active: {length_scorer.sample_rate}")
+    
+    # No errors - FAST, 100% sampling
+    print("\n6️⃣ Registering error detector (100% sampling)...")
+    error_scorer = no_errors.register(name="no_errors")
+    error_scorer = error_scorer.start(sampling_config=ScorerSamplingConfig(sample_rate=1.0))
+    print(f"   ✓ Error scorer active: {error_scorer.sample_rate}")
+    
+    # ========== ENABLE TRACE ARCHIVAL ==========
+    
+    print("\n7️⃣ Enabling trace archival...")
+    from mlflow.tracing.archival import enable_databricks_trace_archival
+    
+    archive_table = f"{catalog}.{agent_schema}.agent_traces_archive"
+    
+    enable_databricks_trace_archival(
+        delta_table_fullname=archive_table,
+        experiment_id=experiment.experiment_id
+    )
+    
+    print(f"   ✓ Trace archival enabled: {archive_table}")
+    
+    # ========== SUMMARY ==========
+    
+    print("\n" + "=" * 80)
+    print("✅ PRODUCTION MONITORING ACTIVE")
+    print("=" * 80)
+    print(f"Experiment: {PRODUCTION_EXPERIMENT}")
+    print(f"Archive Table: {archive_table}")
+    print("\nRegistered Scorers:")
+    print("  • production_safety (1.0 = 100%)")
+    print("  • production_relevance (0.8 = 80%)")
+    print("  • production_guidelines (0.5 = 50%)")
+    print("  • cost_data_check (1.0 = 100%)")
+    print("  • response_length (1.0 = 100%)")
+    print("  • no_errors (1.0 = 100%)")
+    print("\n⏱️ Allow 15-20 minutes for initial processing")
+    print("📊 View results in MLflow Experiment > Traces tab")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## Pattern 7: Monitoring Dashboard Queries
+
+### Query Assessment Results
+
+```sql
+-- Average quality scores over last 7 days
+SELECT 
+    DATE(timestamp) as date,
+    COUNT(*) as total_requests,
+    AVG(assessments['production_relevance'].score) as avg_relevance,
+    AVG(assessments['production_safety'].score) as avg_safety,
+    AVG(assessments['production_guidelines'].score) as avg_guidelines,
+    SUM(CASE WHEN assessments['no_errors'].score = 0 THEN 1 ELSE 0 END) as error_count
+FROM my_catalog.agent_schema.agent_traces_archive
+WHERE date >= CURRENT_DATE() - INTERVAL 7 DAYS
+GROUP BY DATE(timestamp)
+ORDER BY date DESC;
+```
+
+### Identify Low-Quality Responses
+
+```sql
+-- Find responses needing review
+SELECT 
+    request_id,
+    timestamp,
+    get_json_object(inputs, '$.query') as query,
+    get_json_object(outputs, '$.response') as response,
+    assessments['production_relevance'].score as relevance,
+    assessments['production_safety'].score as safety,
+    assessments['production_guidelines'].score as guidelines
+FROM my_catalog.agent_schema.agent_traces_archive
+WHERE 
+    date >= CURRENT_DATE() - INTERVAL 1 DAY
+    AND (
+        assessments['production_relevance'].score < 0.6 OR
+        assessments['production_safety'].score < 0.9 OR
+        assessments['production_guidelines'].score < 0.5
+    )
+ORDER BY timestamp DESC
+LIMIT 20;
+```
+
+### Trending Analysis
+
+```sql
+-- Quality trends over time
+SELECT 
+    DATE_TRUNC('hour', timestamp) as hour,
+    COUNT(*) as requests,
+    AVG(assessments['production_relevance'].score) as avg_relevance,
+    PERCENTILE(assessments['production_relevance'].score, 0.5) as p50_relevance,
+    PERCENTILE(assessments['production_relevance'].score, 0.95) as p95_relevance,
+    SUM(CASE WHEN assessments['no_errors'].score = 0 THEN 1 ELSE 0 END) as errors
+FROM my_catalog.agent_schema.agent_traces_archive
+WHERE date >= CURRENT_DATE() - INTERVAL 7 DAYS
+GROUP BY DATE_TRUNC('hour', timestamp)
+ORDER BY hour DESC;
+```
+
+---
+
+## Common Mistakes to Avoid
+
+### ❌ DON'T: Forget Immutable Pattern
+
+```python
+# BAD: Object not updated
+safety_judge = Safety().register(name="safety")
+safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.7))  # ❌ Not assigned!
+
+print(safety_judge.sample_rate)  # None - not started!
+```
+
+### ✅ DO: Assign Result
+
+```python
+# GOOD: Immutable pattern
+safety_judge = Safety().register(name="safety")
+safety_judge = safety_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.7))  # ✅ Assigned!
+
+print(safety_judge.sample_rate)  # 0.7
+```
+
+### ❌ DON'T: External Imports in Scorers
+
+```python
+# BAD: Import outside function
+import external_library
+
+@scorer
+def bad_scorer(outputs):
+    return external_library.process(outputs)  # ❌ Serialization fails!
+```
+
+### ✅ DO: Inline Imports
+
+```python
+# GOOD: Import inside function
+@scorer
+def good_scorer(outputs):
+    import json  # ✅ Inline import
+    return len(json.dumps(outputs))
+```
+
+### ❌ DON'T: Type Hints Requiring Imports
+
+```python
+# BAD: Type hint needs import
+from typing import List
+
+@scorer
+def bad_types(outputs: List[str]):  # ❌ Serialization fails!
+    return False
+```
+
+### ✅ DO: No Type Hints or Built-in Types Only
+
+```python
+# GOOD: No type hints
+@scorer
+def good_types(outputs):
+    return True
+
+# ALSO GOOD: Built-in types only
+@scorer
+def also_good(outputs: dict):  # dict is built-in
+    return True
+```
+
+### ❌ DON'T: High Sampling for Expensive Scorers
+
+```python
+# BAD: 100% sampling of expensive LLM judge
+complex_judge = ComplexLLMJudge().register(name="complex")
+complex_judge = complex_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=1.0))  # ❌ Too expensive!
+```
+
+### ✅ DO: Appropriate Sampling Rates
+
+```python
+# GOOD: Low sampling for expensive scorers
+complex_judge = ComplexLLMJudge().register(name="complex")
+complex_judge = complex_judge.start(sampling_config=ScorerSamplingConfig(sample_rate=0.1))  # ✅ 10% sampling
+```
+
+---
+
+## Production Monitoring vs Development Evaluation
+
+### Key Differences
+
+| Aspect | Development Evaluation | Production Monitoring |
+|---|---|---|
+| **When** | Pre-deployment | Continuous, post-deployment |
+| **Data** | Evaluation dataset (static) | Production traces (live) |
+| **Function** | `mlflow.genai.evaluate()` | `.register()` + `.start()` OR `assess()` |
+| **Sampling** | 100% (all eval queries) | Configurable (5-100%) |
+| **Purpose** | Validate before deployment | Monitor quality in production |
+| **Thresholds** | Block deployment if not met | Alert if degraded |
+| **Scorers** | Same scorers, different context | Same scorers, different context |
+
+### Unified Scorer Definitions
+
+**Use the SAME scorer definitions in both contexts:**
+
+```python
+# File: src/agents/evaluation/scorers.py
+
+from mlflow.genai.scorers import scorer
+
+@scorer
+def cost_accuracy(inputs, outputs):
+    """Cost accuracy scorer - works in dev AND prod."""
+    # Implementation
+    return score
+
+# ========== DEVELOPMENT EVALUATION ==========
+# File: src/agents/setup/deployment_job.py
+
+evaluators = [
+    cost_accuracy,  # ✅ Same scorer
+    # ...
+]
+
+results = mlflow.genai.evaluate(
+    model=model_uri,
+    data=eval_df,
+    evaluators=evaluators
+)
+
+# ========== PRODUCTION MONITORING ==========
+# File: src/agents/monitoring/register_scorers.py
+
+cost_scorer = cost_accuracy.register(name="production_cost_accuracy")
+cost_scorer = cost_scorer.start(sampling_config=ScorerSamplingConfig(sample_rate=0.8))
+```
+
+**Benefits:**
+- ✅ Consistent evaluation criteria
+- ✅ Dev results predict prod performance
+- ✅ Single source of truth for quality definition
+- ✅ Easier maintenance
+
+---
+
+## Validation Checklist
+
+Before deploying production monitoring:
+
+### Scorer Registration
+- [ ] All scorers registered with unique names (per experiment)
+- [ ] Immutable pattern used (assign result of `.start()`)
+- [ ] Sampling rates appropriate for scorer cost
+- [ ] Safety/security scorers at 100% sampling
+- [ ] Expensive LLM judges at 5-20% sampling
+
+### Custom Scorers
+- [ ] All imports inline within function body
+- [ ] No type hints requiring imports in function signature
+- [ ] Returns numeric score or Score object
+- [ ] Handles missing data gracefully
+- [ ] Self-contained (no external dependencies in signature)
+
+### Trace Archival
+- [ ] Archive table created in Unity Catalog
+- [ ] Archival enabled with correct experiment_id
+- [ ] Archive table includes date partition for query performance
+- [ ] SQL queries defined for monitoring dashboard
+
+### Integration
+- [ ] Same scorers used in dev evaluation and prod monitoring
+- [ ] On-demand `assess()` for critical requests (optional)
+- [ ] Assessment results logged to traces
+- [ ] Monitoring dashboard created for trends
+
+### Best Practices
+- [ ] Started with small backfill to estimate duration
+- [ ] Balanced coverage with cost (sampling strategy)
+- [ ] At most 20 scorers per experiment (platform limit)
+- [ ] Allowed 15-20 minutes for initial processing after start
+
+---
+
+## References
+
+### Official Documentation
+- [Monitor GenAI in Production](https://learn.microsoft.com/en-us/azure/databricks/mlflow3/genai/eval-monitor/production-monitoring) - **Primary reference**
+- [Scorer Lifecycle Management](https://learn.microsoft.com/en-us/azure/databricks/mlflow3/genai/eval-monitor/production-monitoring#manage-scorer-lifecycle)
+- [Metric Backfill](https://learn.microsoft.com/en-us/azure/databricks/mlflow3/genai/eval-monitor/production-monitoring#evaluate-historical-traces-metric-backfill)
+- [Trace Archival](https://learn.microsoft.com/en-us/azure/databricks/mlflow3/genai/eval-monitor/production-monitoring#archive-traces)
+
+### Related Rules
+- [30-mlflow-genai-evaluation.mdc](30-mlflow-genai-evaluation.mdc) - Development evaluation patterns
+- [34-deployment-automation-patterns.mdc](34-deployment-automation-patterns.mdc) - Deployment automation
+
+### Implementation Reference
+- `src/agents/monitoring/register_scorers.py` - Scorer registration
+- `src/agents/monitoring/production_monitor.py` - On-demand assessment
+- `src/agents/evaluation/scorers.py` - Unified scorer definitions
+
+---
+
+**Key Learning:** Use the SAME scorers in development evaluation and production monitoring for consistency. Production monitoring is sampled and continuous, while development evaluation is comprehensive and pre-deployment.

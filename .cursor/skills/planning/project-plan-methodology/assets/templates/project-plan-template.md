@@ -1,79 +1,63 @@
-# Phase X: [Phase Name]
+# Phase X: {Phase Name}
 
 ## Overview
 
 **Status:** 📋 Planned | 🚧 In Progress | ✅ Complete  
-**Dependencies:** [List dependencies]  
-**Effort Estimate:** [X weeks/days]  
-**Owner:** [Name/Team]
+**Dependencies:** {List dependencies}  
+**Effort Estimate:** {X weeks/days}  
+**Owner:** {Name/Team}
 
 ## Objectives
 
-- [Objective 1]
-- [Objective 2]
-- [Objective 3]
+- {Objective 1}
+- {Objective 2}
+- {Objective 3}
 
 ## Agent Domain Organization
 
 All artifacts MUST be organized by Agent Domain:
 
-- 💰 **Cost** - FinOps, budgets, chargeback
-- 🔒 **Security** - Access audit, compliance
-- ⚡ **Performance** - Query optimization, capacity
-- 🔄 **Reliability** - Job health, SLAs
-- ✅ **Quality** - Data quality, governance
+| Domain | Icon | Focus Area |
+|--------|------|------------|
+| {Domain 1} | {emoji} | {focus} |
+| {Domain 2} | {emoji} | {focus} |
+| {Domain 3} | {emoji} | {focus} |
+| {Domain 4} | {emoji} | {focus} |
+| {Domain 5} | {emoji} | {focus} |
 
 ## Artifacts by Domain
 
-### 💰 Cost Agent Domain
+### {Domain 1}
 
-#### [Artifact Name]
+#### {Artifact Name}
 
-**Type:** [TVF | Metric View | Dashboard | Alert | ML Model | Monitor | Genie Space]  
-**Gold Tables:** `fact_usage`, `dim_sku`  
-**Business Questions:** "What are the top cost drivers?"  
-**Dependencies:** [List dependencies]  
+**Type:** {TVF | Metric View | Dashboard | Alert | ML Model | Monitor | Genie Space}  
+**Gold Tables:** `fact_{entity}`, `dim_{entity}`  
+**Business Questions:** "{Question}"  
+**Dependencies:** {List dependencies}  
 **Status:** 📋 Planned | 🚧 In Progress | ✅ Complete
 
 **Description:**
-[Detailed description of what this artifact does]
+{Detailed description of what this artifact does}
 
 **Example:**
 ```sql
 -- For TVFs, Metric Views, Alerts
 SELECT ...
-FROM ${catalog}.${gold_schema}.fact_usage
+FROM ${catalog}.${gold_schema}.fact_{entity}
 WHERE ...
 ```
 
 **LLM-Friendly Comment:**
 ```sql
-COMMENT 'LLM: [Description of what it does, when to use it, example questions]'
+COMMENT 'LLM: {Description of what it does, when to use it, example questions}'
 ```
 
 ---
 
-### 🔒 Security Agent Domain
+### {Domain 2}
 
-[Repeat structure for Security domain]
-
----
-
-### ⚡ Performance Agent Domain
-
-[Repeat structure for Performance domain]
-
----
-
-### 🔄 Reliability Agent Domain
-
-[Repeat structure for Reliability domain]
-
----
-
-### ✅ Quality Agent Domain
-
-[Repeat structure for Quality domain]
+{Repeat structure for each domain}
 
 ---
 
@@ -81,26 +65,26 @@ COMMENT 'LLM: [Description of what it does, when to use it, example questions]'
 
 | Artifact | Type | Domain | Gold Tables | Status | Dependencies |
 |----------|------|--------|-------------|--------|---------------|
-| [Name] | TVF | 💰 Cost | `fact_usage` | ✅ Complete | Gold layer |
-| [Name] | Metric View | 💰 Cost | `fact_usage` | 🚧 In Progress | Gold layer |
+| {Name} | TVF | {Domain} | `fact_{entity}` | ✅ Complete | Gold layer |
+| {Name} | Metric View | {Domain} | `fact_{entity}` | 🚧 In Progress | Gold layer |
 
 ## Artifact Count Summary
 
 | Domain | TVFs | Metric Views | Dashboards | Alerts | ML Models | Monitors | Genie Spaces |
 |--------|------|--------------|------------|--------|-----------|----------|-------------|
-| 💰 Cost | X | X | X | X | X | X | X |
-| 🔒 Security | X | X | X | X | X | X | X |
-| ⚡ Performance | X | X | X | X | X | X | X |
-| 🔄 Reliability | X | X | X | X | X | X | X |
-| ✅ Quality | X | X | X | X | X | X | X |
+| {Domain 1} | X | X | X | X | X | X | X |
+| {Domain 2} | X | X | X | X | X | X | X |
+| {Domain 3} | X | X | X | X | X | X | X |
+| {Domain 4} | X | X | X | X | X | X | X |
+| {Domain 5} | X | X | X | X | X | X | X |
 | **Total** | X | X | X | X | X | X | X |
 
 ## Success Criteria
 
 | Criterion | Target | Status |
 |-----------|--------|--------|
-| All domains covered | 5 domains | ✅ |
-| Minimum artifact counts | [See standards] | 🚧 |
+| All domains covered | {n} domains | ✅ |
+| Minimum artifact counts | {See standards} | 🚧 |
 | Gold layer references | 100% | ✅ |
 | LLM-friendly comments | 100% | ✅ |
 | Testing complete | All artifacts | 🚧 |
@@ -116,7 +100,7 @@ COMMENT 'LLM: [Description of what it does, when to use it, example questions]'
 FROM system.billing.usage
 
 -- ✅ CORRECT: Gold layer reference with variables
-FROM ${catalog}.${gold_schema}.fact_usage
+FROM ${catalog}.${gold_schema}.fact_{entity}
 ```
 
 ### Standard Variable References
@@ -129,9 +113,9 @@ ${catalog}.${gold_schema}.table_name
 WHERE usage_date BETWEEN CAST(start_date AS DATE) AND CAST(end_date AS DATE)
 
 -- SCD Type 2 dimension joins
-LEFT JOIN dim_workspace w 
-    ON f.workspace_id = w.workspace_id 
-    AND w.is_current = TRUE
+LEFT JOIN dim_{entity} d 
+    ON f.{entity}_id = d.{entity}_id 
+    AND d.is_current = TRUE
 ```
 
 ### LLM-Friendly Comments
@@ -139,51 +123,51 @@ LEFT JOIN dim_workspace w
 All artifacts must have comments that help LLMs (Genie, AI/BI) understand:
 
 ```sql
-COMMENT 'LLM: Returns top N cost contributors by workspace and SKU for a date range.
-Use this for cost optimization, chargeback analysis, and identifying spending hotspots.
-Parameters: start_date, end_date (YYYY-MM-DD format), optional top_n (default 10).
-Example questions: "What are the top 10 cost drivers?" or "Which workspace spent most?"'
+COMMENT 'LLM: {Description}.
+Use this for {use cases}.
+Parameters: {parameter descriptions}.
+Example questions: "{Question 1}" or "{Question 2}"'
 ```
 
 ## Artifact Naming Conventions
 
 | Artifact | Pattern | Example |
 |----------|---------|---------|
-| TVF | `get_<domain>_<metric>` | `get_cost_by_tag` |
-| Metric View | `<domain>_analytics_metrics` | `cost_analytics_metrics` |
-| Dashboard | `<Domain> <Purpose> Dashboard` | `Cost Attribution Dashboard` |
-| Alert | `<DOMAIN>-NNN` | `COST-001` |
-| ML Model | `<Purpose> <Type>` | `Budget Forecaster` |
-| Monitor | `<table> Monitor` | `Cost Data Quality Monitor` |
-| Genie Space | `<Domain> <Purpose>` | `Cost Intelligence` |
-| AI Agent | `<Domain> Agent` | `Cost Agent` |
+| TVF | `get_{domain}_{metric}` | `get_{domain}_by_{dimension}` |
+| Metric View | `{domain}_analytics_metrics` | `{domain}_analytics_metrics` |
+| Dashboard | `{Domain} {Purpose} Dashboard` | `{Domain} Performance Dashboard` |
+| Alert | `{DOMAIN}-NNN-SEVERITY` | `{DOM}-001-CRIT` |
+| ML Model | `{Purpose} {Type}` | `{Metric} Forecaster` |
+| Monitor | `{table} Monitor` | `{Domain} Data Quality Monitor` |
+| Genie Space | `{Domain} {Purpose}` | `{Domain} Intelligence` |
+| AI Agent | `{Domain} Agent` | `{Domain} Agent` |
 
 ## Common Mistakes to Avoid
 
-### ❌ DON'T: Mix system tables and Gold tables
+### Don't: Mix system tables and Gold tables
 
 ```sql
 -- BAD: Direct system table
-FROM system.billing.usage u
-JOIN ${catalog}.${gold_schema}.dim_workspace w ...
+FROM system.{source}.{table} u
+JOIN ${catalog}.${gold_schema}.dim_{entity} d ...
 ```
 
-### ❌ DON'T: Forget Agent Domain classification
+### Don't: Forget Agent Domain classification
 
 ```markdown
-## get_slow_queries (BAD - no domain)
+## get_{metric} (BAD - no domain)
 
-## ⚡ Performance Agent: get_slow_queries (GOOD)
+## {Domain}: get_{metric} (GOOD)
 ```
 
-### ❌ DON'T: Create artifacts without cross-addendum updates
+### Don't: Create artifacts without cross-addendum updates
 
 When adding a TVF, also consider:
 - Does it need a Metric View counterpart?
 - Should there be an Alert?
 - Is it Dashboard-worthy?
 
-### ❌ DON'T: Use DATE parameters in TVFs (Genie incompatible)
+### Don't: Use DATE parameters in TVFs (Genie incompatible)
 
 ```sql
 -- BAD
@@ -195,9 +179,9 @@ start_date STRING COMMENT 'Format: YYYY-MM-DD'
 
 ## References
 
-- [Related Cursor Rules](.cursor/rules/...)
-- [Official Documentation](https://docs.databricks.com/...)
+- Related skills: See `.cursor/skills/` directory
+- Official Documentation: https://docs.databricks.com/
 
 ## Notes
 
-[Any additional notes, learnings, or considerations]
+{Any additional notes, learnings, or considerations}

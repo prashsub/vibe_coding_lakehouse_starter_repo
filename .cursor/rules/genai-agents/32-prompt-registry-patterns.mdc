@@ -1,0 +1,673 @@
+---
+description: MLflow Prompt Registry patterns for versioned prompt management in agents
+globs: src/agents/prompts/**/*.py
+alwaysApply: false
+---
+# MLflow Prompt Registry Patterns
+
+## Pattern Recognition
+Centralized prompt management using Unity Catalog tables and MLflow versioning. Enables A/B testing, rollback, and prompt governance. Based on production implementation of Databricks Health Monitor Agent prompt system.
+
+## Core Principles
+
+### 1. Single Source of Truth
+- All prompts stored in Unity Catalog table (`agent_config`)
+- Versioned in MLflow as artifacts
+- Never hardcoded in agent code
+- Runtime loading by alias (`production`, `staging`, `champion`, `challenger`)
+
+### 2. Prompt Versioning
+- Each prompt update creates new MLflow run
+- Prompts registered as artifacts in experiment
+- Aliases point to specific versions
+- Easy rollback to previous versions
+
+### 3. AB Testing Support
+- Champion/challenger pattern
+- Load different prompts by alias
+- Track performance in evaluation
+- Promote winner to production
+
+---
+
+## Storage Pattern: Unity Catalog + MLflow
+
+### Unity Catalog Table Schema
+
+```sql
+CREATE TABLE {catalog}.{schema}.agent_config (
+    config_key STRING NOT NULL,
+    config_value STRING NOT NULL,
+    config_type STRING NOT NULL,  -- 'prompt', 'setting', 'metadata'
+    version INT NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    created_by STRING NOT NULL,
+    description STRING,
+    tags MAP<STRING, STRING>,
+    CONSTRAINT pk_agent_config PRIMARY KEY (config_key, version)
+)
+CLUSTER BY AUTO
+COMMENT 'Agent configuration storage including prompts, settings, and metadata';
+```
+
+### Why Unity Catalog + MLflow?
+
+| Storage | Purpose | Benefits |
+|---|---|---|
+| **Unity Catalog Table** | Runtime prompt retrieval | Fast reads, SQL queryable, governed |
+| **MLflow Artifacts** | Versioning & experiment tracking | Git-like history, rollback, lineage |
+
+---
+
+## Registration Pattern
+
+### File: `src/agents/setup/register_prompts.py`
+
+```python
+# Databricks notebook source
+"""
+Register Agent Prompts to Unity Catalog and MLflow
+==================================================
+
+Stores all agent prompts in agent_config table and logs to MLflow.
+"""
+
+import mlflow
+from datetime import datetime
+from pyspark.sql import SparkSession
+
+# ===========================================================================
+# ORCHESTRATOR SYSTEM PROMPT
+# ===========================================================================
+
+ORCHESTRATOR_PROMPT = """You are the **Databricks Platform Health Supervisor**...
+
+[Full prompt content here - 200+ lines]
+"""
+
+INTENT_CLASSIFIER_PROMPT = """You are a query classifier..."""
+
+SYNTHESIZER_PROMPT = """You are a senior platform analyst..."""
+
+# Domain-specific worker prompts
+COST_ANALYST_PROMPT = """You are a cost intelligence specialist..."""
+SECURITY_ANALYST_PROMPT = """You are a security compliance specialist..."""
+# ... more prompts ...
+
+# ===========================================================================
+# PROMPT REGISTRY
+# ===========================================================================
+
+PROMPTS = {
+    "orchestrator": ORCHESTRATOR_PROMPT,
+    "intent_classifier": INTENT_CLASSIFIER_PROMPT,
+    "synthesizer": SYNTHESIZER_PROMPT,
+    "cost_analyst": COST_ANALYST_PROMPT,
+    "security_analyst": SECURITY_ANALYST_PROMPT,
+    "performance_analyst": PERFORMANCE_ANALYST_PROMPT,
+    "reliability_analyst": RELIABILITY_ANALYST_PROMPT,
+    "quality_analyst": QUALITY_ANALYST_PROMPT,
+}
+
+# ===========================================================================
+# REGISTRATION FUNCTIONS
+# ===========================================================================
+
+def register_prompts_to_table(
+    spark: SparkSession,
+    catalog: str,
+    schema: str,
+    prompts: dict,
+) -> None:
+    """
+    Register prompts to Unity Catalog agent_config table.
+    
+    Args:
+        spark: SparkSession
+        catalog: Unity Catalog name
+        schema: Schema name
+        prompts: Dict of {prompt_key: prompt_text}
+    """
+    table_name = f"{catalog}.{schema}.agent_config"
+    
+    print("\n" + "=" * 80)
+    print(f"REGISTERING PROMPTS TO: {table_name}")
+    print("=" * 80)
+    
+    for prompt_key, prompt_text in prompts.items():
+        # Insert prompt as new version
+        spark.sql(f"""
+            INSERT INTO {table_name}
+            VALUES (
+                '{prompt_key}',
+                '{prompt_text.replace("'", "''")}',  -- Escape single quotes
+                'prompt',
+                1,  -- Version (could auto-increment)
+                CURRENT_TIMESTAMP(),
+                CURRENT_USER(),
+                'Agent system prompt',
+                map('role', '{prompt_key}', 'status', 'active')
+            )
+        """)
+        
+        print(f"✓ Registered: {prompt_key}")
+    
+    print(f"\n✅ Registered {len(prompts)} prompts to Unity Catalog")
+
+
+def register_prompts_to_mlflow(
+    prompts: dict,
+    experiment_name: str = "/Shared/health_monitor_agent_prompts"
+) -> None:
+    """
+    Register prompts as MLflow artifacts for versioning.
+    
+    Args:
+        prompts: Dict of {prompt_key: prompt_text}
+        experiment_name: MLflow experiment path
+    """
+    mlflow.set_experiment(experiment_name)
+    
+    print("\n" + "=" * 80)
+    print(f"LOGGING PROMPTS TO MLFLOW: {experiment_name}")
+    print("=" * 80)
+    
+    with mlflow.start_run(run_name=f"register_prompts_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
+        # Log each prompt as artifact
+        for prompt_key, prompt_text in prompts.items():
+            # Save to temp file
+            temp_file = f"/tmp/{prompt_key}.txt"
+            with open(temp_file, 'w') as f:
+                f.write(prompt_text)
+            
+            # Log as artifact
+            mlflow.log_artifact(temp_file, artifact_path=f"prompts/{prompt_key}")
+            print(f"✓ Logged: {prompt_key}")
+        
+        # Log metadata
+        mlflow.log_params({
+            "num_prompts": len(prompts),
+            "prompt_keys": ",".join(prompts.keys()),
+            "registration_date": datetime.now().isoformat(),
+        })
+        
+        print(f"\n✅ Logged {len(prompts)} prompts to MLflow")
+
+
+# ===========================================================================
+# MAIN
+# ===========================================================================
+
+def main():
+    """Register all agent prompts."""
+    catalog = dbutils.widgets.get("catalog")
+    agent_schema = dbutils.widgets.get("agent_schema")
+    
+    spark = SparkSession.builder.appName("Register Prompts").getOrCreate()
+    
+    # Register to Unity Catalog
+    register_prompts_to_table(spark, catalog, agent_schema, PROMPTS)
+    
+    # Register to MLflow
+    register_prompts_to_mlflow(PROMPTS)
+    
+    print("\n" + "=" * 80)
+    print("✅ PROMPT REGISTRATION COMPLETE!")
+    print("=" * 80)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## Loading Patterns
+
+### Runtime Loading from Unity Catalog
+
+```python
+from pyspark.sql import SparkSession
+
+def load_prompt(
+    spark: SparkSession,
+    catalog: str,
+    schema: str,
+    prompt_key: str,
+    version: int = None
+) -> str:
+    """
+    Load prompt from Unity Catalog agent_config table.
+    
+    Args:
+        spark: SparkSession
+        catalog: Unity Catalog name
+        schema: Schema name
+        prompt_key: Prompt identifier
+        version: Specific version (None = latest)
+    
+    Returns:
+        Prompt text string.
+    """
+    table_name = f"{catalog}.{schema}.agent_config"
+    
+    if version:
+        query = f"""
+            SELECT config_value
+            FROM {table_name}
+            WHERE config_key = '{prompt_key}'
+              AND version = {version}
+              AND config_type = 'prompt'
+        """
+    else:
+        query = f"""
+            SELECT config_value
+            FROM {table_name}
+            WHERE config_key = '{prompt_key}'
+              AND config_type = 'prompt'
+            ORDER BY version DESC
+            LIMIT 1
+        """
+    
+    result = spark.sql(query).collect()
+    
+    if not result:
+        raise ValueError(f"Prompt not found: {prompt_key}")
+    
+    return result[0][0]
+
+
+# Usage in agent
+spark = SparkSession.builder.getOrCreate()
+
+orchestrator_prompt = load_prompt(
+    spark, catalog, schema, "orchestrator"
+)
+
+# With specific version
+old_prompt = load_prompt(
+    spark, catalog, schema, "orchestrator", version=1
+)
+```
+
+### Lazy Loading Pattern (Agent Initialization)
+
+```python
+class HealthMonitorAgent(mlflow.pyfunc.ResponsesAgent):
+    """Agent with lazy-loaded prompts."""
+    
+    def __init__(self):
+        super().__init__()
+        self._prompts_loaded = False
+        self._prompts = {}
+    
+    def _load_prompts(self):
+        """Lazy-load prompts on first use."""
+        if self._prompts_loaded:
+            return
+        
+        try:
+            spark = SparkSession.builder.getOrCreate()
+            catalog = os.environ.get("CATALOG", "default_catalog")
+            schema = os.environ.get("AGENT_SCHEMA", "agent_schema")
+            
+            # Load all prompts
+            self._prompts = {
+                "orchestrator": load_prompt(spark, catalog, schema, "orchestrator"),
+                "intent_classifier": load_prompt(spark, catalog, schema, "intent_classifier"),
+                "synthesizer": load_prompt(spark, catalog, schema, "synthesizer"),
+                # ... more prompts ...
+            }
+            
+            self._prompts_loaded = True
+            print("✓ Prompts loaded from Unity Catalog")
+            
+        except Exception as e:
+            print(f"⚠ Could not load prompts from UC: {e}")
+            print("Using embedded defaults")
+            self._prompts = self._get_default_prompts()
+            self._prompts_loaded = True
+    
+    def _get_default_prompts(self) -> dict:
+        """Fallback embedded prompts."""
+        return {
+            "orchestrator": "You are a helpful assistant...",
+            # ... minimal defaults ...
+        }
+    
+    def predict(self, request):
+        """Execute agent with loaded prompts."""
+        # Lazy-load prompts on first call
+        self._load_prompts()
+        
+        # Use prompts
+        orchestrator_prompt = self._prompts["orchestrator"]
+        
+        # ... rest of prediction logic ...
+```
+
+---
+
+## AB Testing Pattern (Champion/Challenger)
+
+### Setup: Register Multiple Prompt Versions
+
+```python
+# Register champion (current production)
+register_prompt(
+    key="orchestrator",
+    text=CHAMPION_PROMPT,
+    alias="champion",
+    tags={"variant": "A", "status": "production"}
+)
+
+# Register challenger (new experimental)
+register_prompt(
+    key="orchestrator",
+    text=CHALLENGER_PROMPT,
+    alias="challenger",
+    tags={"variant": "B", "status": "experimental"}
+)
+```
+
+### Agent: Load by Alias
+
+```python
+def load_prompt_by_alias(
+    spark: SparkSession,
+    catalog: str,
+    schema: str,
+    prompt_key: str,
+    alias: str = "champion"
+) -> str:
+    """
+    Load prompt by alias (champion/challenger/production).
+    
+    Args:
+        alias: champion, challenger, production, staging, etc.
+    """
+    table_name = f"{catalog}.{schema}.agent_config"
+    
+    query = f"""
+        SELECT config_value
+        FROM {table_name}
+        WHERE config_key = '{prompt_key}'
+          AND config_type = 'prompt'
+          AND tags['alias'] = '{alias}'
+        ORDER BY version DESC
+        LIMIT 1
+    """
+    
+    result = spark.sql(query).collect()
+    
+    if not result:
+        # Fallback to latest if alias not found
+        return load_prompt(spark, catalog, schema, prompt_key)
+    
+    return result[0][0]
+
+
+# Usage: Route based on user_id
+def get_prompt_variant(user_id: str) -> str:
+    """Return champion or challenger based on user_id."""
+    # 90% champion, 10% challenger
+    import hashlib
+    hash_val = int(hashlib.md5(user_id.encode()).hexdigest(), 16)
+    return "challenger" if hash_val % 10 == 0 else "champion"
+
+
+# In agent
+variant = get_prompt_variant(user_id)
+orchestrator_prompt = load_prompt_by_alias(
+    spark, catalog, schema, "orchestrator", alias=variant
+)
+```
+
+### Evaluation: Compare Variants
+
+```python
+import mlflow
+import pandas as pd
+
+def evaluate_prompt_variants(eval_dataset: pd.DataFrame) -> dict:
+    """
+    Evaluate champion vs challenger prompts.
+    
+    Returns:
+        Dict with metrics for each variant.
+    """
+    results = {}
+    
+    for variant in ["champion", "challenger"]:
+        print(f"\n📊 Evaluating {variant}...")
+        
+        # Load agent with this variant
+        agent = HealthMonitorAgent()
+        agent._prompt_alias = variant
+        
+        # Run evaluation
+        eval_results = mlflow.genai.evaluate(
+            model=agent,
+            data=eval_dataset,
+            model_type="databricks-agent",
+            evaluators=[relevance, safety, guidelines],
+            run_name=f"eval_{variant}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+        
+        results[variant] = eval_results.metrics
+        
+        print(f"  Relevance: {eval_results.metrics['relevance/mean']:.3f}")
+        print(f"  Safety: {eval_results.metrics['safety/mean']:.3f}")
+        print(f"  Guidelines: {eval_results.metrics['guidelines/mean']:.3f}")
+    
+    # Compare
+    champion_score = results["champion"]["relevance/mean"]
+    challenger_score = results["challenger"]["relevance/mean"]
+    
+    if challenger_score > champion_score:
+        print(f"\n🎉 Challenger wins! ({challenger_score:.3f} > {champion_score:.3f})")
+        print("Consider promoting challenger to champion")
+    else:
+        print(f"\n✅ Champion retains! ({champion_score:.3f} ≥ {challenger_score:.3f})")
+    
+    return results
+```
+
+---
+
+## Prompt Update Pattern
+
+### Iterative Prompt Development
+
+```python
+def update_prompt(
+    spark: SparkSession,
+    catalog: str,
+    schema: str,
+    prompt_key: str,
+    new_text: str,
+    description: str = "Prompt update",
+    alias: str = "staging"
+) -> int:
+    """
+    Update prompt with new version.
+    
+    Returns:
+        New version number.
+    """
+    table_name = f"{catalog}.{schema}.agent_config"
+    
+    # Get max version
+    max_version_query = f"""
+        SELECT MAX(version) as max_ver
+        FROM {table_name}
+        WHERE config_key = '{prompt_key}'
+    """
+    
+    max_version = spark.sql(max_version_query).collect()[0][0] or 0
+    new_version = max_version + 1
+    
+    # Insert new version
+    spark.sql(f"""
+        INSERT INTO {table_name}
+        VALUES (
+            '{prompt_key}',
+            '{new_text.replace("'", "''")}',
+            'prompt',
+            {new_version},
+            CURRENT_TIMESTAMP(),
+            CURRENT_USER(),
+            '{description}',
+            map('alias', '{alias}', 'previous_version', '{max_version}')
+        )
+    """)
+    
+    print(f"✓ Updated {prompt_key} to version {new_version} (alias: {alias})")
+    
+    # Also log to MLflow
+    with mlflow.start_run(run_name=f"update_{prompt_key}_v{new_version}"):
+        mlflow.log_params({
+            "prompt_key": prompt_key,
+            "version": new_version,
+            "alias": alias,
+        })
+        mlflow.log_text(new_text, artifact_file=f"prompts/{prompt_key}_v{new_version}.txt")
+    
+    return new_version
+```
+
+### Promotion Pattern
+
+```python
+def promote_prompt(
+    spark: SparkSession,
+    catalog: str,
+    schema: str,
+    prompt_key: str,
+    from_alias: str = "challenger",
+    to_alias: str = "champion"
+) -> None:
+    """
+    Promote challenger to champion after successful AB test.
+    
+    Updates tags to mark new champion.
+    """
+    table_name = f"{catalog}.{schema}.agent_config"
+    
+    # Get challenger version
+    challenger_query = f"""
+        SELECT version
+        FROM {table_name}
+        WHERE config_key = '{prompt_key}'
+          AND tags['alias'] = '{from_alias}'
+        ORDER BY version DESC
+        LIMIT 1
+    """
+    
+    challenger_version = spark.sql(challenger_query).collect()[0][0]
+    
+    # Update tags to promote
+    spark.sql(f"""
+        UPDATE {table_name}
+        SET tags = map('alias', '{to_alias}', 'promoted_from', '{from_alias}')
+        WHERE config_key = '{prompt_key}'
+          AND version = {challenger_version}
+    """)
+    
+    # Demote old champion to archived
+    spark.sql(f"""
+        UPDATE {table_name}
+        SET tags = map('alias', 'archived', 'superseded_by', '{challenger_version}')
+        WHERE config_key = '{prompt_key}'
+          AND tags['alias'] = '{to_alias}'
+          AND version < {challenger_version}
+    """)
+    
+    print(f"✓ Promoted {prompt_key} v{challenger_version} from {from_alias} to {to_alias}")
+```
+
+---
+
+## Common Mistakes to Avoid
+
+### ❌ DON'T: Hardcode Prompts in Agent
+
+```python
+# BAD: Prompts embedded in code
+class Agent:
+    PROMPT = """You are a helpful assistant..."""  # ❌ No versioning!
+```
+
+### ✅ DO: Load from Registry
+
+```python
+# GOOD: Prompts loaded from Unity Catalog
+class Agent:
+    def __init__(self):
+        self._prompts = self._load_prompts_from_uc()
+```
+
+### ❌ DON'T: Skip MLflow Logging
+
+```python
+# BAD: Only in Unity Catalog
+register_to_table(prompts)  # ❌ No experiment tracking!
+```
+
+### ✅ DO: Dual Storage
+
+```python
+# GOOD: Both Unity Catalog and MLflow
+register_to_table(prompts)  # ✅ Runtime access
+register_to_mlflow(prompts)  # ✅ Versioning & lineage
+```
+
+### ❌ DON'T: Ignore SQL Injection
+
+```python
+# BAD: Unsanitized prompt text
+spark.sql(f"INSERT INTO table VALUES ('{prompt}')")  # ❌ SQL injection!
+```
+
+### ✅ DO: Escape Single Quotes
+
+```python
+# GOOD: Escaped quotes
+sanitized = prompt.replace("'", "''")
+spark.sql(f"INSERT INTO table VALUES ('{sanitized}')")  # ✅ Safe
+```
+
+---
+
+## Validation Checklist
+
+Before deploying prompt registry:
+- [ ] Unity Catalog table created with correct schema
+- [ ] Prompts registered to both UC table and MLflow
+- [ ] Agent loads prompts at runtime (lazy loading)
+- [ ] Fallback defaults defined if UC unavailable
+- [ ] AB testing aliases defined (champion/challenger)
+- [ ] Prompt update function creates new versions
+- [ ] Promotion function updates aliases
+- [ ] SQL injection prevented (escaped quotes)
+- [ ] MLflow experiment tracks prompt changes
+- [ ] Evaluation compares prompt variants
+
+---
+
+## References
+
+### Official Documentation
+- [MLflow Prompt Engineering](https://mlflow.org/docs/latest/llms/prompt-engineering/index.html)
+- [Unity Catalog Tables](https://docs.databricks.com/data-governance/unity-catalog/create-tables.html)
+- [Agent Configuration Management](https://docs.databricks.com/en/generative-ai/agent-framework/configuration.html)
+
+### Related Rules
+- [30-mlflow-genai-evaluation.mdc](mdc:.cursor/rules/genai-agents/30-mlflow-genai-evaluation.mdc) - Evaluation patterns
+- [31-lakebase-memory-patterns.mdc](mdc:.cursor/rules/genai-agents/31-lakebase-memory-patterns.mdc) - Memory patterns
+
+### Implementation Reference
+- `src/agents/prompts/registry.py` - Prompt definitions
+- `src/agents/prompts/manager.py` - Load/update functions
+- `src/agents/prompts/ab_testing.py` - AB testing logic
+- `src/agents/setup/register_prompts.py` - Registration script

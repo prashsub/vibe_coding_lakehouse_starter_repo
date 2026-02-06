@@ -539,3 +539,159 @@ RETURN
   WHERE rank <= top_n
   ORDER BY rank;
 ```
+
+## SQL File Organization
+
+When creating multiple TVFs, organize them in a single SQL file with clear section markers.
+
+### File Path Convention
+
+```
+src/{project}_gold/table_valued_functions.sql
+```
+
+### File Structure Template
+
+```sql
+-- =============================================================================
+-- {Project} Gold Layer - Table-Valued Functions for Genie
+-- 
+-- This file contains parameterized functions optimized for Genie Spaces.
+-- Each function includes LLM-friendly metadata for natural language understanding.
+--
+-- Key Patterns:
+-- 1. STRING for date parameters (Genie doesn't support DATE type)
+-- 2. Required parameters first, optional (DEFAULT) parameters last
+-- 3. ROW_NUMBER + WHERE for Top N (not LIMIT with parameter)
+-- 4. NULLIF for all divisions (null safety)
+-- 5. is_current = true for SCD2 dimension joins
+--
+-- Usage: Deploy via gold_setup_job or setup_orchestrator_job
+-- =============================================================================
+
+-- Set context
+USE CATALOG ${catalog};
+USE SCHEMA ${gold_schema};
+
+-- =============================================================================
+-- TVF 1: Get Top Stores by Revenue
+-- =============================================================================
+CREATE OR REPLACE FUNCTION get_top_stores_by_revenue(...)
+...;
+
+-- =============================================================================
+-- TVF 2: Get Store Performance
+-- =============================================================================
+CREATE OR REPLACE FUNCTION get_store_performance(...)
+...;
+
+-- =============================================================================
+-- TVF 3: Get Top Products
+-- =============================================================================
+CREATE OR REPLACE FUNCTION get_top_products(...)
+...;
+
+-- Continue for 10-15 TVFs based on business requirements...
+```
+
+**Key conventions:**
+- Header comment block summarizes all key patterns
+- `USE CATALOG` / `USE SCHEMA` with parameterized variables
+- Section separators (`-- ===`) between each TVF
+- Numbered sections for easy navigation
+- See `references/tvf-examples.md` for 5 complete TVF implementations
+
+## Asset Bundle Deployment
+
+Deploy TVFs using a `sql_task` in your Asset Bundle job configuration.
+
+### Job YAML: `resources/gold/tvf_job.yml`
+
+```yaml
+resources:
+  jobs:
+    gold_setup_job:
+      name: "[${bundle.target}] {Project} Gold Layer - Setup"
+      
+      tasks:
+        # ... existing table creation tasks ...
+        
+        # Add TVF creation task
+        - task_key: create_table_valued_functions
+          depends_on:
+            - task_key: create_gold_tables
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/{project}_gold/table_valued_functions.sql
+            parameters:
+              catalog: ${var.catalog}
+              gold_schema: ${var.gold_schema}
+      
+      tags:
+        environment: ${bundle.target}
+        layer: gold
+        job_type: setup
+```
+
+**Key configuration:**
+- `sql_task` (not `notebook_task`) for pure SQL files
+- `warehouse_id` required for SQL task execution
+- `depends_on` ensures Gold tables exist before TVFs reference them
+- Parameters passed via `parameters` dict (substituted as `${catalog}`, `${gold_schema}`)
+- Cross-reference `databricks-asset-bundles` skill for complete DAB patterns
+
+## Post-Deployment Validation Queries
+
+After deploying TVFs, run these queries to verify correctness. See `scripts/validate_tvfs.sql` for a ready-to-run script.
+
+### List All TVFs in Schema
+
+```sql
+SHOW FUNCTIONS IN {catalog}.{schema}
+WHERE function_name LIKE 'get_%';
+```
+
+### View Function Details
+
+```sql
+DESCRIBE FUNCTION EXTENDED {catalog}.{schema}.get_top_stores_by_revenue;
+```
+
+### Test Function Execution
+
+```sql
+-- With explicit parameters
+SELECT * FROM {catalog}.{schema}.get_top_stores_by_revenue(
+  '2024-01-01', 
+  '2024-12-31', 
+  5
+);
+
+-- With default parameter (should return 10 rows)
+SELECT * FROM {catalog}.{schema}.get_top_stores_by_revenue(
+  '2024-01-01', 
+  '2024-12-31'
+);
+```
+
+### Validate Against Metric View
+
+Compare TVF totals to metric view totals. Ratio should be approximately 1.0. If ratio >> 1.0 (e.g., 254), there is a cartesian product bug — see the Cartesian Product Bug Prevention section above.
+
+```sql
+WITH tvf_result AS (
+  SELECT SUM(total_revenue) as tvf_total
+  FROM {catalog}.{schema}.get_top_stores_by_revenue('2024-01-01', '2024-12-31', 999999)
+),
+metric_result AS (
+  SELECT SUM(MEASURE(total_revenue)) as metric_total
+  FROM {catalog}.{schema}.{metric_view_name}
+  WHERE transaction_date BETWEEN '2024-01-01' AND '2024-12-31'
+)
+SELECT 
+  tvf_total,
+  metric_total,
+  tvf_total / NULLIF(metric_total, 0) as ratio  -- Should be ~1.0
+FROM tvf_result, metric_result;
+```

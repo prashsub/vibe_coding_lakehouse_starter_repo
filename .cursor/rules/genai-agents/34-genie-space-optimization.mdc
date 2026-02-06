@@ -1,0 +1,613 @@
+---
+description: Patterns for optimizing Databricks Genie Spaces including accuracy testing, repeatability improvement, API updates, and dual persistence requirements
+globs: 
+  - src/genie/**
+  - tests/optimizer/**
+  - docs/genie_space_optimizer/**
+alwaysApply: false
+---
+
+# Genie Space Optimization Patterns
+
+## Pattern Recognition
+
+This rule applies when:
+- Optimizing Genie Space accuracy or repeatability
+- Updating Genie Space configurations via API
+- Adding/modifying Genie Space instructions
+- Testing Genie Space response quality
+- Managing Genie export JSON files
+
+## Overview
+
+Genie Space optimization is an **interactive, LLM-driven process** that improves two quality dimensions:
+
+| Dimension | Target | Measures |
+|-----------|--------|----------|
+| **Accuracy** | 95%+ | Does Genie return correct SQL/answers? |
+| **Repeatability** | 90%+ | Does Genie return the same SQL consistently? |
+
+---
+
+## ⚠️ CRITICAL: Genie Space IDs Reference
+
+Always use correct Space IDs for each domain:
+
+| Domain | Space ID | Description |
+|--------|----------|-------------|
+| 💰 **Cost** | `01f0f1a3c2dc1c8897de11d27ca2cb6f` | Cost analytics and FinOps |
+| 🔄 **Reliability** | `01f0f1a3c33b19848c856518eac91dee` | Job reliability tracking |
+| ✅ **Quality** | `01f0f1a3c39517ffbe190f38956d8dd1` | Data freshness and lineage |
+| ⚡ **Performance** | `01f0f1a3c3e31a8e8e6dee3eddf5d61f` | Query and cluster performance |
+| 🔒 **Security** | `01f0f1a3c44117acada010638189392f` | Security audit and compliance |
+| 🌐 **Unified** | `01f0f1a3c4981080b61e224ecd465817` | All domains combined |
+
+---
+
+## 1. Genie Query Testing Pattern
+
+### Running Queries via SDK
+
+```python
+import time
+import hashlib
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+SPACE_ID = "01f0f1a3c2dc1c8897de11d27ca2cb6f"  # Use correct domain ID
+
+def run_genie_query(question: str, max_wait_seconds: int = 120) -> dict:
+    """Execute a query against Genie and return SQL + status."""
+    try:
+        # Start conversation
+        start_response = w.genie.start_conversation(
+            space_id=SPACE_ID, 
+            content=question
+        )
+        conversation_id = start_response.conversation_id
+        message_id = start_response.message_id
+        
+        # Poll for completion
+        start_time = time.time()
+        poll_interval = 3
+        
+        while time.time() - start_time < max_wait_seconds:
+            time.sleep(poll_interval)
+            msg = w.genie.get_message(
+                space_id=SPACE_ID, 
+                conversation_id=conversation_id, 
+                message_id=message_id
+            )
+            status = str(msg.status) if hasattr(msg, 'status') else 'UNKNOWN'
+            
+            if 'COMPLETED' in status or 'FAILED' in status or 'CANCELLED' in status:
+                break
+            if poll_interval < 10:
+                poll_interval += 1
+        
+        # Extract SQL from response
+        sql = None
+        if hasattr(msg, 'attachments') and msg.attachments:
+            for att in msg.attachments:
+                if hasattr(att, 'query') and att.query:
+                    sql = att.query.query if hasattr(att.query, 'query') else str(att.query)
+        
+        return {"status": status, "sql": sql}
+    except Exception as e:
+        return {"status": "ERROR", "sql": None, "error": str(e)}
+```
+
+### Rate Limiting
+
+**CRITICAL:** Databricks enforces rate limits on Genie API:
+- **5 POST requests/minute/workspace**
+- Always wait **12+ seconds** between queries
+
+```python
+# Between each test query
+time.sleep(12)
+```
+
+---
+
+## 2. Repeatability Testing Pattern
+
+### Why Repeatability Matters
+
+LLMs are non-deterministic. The same question can produce different SQL on different runs. Low repeatability causes:
+- Inconsistent dashboard results
+- Unreliable automated pipelines
+- User confusion
+
+### Repeatability Measurement
+
+```python
+def test_repeatability(question: str, iterations: int = 3) -> dict:
+    """Test if a question produces consistent SQL across multiple runs."""
+    hashes = []
+    assets = []
+    
+    for i in range(iterations):
+        print(f"   Iteration {i+1}/{iterations}...", end=" ", flush=True)
+        
+        sql = run_genie_query(question).get("sql", "")
+        
+        if sql:
+            # Determine asset type
+            uses_mv = "mv_" in sql.lower() or "metric" in sql.lower()
+            uses_tvf = "get_" in sql.lower()
+            asset = "MV" if uses_mv else ("TVF" if uses_tvf else "TABLE")
+            
+            # Hash for comparison
+            sql_hash = hashlib.md5(sql.lower().encode()).hexdigest()[:8]
+            hashes.append(sql_hash)
+            assets.append(asset)
+            print(f"✅ ({sql_hash}, {asset})")
+        else:
+            hashes.append("NONE")
+            assets.append("NONE")
+            print(f"❌ (no SQL)")
+        
+        time.sleep(12)  # Rate limiting
+    
+    # Calculate repeatability
+    from collections import Counter
+    hash_counts = Counter(hashes)
+    most_common = hash_counts.most_common(1)[0][1]
+    repeatability = (most_common / len(hashes)) * 100
+    
+    return {
+        "question": question,
+        "repeatability": repeatability,
+        "unique_variants": len(set(hashes)),
+        "dominant_asset": Counter(assets).most_common(1)[0][0]
+    }
+```
+
+### Repeatability Scores
+
+| Score | Classification | Action |
+|-------|---------------|--------|
+| **100%** | ✅ Identical | No action needed |
+| **70-99%** | ⚠️ Minor variance | Usually acceptable |
+| **50-69%** | ⚠️ Significant variance | Consider instruction update |
+| **<50%** | ❌ Critical variance | Must fix with instructions/sample query |
+
+---
+
+## 3. Six Control Levers (Priority Order)
+
+When Genie returns incorrect or inconsistent results, use these levers in order:
+
+| Priority | Lever | When to Use | Update Method |
+|----------|-------|-------------|---------------|
+| **1** | UC Tables & Columns | Most issues | `ALTER TABLE ... SET TBLPROPERTIES` |
+| **2** | Metric Views | Metric questions | Update metric view YAML |
+| **3** | TVFs (Functions) | Complex calculations | Update function COMMENT |
+| **4** | Lakehouse Monitoring Tables | Time-series queries | Update table descriptions |
+| **5** | ML Model Tables | Prediction queries | Update table descriptions |
+| **6** | Genie Instructions | Last resort (~4000 char) | PATCH API update |
+
+### Why This Order?
+
+- **UC metadata** is more durable - survives Genie Space rebuilds
+- **Genie instructions** have a ~4000 character limit
+- **Lower-priority levers** are less discoverable by Genie
+
+---
+
+## 4. ⚠️ CRITICAL: Dual Persistence Requirement
+
+**Every optimization MUST be applied in TWO places:**
+
+| Step | Action | Why |
+|------|--------|-----|
+| **1. Direct Update** | Apply immediately (API, ALTER TABLE) | Effective NOW |
+| **2. Repository Update** | Update source files | Future deployments include change |
+
+### Per-Lever Dual Persistence
+
+| Lever | Direct Update | Repository Source File |
+|-------|---------------|------------------------|
+| UC Tables | `ALTER TABLE ... SET TBLPROPERTIES` | `gold_layer_design/yaml/{domain}/*.yaml` |
+| Metric Views | Deploy via script | `src/semantic/metric_views/*.yaml` |
+| TVFs | `CREATE OR REPLACE FUNCTION` | `src/semantic/tvfs/*.sql` |
+| Lakehouse Monitoring | `ALTER TABLE ... SET TBLPROPERTIES` | `src/monitoring/*.py` (METRIC_DESCRIPTIONS) |
+| ML Tables | `ALTER TABLE ... SET TBLPROPERTIES` | `src/ml/config/*.py` |
+| **Genie Instructions** | `PATCH /api/2.0/genie/spaces/{id}` | `src/genie/{domain}_genie_export.json` |
+
+---
+
+## 5. Genie Space API Update Pattern
+
+### Complete Update Workflow
+
+```python
+import json
+import uuid
+import subprocess
+
+SPACE_ID = "01f0f1a3c2dc1c8897de11d27ca2cb6f"  # Target space
+DOMAIN = "cost_intelligence"
+
+# Environment variables for substitution
+CATALOG = "prashanth_subrahmanyam_catalog"
+GOLD_SCHEMA = "dev_prashanth_subrahmanyam_system_gold"
+FEATURE_SCHEMA = "dev_prashanth_subrahmanyam_system_gold_ml"
+
+# 1. Read the export file
+with open(f"src/genie/{DOMAIN}_genie_export.json", "r") as f:
+    genie_config = json.load(f)
+
+# 2. Update instructions (enhanced routing rules)
+enhanced_instructions = """You are a Databricks cost analyst. Follow these STRICT rules:
+
+=== CRITICAL ASSET ROUTING ===
+
+1. **Total spend / overall cost**
+   → USE: mv_cost_analytics metric view
+   → Example: SELECT MEASURE(total_cost) FROM mv_cost_analytics
+
+2. **Top cost contributors / cost breakdown**
+   → USE: get_top_cost_contributors TVF
+   → Example: SELECT * FROM TABLE(get_top_cost_contributors(...))
+
+3. **Daily cost summary / cost trends**
+   → USE: get_daily_cost_summary TVF
+   → Example: SELECT * FROM TABLE(get_daily_cost_summary(...))
+
+=== TIME FILTER DEFAULTS ===
+- No date specified → default to last 7 days
+- Use 'YYYY-MM-DD' format for date parameters
+
+=== FORMATTING ===
+- Currency: $ with 2 decimals
+- Percentages: 1 decimal place
+- Sort by cost DESC for "top" queries"""
+
+# Keep existing ID
+existing_id = genie_config["instructions"]["text_instructions"][0].get("id", uuid.uuid4().hex)
+genie_config["instructions"]["text_instructions"] = [
+    {"id": existing_id, "content": enhanced_instructions.split("\n")}
+]
+
+# 3. ⚠️ CRITICAL: Sort all arrays (API requirement!)
+def sort_genie_config(config):
+    """Sort all arrays in Genie config - API rejects unsorted data."""
+    if "data_sources" in config:
+        if "tables" in config["data_sources"]:
+            config["data_sources"]["tables"] = sorted(
+                config["data_sources"]["tables"], 
+                key=lambda x: x.get("identifier", "")
+            )
+        if "metric_views" in config["data_sources"]:
+            config["data_sources"]["metric_views"] = sorted(
+                config["data_sources"]["metric_views"], 
+                key=lambda x: x.get("identifier", "")
+            )
+    if "instructions" in config:
+        if "sql_functions" in config["instructions"]:
+            config["instructions"]["sql_functions"] = sorted(
+                config["instructions"]["sql_functions"], 
+                key=lambda x: (x.get("id", ""), x.get("identifier", ""))
+            )
+        if "text_instructions" in config["instructions"]:
+            config["instructions"]["text_instructions"] = sorted(
+                config["instructions"]["text_instructions"], 
+                key=lambda x: x.get("id", "")
+            )
+        if "example_question_sqls" in config["instructions"]:
+            config["instructions"]["example_question_sqls"] = sorted(
+                config["instructions"]["example_question_sqls"], 
+                key=lambda x: x.get("id", "")
+            )
+    if "config" in config and "sample_questions" in config["config"]:
+        config["config"]["sample_questions"] = sorted(
+            config["config"]["sample_questions"], 
+            key=lambda x: x.get("id", "")
+        )
+    if "benchmarks" in config and "questions" in config["benchmarks"]:
+        config["benchmarks"]["questions"] = sorted(
+            config["benchmarks"]["questions"], 
+            key=lambda x: x.get("id", "")
+        )
+    return config
+
+genie_config = sort_genie_config(genie_config)
+
+# 4. Substitute variables for deployment
+config_json = json.dumps(genie_config)
+config_json = config_json.replace("${catalog}", CATALOG)
+config_json = config_json.replace("${gold_schema}", GOLD_SCHEMA)
+config_json = config_json.replace("${feature_schema}", FEATURE_SCHEMA)
+substituted_config = json.loads(config_json)
+
+# 5. STEP 1: Direct Update via API
+payload = {"serialized_space": json.dumps(substituted_config)}
+with open("/tmp/genie_payload.json", "w") as f:
+    json.dump(payload, f)
+
+cmd = [
+    "databricks", "api", "patch",
+    f"/api/2.0/genie/spaces/{SPACE_ID}",
+    "--profile", "health-monitor",
+    "--json", "@/tmp/genie_payload.json"
+]
+
+result = subprocess.run(cmd, capture_output=True, text=True)
+
+if result.returncode == 0:
+    print(f"✅ SUCCESS! Genie Space {SPACE_ID} updated.")
+else:
+    print(f"❌ FAILED: {result.stderr[:200]}")
+
+# 6. STEP 2: Repository Update (Dual Persistence)
+# Re-template variables for storage
+config_json = json.dumps(substituted_config)
+config_json = config_json.replace(CATALOG, "${catalog}")
+config_json = config_json.replace(GOLD_SCHEMA, "${gold_schema}")
+config_json = config_json.replace(FEATURE_SCHEMA, "${feature_schema}")
+
+templated = json.loads(config_json)
+templated = sort_genie_config(templated)  # Re-sort for consistency
+
+with open(f"src/genie/{DOMAIN}_genie_export.json", "w") as f:
+    json.dump(templated, f, indent=2)
+
+print(f"✅ Saved to src/genie/{DOMAIN}_genie_export.json")
+```
+
+### Common API Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `data_sources.tables must be sorted` | Arrays not sorted | Call `sort_genie_config()` |
+| `instructions.sql_functions must be sorted by (id, identifier)` | Wrong sort key | Sort by tuple `(id, identifier)` |
+| `401 Unauthorized` | Auth issue | Use Databricks CLI with profile |
+| `Invalid export proto` | JSON structure wrong | Verify against reference file |
+
+---
+
+## 6. Asset Routing Patterns (TVF vs MV)
+
+### When to Use Each Asset
+
+| Query Type | Preferred Asset | Reason |
+|------------|-----------------|--------|
+| **Aggregations** (total, average) | Metric View | Pre-optimized for MEASURE() |
+| **Lists** (show me, which, top N) | TVF | Parameterized, returns rows |
+| **Time-series with params** | TVF | Date range parameters |
+| **Dashboard KPIs** | Metric View | Single-value aggregations |
+| **Detail drilldowns** | TVF | Full row data |
+
+### Standard Instruction Pattern
+
+```
+=== ASSET ROUTING RULES ===
+
+1. **Aggregations** (total, overall, average)
+   → USE: Metric View with MEASURE()
+   → Example: SELECT MEASURE(total_cost) FROM mv_cost_analytics
+
+2. **Lists** (show me, which, top N, list)
+   → USE: TVF with TABLE() wrapper
+   → Example: SELECT * FROM TABLE(get_failed_jobs(7))
+
+3. **Parameterized queries** (date range, filters)
+   → USE: TVF (supports parameters)
+   → Example: SELECT * FROM TABLE(get_daily_cost_summary('2025-01-01', '2025-01-31'))
+```
+
+---
+
+## 7. Optimization Workflow
+
+### Standard Optimization Session
+
+```
+1. SETUP
+   - Identify target Space ID
+   - Load test cases from genie_golden_queries.yml
+   - Read current Genie export config
+
+2. ACCURACY TESTING
+   - Run each test question (respect rate limits)
+   - Evaluate SQL correctness
+   - Calculate accuracy percentage
+   - Identify failure patterns
+
+3. REPEATABILITY TESTING
+   - Run key questions 2-3 times each
+   - Calculate repeatability scores
+   - Identify variance patterns
+
+4. APPLY OPTIMIZATIONS
+   - Update instructions with routing rules
+   - Apply via API (direct update)
+   - Save to repository (dual persistence)
+
+5. VERIFY
+   - Wait 30s for propagation
+   - Re-run failing/variable questions
+   - Measure improvement
+
+6. DOCUMENT
+   - Generate report in docs/genie_space_optimizer/
+   - Include before/after metrics
+   - Document changes applied
+```
+
+### Report Template
+
+```markdown
+# {Domain} Genie Space Optimization Report
+
+**Date:** {date}
+**Space ID:** `{space_id}`
+**Domain:** {domain_name}
+
+## Executive Summary
+
+| Metric | Before | After | Change |
+|--------|--------|-------|--------|
+| **SQL Generation** | X% | Y% | ±Z% |
+| **Repeatability** | X% | Y% | ±Z% |
+
+## Test Results
+
+### Initial Assessment
+| Question ID | Question | Repeatability | Asset |
+|-------------|----------|---------------|-------|
+| ... | ... | ... | ... |
+
+### Post-Optimization
+| Question ID | Before | After | Change |
+|-------------|--------|-------|--------|
+| ... | ... | ... | ... |
+
+## Optimization Applied
+
+### Instructions Update
+{description of instruction changes}
+
+### Dual Persistence ✅
+| Step | Status | Details |
+|------|--------|---------|
+| Direct Update | ✅ | PATCH API |
+| Repository Update | ✅ | File path |
+
+## Files Updated
+1. `src/genie/{domain}_genie_export.json`
+2. `docs/genie_space_optimizer/{domain}_optimization_report.md`
+```
+
+---
+
+## 8. Cross-Domain Benchmarks
+
+### Production Results (Feb 2026)
+
+| Domain | SQL Gen | Repeatability (Before → After) |
+|--------|---------|-------------------------------|
+| **Quality** | 100% | 90% → **100%** (+10%) 🏆 |
+| **Reliability** | 100% | 70% → 80% (+10%) |
+| **Security** | 96% | 47% → 67% (+20%) |
+| **Performance** | 96% | 40% → 47% (+7%) |
+
+### Key Learnings
+
+1. **TVF-first design improves repeatability** - Quality domain achieves 100% by routing most queries to TVFs
+2. **MV queries have higher variance** - LLM makes different column/grouping choices
+3. **Explicit routing rules help** - "For X queries, ALWAYS use Y" reduces ambiguity
+4. **Instructions alone can't fix everything** - LLM non-determinism is inherent
+
+---
+
+## 9. Validation Checklist
+
+### Before Optimization
+- [ ] Correct Space ID identified
+- [ ] Test cases loaded from YAML
+- [ ] Current config backed up
+- [ ] Rate limiting in place (12s between queries)
+
+### During Optimization
+- [ ] Accuracy tests run with proper evaluation
+- [ ] Repeatability tests run (2-3 iterations)
+- [ ] Root causes analyzed for failures
+- [ ] Instructions enhanced with routing rules
+
+### API Update
+- [ ] All arrays sorted (tables, metric_views, sql_functions, etc.)
+- [ ] Variables substituted for deployment
+- [ ] PATCH API call succeeds
+- [ ] Variables re-templated for repository
+
+### Dual Persistence
+- [ ] Direct update applied (API)
+- [ ] Repository file updated (`src/genie/{domain}_genie_export.json`)
+- [ ] Template variables preserved (`${catalog}`, `${gold_schema}`, etc.)
+
+### Verification
+- [ ] Wait 30s for propagation
+- [ ] Re-test failing questions
+- [ ] Improvement measured
+- [ ] Report generated
+
+---
+
+## 10. Common Mistakes to Avoid
+
+### ❌ DON'T: Forget Array Sorting
+
+```python
+# ❌ WRONG: Unsorted arrays
+payload = {"serialized_space": json.dumps(genie_config)}
+# API error: "data_sources.tables must be sorted"
+
+# ✅ CORRECT: Sort all arrays
+genie_config = sort_genie_config(genie_config)
+payload = {"serialized_space": json.dumps(genie_config)}
+```
+
+### ❌ DON'T: Skip Dual Persistence
+
+```python
+# ❌ WRONG: Only API update
+subprocess.run(["databricks", "api", "patch", ...])
+# Change lost on next deployment!
+
+# ✅ CORRECT: Both API and repository
+subprocess.run(["databricks", "api", "patch", ...])  # Direct
+with open("src/genie/config.json", "w") as f:       # Repository
+    json.dump(templated_config, f, indent=2)
+```
+
+### ❌ DON'T: Ignore Rate Limits
+
+```python
+# ❌ WRONG: Rapid-fire queries
+for question in questions:
+    run_genie_query(question)
+# Rate limited, queries fail
+
+# ✅ CORRECT: Respect rate limits
+for question in questions:
+    run_genie_query(question)
+    time.sleep(12)  # 12+ seconds between queries
+```
+
+### ❌ DON'T: Use Wrong Space ID
+
+```python
+# ❌ WRONG: Hardcoded or mismatched ID
+SPACE_ID = "some-random-id"  # Permission error!
+
+# ✅ CORRECT: Use domain-specific ID from reference table
+SPACE_ID = "01f0f1a3c39517ffbe190f38956d8dd1"  # Quality domain
+```
+
+---
+
+## References
+
+### Internal Documentation
+- [Genie Optimizer Prompt](mdc:context/prompts/genie-optimizer-prompt.md)
+- [Genie Space Exports](mdc:src/genie/)
+- [Golden Test Cases](mdc:tests/optimizer/genie_golden_queries.yml)
+- [Optimization Reports](mdc:docs/genie_space_optimizer/)
+
+### Official Databricks Documentation
+- [Genie API Reference](https://docs.databricks.com/api/workspace/genie)
+- [Genie Space Configuration](https://docs.databricks.com/genie/spaces)
+
+---
+
+## Version History
+
+- **v1.0** (Feb 2026) - Initial rule based on optimization of 5 domains
+  - Documented API update pattern with array sorting requirement
+  - Established dual persistence requirement
+  - Created repeatability testing methodology
+  - Benchmarked all domains (Quality: 100%, Reliability: 80%, Security: 67%, Performance: 47%)
+  - Key discovery: TVF-first routing improves repeatability

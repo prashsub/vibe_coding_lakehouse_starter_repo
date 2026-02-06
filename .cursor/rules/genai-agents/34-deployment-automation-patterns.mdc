@@ -1,0 +1,1280 @@
+---
+description: Deployment automation patterns - linking evaluation to model versions, dataset lineage, and CI/CD integration
+globs: src/agents/setup/*_job.py
+alwaysApply: false
+---
+# Deployment Automation & Dataset Linking Patterns
+
+## Pattern Recognition
+Automated deployment workflows that trigger on new model versions, perform comprehensive evaluation with dataset lineage, and make deployment decisions based on thresholds. Based on production implementation of Databricks Health Monitor Agent deployment pipeline.
+
+---
+
+## Pattern 1: MLflow Deployment Job Integration
+
+### Automatic Triggering on Model Version
+
+**Deployment jobs automatically run when a new model version is created or updated.**
+
+```yaml
+# File: resources/agents/agent_deployment_job.yml
+
+resources:
+  jobs:
+    agent_deployment_job:
+      name: "[${bundle.target}] Health Monitor Agent - Deployment Job"
+      description: >
+        Automated deployment job that:
+        1. Triggers on new model version creation
+        2. Runs comprehensive evaluation
+        3. Checks deployment thresholds
+        4. Promotes to production if passed
+      
+      # ================================================================
+      # CRITICAL: Trigger configuration links to model registry
+      # Reference: https://docs.databricks.com/aws/en/mlflow/deployment-job
+      # ================================================================
+      trigger:
+        # Trigger when model version is created or updated
+        entity: MODEL_VERSION
+        events:
+          - MODEL_VERSION_CREATED
+          - MODEL_VERSION_TRANSITIONED_STAGE
+        
+        # ✅ Model to monitor (Unity Catalog path)
+        model_name: "${var.catalog}.${var.agent_schema}.health_monitor_agent"
+      
+      # Task configuration
+      tasks:
+        - task_key: evaluate_and_deploy
+          notebook_task:
+            notebook_path: ../../src/agents/setup/deployment_job.py
+            base_parameters:
+              # ✅ CRITICAL: Pass model info from trigger
+              model_name: "{{job.trigger.model_name}}"       # From trigger event
+              model_version: "{{job.trigger.model_version}}" # From trigger event
+              catalog: ${var.catalog}
+              agent_schema: ${var.agent_schema}
+      
+      # Permissions
+      permissions:
+        - level: CAN_MANAGE_RUN
+          group_name: data_engineers
+      
+      tags:
+        environment: ${bundle.target}
+        job_type: deployment
+        automation: mlflow_trigger
+```
+
+### Deployment Job Implementation
+
+**File:** `src/agents/setup/deployment_job.py`
+
+```python
+# Databricks notebook source
+"""
+MLflow 3 Deployment Job - Automated Evaluation & Promotion
+
+Triggered by: New model version creation in Unity Catalog
+Actions:
+1. Load model version from trigger
+2. Run comprehensive evaluation with dataset linking
+3. Check deployment thresholds
+4. Promote to production if passed
+5. Send notifications
+
+Reference: https://docs.databricks.com/aws/en/mlflow/deployment-job
+"""
+
+import mlflow
+from mlflow import MlflowClient
+import pandas as pd
+from datetime import datetime
+
+# ===========================================================================
+# PARAMETERS (from trigger)
+# ===========================================================================
+
+dbutils.widgets.text("model_name", "")
+dbutils.widgets.text("model_version", "")
+dbutils.widgets.text("catalog", "")
+dbutils.widgets.text("agent_schema", "")
+
+model_name = dbutils.widgets.get("model_name")
+model_version = dbutils.widgets.get("model_version")
+catalog = dbutils.widgets.get("catalog")
+agent_schema = dbutils.widgets.get("agent_schema")
+
+print(f"🚀 Deployment Job Triggered")
+print(f"   Model: {model_name}")
+print(f"   Version: {model_version}")
+
+# ===========================================================================
+# CONFIGURATION
+# ===========================================================================
+
+EVAL_EXPERIMENT = "/Shared/health_monitor_agent_evaluation"
+EVAL_DATASET_TABLE = f"{catalog}.{agent_schema}.agent_evaluation_dataset"
+
+# Deployment thresholds
+THRESHOLDS = {
+    "relevance/mean": 0.4,
+    "safety/mean": 0.7,
+    "guidelines/mean": 0.5,
+    "cost_accuracy/mean": 0.6,
+    "security_compliance/mean": 0.6,
+    "performance_accuracy/mean": 0.6,
+    "reliability_accuracy/mean": 0.5,
+    "quality_accuracy/mean": 0.6,
+}
+
+# ===========================================================================
+# LOAD EVALUATION DATASET WITH LINEAGE
+# ===========================================================================
+
+def load_evaluation_dataset_with_lineage(table_name: str) -> tuple[pd.DataFrame, str]:
+    """
+    Load evaluation dataset from Unity Catalog table.
+    
+    Returns:
+        (dataset, dataset_uri) for MLflow lineage tracking
+    """
+    print(f"\n📊 Loading evaluation dataset: {table_name}")
+    
+    # Load dataset
+    dataset_df = spark.table(table_name).toPandas()
+    
+    # Create MLflow dataset for lineage
+    # ✅ CRITICAL: Use from_spark() to capture Unity Catalog lineage
+    dataset = mlflow.data.from_spark(
+        spark.table(table_name),
+        table_name=table_name,
+        version=None  # Latest version
+    )
+    
+    print(f"✓ Loaded {len(dataset_df)} evaluation queries")
+    print(f"✓ Dataset lineage: {table_name}")
+    
+    return dataset_df, dataset
+
+# ===========================================================================
+# RUN EVALUATION
+# ===========================================================================
+
+def run_evaluation(
+    model_uri: str,
+    dataset_df: pd.DataFrame,
+    dataset: mlflow.data.Dataset
+) -> tuple[bool, dict]:
+    """
+    Run comprehensive evaluation with dataset linking.
+    
+    Args:
+        model_uri: Model URI (e.g., models:/name/version)
+        dataset_df: Pandas DataFrame with evaluation data
+        dataset: MLflow Dataset object for lineage
+    
+    Returns:
+        (passed: bool, metrics: dict)
+    """
+    print("\n" + "=" * 80)
+    print("EVALUATION - LLM Judges with Dataset Lineage")
+    print("=" * 80)
+    
+    mlflow.set_experiment(EVAL_EXPERIMENT)
+    
+    # Build evaluators
+    evaluators = build_evaluators()
+    
+    # ================================================================
+    # CRITICAL: Link dataset to evaluation run
+    # This creates lineage from model → evaluation run → dataset
+    # ================================================================
+    
+    run_name = f"eval_deploy_v{model_version}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    with mlflow.start_run(run_name=run_name) as run:
+        # Log parameters
+        mlflow.log_params({
+            "model_uri": model_uri,
+            "model_version": model_version,
+            "eval_dataset_table": EVAL_DATASET_TABLE,
+            "trigger_type": "deployment_job"
+        })
+        
+        # ✅ CRITICAL: Log dataset as input
+        # This establishes lineage: evaluation run → dataset table
+        mlflow.log_input(dataset, context="evaluation")
+        
+        # Run evaluation
+        results = mlflow.genai.evaluate(
+            model=model_uri,
+            data=dataset_df,
+            model_type="databricks-agent",
+            evaluators=evaluators,
+        )
+        
+        print(f"✓ Evaluation complete: {run.info.run_id}")
+        
+        # Check thresholds
+        metrics = results.metrics
+        passed = check_thresholds(metrics, THRESHOLDS)
+        
+        # Log threshold pass/fail
+        mlflow.log_param("thresholds_passed", passed)
+        
+        return passed, metrics
+
+# ===========================================================================
+# PROMOTE MODEL
+# ===========================================================================
+
+def promote_model(model_name: str, version: str, alias: str = "champion"):
+    """
+    Promote model version to specified alias.
+    
+    Args:
+        model_name: Full Unity Catalog model path
+        version: Version number to promote
+        alias: Alias to assign (champion, production, etc.)
+    """
+    client = MlflowClient()
+    
+    print(f"\n📦 Promoting model to '{alias}'")
+    print(f"   Model: {model_name}")
+    print(f"   Version: {version}")
+    
+    # Set alias
+    client.set_registered_model_alias(
+        name=model_name,
+        alias=alias,
+        version=version
+    )
+    
+    print(f"✅ Model version {version} promoted to '{alias}'")
+
+# ===========================================================================
+# MAIN
+# ===========================================================================
+
+def main():
+    """Main deployment workflow."""
+    # Build model URI
+    model_uri = f"models:/{model_name}/{model_version}"
+    
+    print("\n" + "=" * 80)
+    print("🚀 DEPLOYMENT JOB - Automated Evaluation & Promotion")
+    print("=" * 80)
+    print(f"Model URI: {model_uri}")
+    
+    # Load evaluation dataset with lineage
+    dataset_df, dataset = load_evaluation_dataset_with_lineage(EVAL_DATASET_TABLE)
+    
+    # Run evaluation
+    passed, metrics = run_evaluation(model_uri, dataset_df, dataset)
+    
+    # Make deployment decision
+    if passed:
+        print("\n✅ DEPLOYMENT APPROVED")
+        print("   All thresholds passed")
+        
+        # Promote to production
+        promote_model(model_name, model_version, alias="champion")
+        
+        # Send success notification
+        send_notification(
+            status="success",
+            model_name=model_name,
+            version=model_version,
+            metrics=metrics
+        )
+        
+        dbutils.notebook.exit(json.dumps({
+            "status": "success",
+            "model_version": model_version,
+            "metrics": metrics
+        }))
+        
+    else:
+        print("\n❌ DEPLOYMENT BLOCKED")
+        print("   Some thresholds not met")
+        
+        # Log failed metrics
+        failed = get_failed_metrics(metrics, THRESHOLDS)
+        print(f"   Failed: {', '.join(failed)}")
+        
+        # Send failure notification
+        send_notification(
+            status="failed",
+            model_name=model_name,
+            version=model_version,
+            metrics=metrics,
+            failed_metrics=failed
+        )
+        
+        # Raise exception to mark job as failed
+        raise RuntimeError(
+            f"Deployment blocked - thresholds not met: {', '.join(failed)}"
+        )
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## Pattern 2: Dataset Linking for Reproducibility
+
+### Why Dataset Linking Matters
+
+**Problem:** Evaluation results without dataset lineage are not reproducible.
+
+**Solution:** Use `mlflow.log_input()` to link datasets to evaluation runs.
+
+### Unity Catalog Evaluation Dataset Table
+
+```sql
+-- Create evaluation dataset table in Unity Catalog
+CREATE TABLE ${catalog}.${agent_schema}.agent_evaluation_dataset (
+    query_id STRING NOT NULL,
+    request STRUCT<
+        input: ARRAY<STRUCT<role: STRING, content: STRING>>,
+        custom_inputs: MAP<STRING, STRING>
+    >,
+    expected_output STRUCT<
+        contains_cost_value: BOOLEAN,
+        contains_time_context: BOOLEAN,
+        cites_source: BOOLEAN,
+        no_fabrication: BOOLEAN,
+        domain: STRING
+    >,
+    query_category STRING,
+    difficulty_level STRING,
+    created_at TIMESTAMP NOT NULL,
+    CONSTRAINT pk_eval_dataset PRIMARY KEY (query_id)
+)
+CLUSTER BY AUTO
+COMMENT 'Evaluation dataset for agent quality assessment with expected outputs';
+
+-- Insert evaluation queries
+INSERT INTO ${catalog}.${agent_schema}.agent_evaluation_dataset VALUES
+(
+    'cost_001',
+    named_struct(
+        'input', array(named_struct('role', 'user', 'content', 'Why did costs spike yesterday?')),
+        'custom_inputs', map('user_id', 'test_user')
+    ),
+    named_struct(
+        'contains_cost_value', true,
+        'contains_time_context', true,
+        'cites_source', true,
+        'no_fabrication', true,
+        'domain', 'cost'
+    ),
+    'cost_analysis',
+    'medium',
+    CURRENT_TIMESTAMP()
+),
+(
+    'reliability_001',
+    named_struct(
+        'input', array(named_struct('role', 'user', 'content', 'Which jobs failed today?')),
+        'custom_inputs', map('user_id', 'test_user')
+    ),
+    named_struct(
+        'contains_job_names', true,
+        'contains_failure_reasons', true,
+        'cites_source', true,
+        'no_fabrication', true,
+        'domain', 'reliability'
+    ),
+    'reliability_monitoring',
+    'easy',
+    CURRENT_TIMESTAMP()
+);
+```
+
+### Linking Dataset to Evaluation Run
+
+```python
+from mlflow.data import from_spark
+
+def run_evaluation_with_lineage():
+    """Evaluation with proper dataset linking."""
+    
+    # ================================================================
+    # STEP 1: Load dataset from Unity Catalog
+    # ================================================================
+    table_name = f"{catalog}.{agent_schema}.agent_evaluation_dataset"
+    
+    # Load as Spark DataFrame first
+    spark_df = spark.table(table_name)
+    
+    # Convert to Pandas for evaluation
+    dataset_df = spark_df.toPandas()
+    
+    # ================================================================
+    # STEP 2: Create MLflow Dataset for lineage
+    # This captures Unity Catalog lineage automatically
+    # ================================================================
+    dataset = mlflow.data.from_spark(
+        spark_df,
+        table_name=table_name,
+        version=None  # Latest version
+    )
+    
+    print(f"✓ Dataset loaded: {table_name}")
+    print(f"  Rows: {len(dataset_df)}")
+    print(f"  Lineage: {dataset.source}")
+    
+    # ================================================================
+    # STEP 3: Run evaluation and log dataset as input
+    # ================================================================
+    with mlflow.start_run(run_name="eval_with_lineage"):
+        # ✅ CRITICAL: Log dataset as input to establish lineage
+        # This creates: evaluation run → dataset table
+        mlflow.log_input(dataset, context="evaluation")
+        
+        # Run evaluation
+        results = mlflow.genai.evaluate(
+            model=model_uri,
+            data=dataset_df,
+            model_type="databricks-agent",
+            evaluators=evaluators
+        )
+        
+        # Lineage is now established:
+        # Model → Evaluation Run → Dataset Table → System Tables
+        
+        return results
+```
+
+### Querying Dataset Lineage
+
+```python
+from mlflow import MlflowClient
+
+def get_evaluation_lineage(run_id: str):
+    """Get complete lineage for evaluation run."""
+    
+    client = MlflowClient()
+    run = client.get_run(run_id)
+    
+    # Get input datasets
+    if hasattr(run, 'inputs'):
+        for input_data in run.inputs.dataset_inputs:
+            print(f"📊 Input Dataset:")
+            print(f"   Name: {input_data.dataset.name}")
+            print(f"   Source: {input_data.dataset.source}")
+            print(f"   Schema: {input_data.dataset.schema}")
+            print(f"   Profile: {input_data.dataset.profile}")
+    
+    # Get Unity Catalog lineage via SDK
+    from databricks.sdk import WorkspaceClient
+    w = WorkspaceClient()
+    
+    # Query lineage from Unity Catalog
+    # (evaluation run → dataset table → system tables)
+```
+
+---
+
+## Pattern 3: Multi-Agent with Genie Spaces (Detailed)
+
+### Genie Space Configuration
+
+```python
+# File: src/agents/config/genie_spaces.py
+
+"""
+Genie Space Configuration for Multi-Domain Agent
+
+Each domain has a dedicated Genie Space backed by specific system tables.
+"""
+
+GENIE_SPACES = {
+    "cost": {
+        "space_id": "01j7mpft2h8cj38hjjr8q9h2qc",
+        "name": "Databricks Cost Intelligence",
+        "description": "Cost analytics from system.billing.usage",
+        "system_tables": [
+            "system.billing.usage",
+            "system.billing.list_prices"
+        ],
+        "capabilities": [
+            "Cost trend analysis",
+            "DBU consumption tracking",
+            "Budget monitoring",
+            "Cost attribution by workspace/tag"
+        ]
+    },
+    "security": {
+        "space_id": "01j8k3n4f9xyw42pqr7v5s8t1m",
+        "name": "Databricks Security & Compliance",
+        "description": "Security analytics from system.access.audit",
+        "system_tables": [
+            "system.access.audit",
+            "system.access.table_lineage"
+        ],
+        "capabilities": [
+            "Audit log analysis",
+            "Access pattern detection",
+            "Permission tracking",
+            "Compliance posture"
+        ]
+    },
+    "performance": {
+        "space_id": "01j9m5p6q1bwd53zxy8n2k4v9c",
+        "name": "Databricks Performance Optimization",
+        "description": "Performance analytics from system.query.history",
+        "system_tables": [
+            "system.query.history",
+            "system.compute.clusters",
+            "system.compute.warehouses"
+        ],
+        "capabilities": [
+            "Query latency analysis",
+            "Warehouse utilization",
+            "Cache hit rates",
+            "Optimization recommendations"
+        ]
+    },
+    "reliability": {
+        "space_id": "01jak7q8r2cxe64ayz9o3l5w0d",
+        "name": "Databricks Reliability & SLA",
+        "description": "Reliability analytics from system.lakeflow.job_run_timeline",
+        "system_tables": [
+            "system.lakeflow.job_run_timeline",
+            "system.lakeflow.jobs",
+            "system.lakeflow.workflows"
+        ],
+        "capabilities": [
+            "Job success/failure tracking",
+            "SLA compliance monitoring",
+            "Pipeline health assessment",
+            "Error categorization"
+        ]
+    },
+    "quality": {
+        "space_id": "01jbl9s0t3dyf75bza0p4m6x1e",
+        "name": "Databricks Data Quality",
+        "description": "Quality analytics from system.information_schema",
+        "system_tables": [
+            "system.information_schema.tables",
+            "system.information_schema.columns",
+            "system.catalog.table_lineage"
+        ],
+        "capabilities": [
+            "Data freshness monitoring",
+            "Schema drift detection",
+            "Completeness metrics",
+            "Lineage tracking"
+        ]
+    }
+}
+
+
+def get_genie_space_id(domain: str) -> str:
+    """Get Genie Space ID for domain."""
+    config = GENIE_SPACES.get(domain)
+    if not config:
+        raise ValueError(f"Unknown domain: {domain}")
+    return config["space_id"]
+
+
+def get_genie_capabilities(domain: str) -> list:
+    """Get list of capabilities for domain Genie Space."""
+    config = GENIE_SPACES.get(domain)
+    if not config:
+        return []
+    return config["capabilities"]
+```
+
+### Parallel Multi-Domain Query Pattern
+
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import mlflow
+
+@mlflow.trace(name="multi_domain_query", span_type="AGENT")
+def query_multiple_domains(query: str, domains: list[str]) -> dict:
+    """
+    Query multiple Genie Spaces in parallel.
+    
+    Args:
+        query: User query
+        domains: List of domains to query
+    
+    Returns:
+        Dict of {domain: result}
+    """
+    results = {}
+    
+    # ================================================================
+    # PARALLEL EXECUTION: Query all domains simultaneously
+    # Each Genie Space query is independent and can run in parallel
+    # ================================================================
+    
+    with ThreadPoolExecutor(max_workers=len(domains)) as executor:
+        # Submit all queries
+        future_to_domain = {
+            executor.submit(query_genie_with_trace, domain, query): domain
+            for domain in domains
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_domain):
+            domain = future_to_domain[future]
+            
+            try:
+                result = future.result()
+                results[domain] = {
+                    "status": "success",
+                    "response": result,
+                    "source": f"{GENIE_SPACES[domain]['name']}"
+                }
+                
+            except Exception as e:
+                results[domain] = {
+                    "status": "error",
+                    "error": str(e),
+                    "source": f"{GENIE_SPACES[domain]['name']}"
+                }
+    
+    return results
+
+
+@mlflow.trace(name="query_genie_with_trace", span_type="TOOL")
+def query_genie_with_trace(domain: str, query: str) -> str:
+    """
+    Query single Genie Space with tracing.
+    
+    Span shows:
+    - Domain queried
+    - Genie Space ID
+    - Query sent
+    - Response received
+    - Errors (if any)
+    """
+    with mlflow.start_span(name=f"genie_{domain}", span_type="TOOL") as span:
+        span.set_inputs({
+            "domain": domain,
+            "query": query,
+            "genie_space_id": GENIE_SPACES[domain]["space_id"]
+        })
+        
+        try:
+            from databricks.agents import GenieAgent
+            
+            genie_space_id = get_genie_space_id(domain)
+            genie = GenieAgent(space_id=genie_space_id)
+            
+            result = genie.invoke(query)
+            
+            span.set_outputs({"result": result})
+            span.set_attributes({
+                "source": "genie",
+                "space_name": GENIE_SPACES[domain]["name"]
+            })
+            
+            return result
+            
+        except Exception as e:
+            span.set_attributes({"error": str(e)})
+            
+            # ✅ NO LLM FALLBACK - return explicit error
+            error_msg = f"""## Genie Query Failed
+
+**Domain:** {domain}
+**Genie Space:** {GENIE_SPACES[domain]["name"]}
+**Error:** {str(e)}
+
+I was unable to retrieve real data from the Databricks Genie Space.
+
+**Note:** I will NOT generate fake data."""
+            
+            span.set_outputs({"source": "error", "error_message": error_msg})
+            
+            return error_msg
+```
+
+### Intent Classification for Domain Routing
+
+```python
+@mlflow.trace(name="classify_intent", span_type="CLASSIFIER")
+def classify_intent(query: str) -> list[str]:
+    """
+    Classify user query to determine relevant domains.
+    
+    Returns:
+        List of domain names to query
+    """
+    from langchain_databricks import ChatDatabricks
+    
+    llm = ChatDatabricks(endpoint="databricks-claude-sonnet-4-5", temperature=0)
+    
+    prompt = f"""Analyze this query and determine which observability domains are relevant.
+
+## DOMAINS
+
+| Domain | Keywords |
+|---|---|
+| **COST** | spend, budget, DBU, billing, expensive, cost, price, dollar |
+| **SECURITY** | access, audit, permission, compliance, who accessed, secrets |
+| **PERFORMANCE** | slow, latency, speed, query time, cache, optimization |
+| **RELIABILITY** | fail, error, SLA, job, pipeline, retry, success rate |
+| **QUALITY** | data quality, freshness, stale, null, schema, drift |
+
+## USER QUERY
+{query}
+
+Return JSON ONLY:
+{{"domains": ["PRIMARY", "SECONDARY", ...], "confidence": 0.95, "reasoning": "..."}}
+"""
+    
+    response = llm.invoke(prompt).content
+    
+    import json
+    result = json.loads(response)
+    
+    domains = result["domains"]
+    
+    # Log to trace
+    mlflow.update_current_trace(attributes={
+        "domains": ",".join(domains),
+        "confidence": result["confidence"],
+        "reasoning": result["reasoning"]
+    })
+    
+    return domains
+```
+
+---
+
+## Common Mistakes to Avoid
+
+### ❌ DON'T: Missing Dataset Lineage
+
+```python
+# BAD: No dataset linking
+results = mlflow.genai.evaluate(
+    model=model_uri,
+    data=dataset_df,  # Just a DataFrame, no lineage!
+)
+```
+
+### ✅ DO: Link Dataset with mlflow.log_input()
+
+```python
+# GOOD: Proper dataset linking
+dataset = mlflow.data.from_spark(spark_df, table_name=table_name)
+
+with mlflow.start_run():
+    mlflow.log_input(dataset, context="evaluation")  # ✅ Lineage!
+    
+    results = mlflow.genai.evaluate(
+        model=model_uri,
+        data=dataset_df,
+    )
+```
+
+### ❌ DON'T: Hardcode Genie Space IDs
+
+```python
+# BAD: Hardcoded IDs
+genie = GenieAgent(space_id="01j7mpft2h8cj38hjjr8q9h2qc")
+```
+
+### ✅ DO: Centralized Configuration
+
+```python
+# GOOD: Configuration-driven
+from agents.config.genie_spaces import get_genie_space_id
+
+genie_space_id = get_genie_space_id("cost")
+genie = GenieAgent(space_id=genie_space_id)
+```
+
+### ❌ DON'T: Sequential Domain Queries
+
+```python
+# BAD: Sequential execution
+for domain in domains:
+    result = query_genie(domain, query)  # Slow!
+```
+
+### ✅ DO: Parallel Domain Queries
+
+```python
+# GOOD: Parallel execution
+with ThreadPoolExecutor() as executor:
+    futures = [executor.submit(query_genie, d, query) for d in domains]
+    results = [f.result() for f in as_completed(futures)]
+```
+
+---
+
+## Pattern 4: MLflow Experiment Organization
+
+### The Problem: Single Experiment Clutter
+
+Using a single MLflow experiment mixes different activity types and creates organizational issues:
+
+**Before (Single Experiment):**
+```
+/Shared/health_monitor/agent
+├── run: create_evaluation_dataset (dataset_creation)
+├── run: prompt_registration (prompt_registry)
+├── run: agent_registration_v1 (model_logging)
+├── run: agent_evaluation (evaluation)
+├── run: deployment_v2_staging (deployment)
+└── ... mixed activities, hard to compare
+```
+
+**Problems:**
+- ❌ Dataset creation and config management clutter the experiment
+- ❌ Different activities have different metrics (not comparable)
+- ❌ No clear separation between dev, testing, and production
+- ❌ Hard to find specific evaluation runs
+- ❌ Audit trail is confusing
+
+### The Solution: Three Separate Experiments
+
+**Organize MLflow runs into three purpose-specific experiments:**
+
+| Experiment | Purpose | Runs Include | Run Naming |
+|---|---|---|---|
+| **Development** | Model logging, registration | Agent models logged to UC | `dev_model_registration_{timestamp}` |
+| **Evaluation** | Agent testing | Evaluation runs with metrics | `eval_{domain}_{timestamp}` |
+| **Deployment** | Pre-deploy validation | Deployment threshold checks | `pre_deploy_validation_{timestamp}` |
+
+**After (Separate Experiments):**
+```
+/Shared/health_monitor_agent_development
+├── run: dev_model_registration_20260114_1430
+└── ... model development runs only
+
+/Shared/health_monitor_agent_evaluation
+├── run: eval_cost_20260114_1445
+├── run: eval_comprehensive_20260114_1500
+└── ... evaluation runs only (comparable metrics)
+
+/Shared/health_monitor_agent_deployment
+├── run: pre_deploy_validation_20260114_1530
+└── ... deployment validation runs only
+```
+
+**Benefits:**
+- ✅ Clean separation of concerns
+- ✅ Evaluation runs are directly comparable
+- ✅ No clutter from setup activities
+- ✅ Clear audit trail per activity type
+- ✅ Easy to find relevant runs
+
+### Implementation Pattern
+
+```python
+# ===========================================================================
+# EXPERIMENT CONFIGURATION
+# ===========================================================================
+
+# Three experiments for clean organization
+EXPERIMENT_DEVELOPMENT = "/Shared/health_monitor_agent_development"
+EXPERIMENT_EVALUATION = "/Shared/health_monitor_agent_evaluation"
+EXPERIMENT_DEPLOYMENT = "/Shared/health_monitor_agent_deployment"
+
+# ===========================================================================
+# EXAMPLE 1: Model Logging (Development Experiment)
+# ===========================================================================
+
+import mlflow
+from datetime import datetime
+
+def log_agent_model(agent, catalog: str, schema: str):
+    """Log agent model to Unity Catalog."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    
+    # Set development experiment
+    mlflow.set_experiment(EXPERIMENT_DEVELOPMENT)
+    
+    with mlflow.start_run(run_name=f"dev_model_registration_{timestamp}"):
+        # Set standard tags
+        mlflow.set_tags({
+            "domain": "all",
+            "agent_version": "v4.0",
+            "mlflow_version": mlflow.__version__,
+            "environment": "development",
+        })
+        
+        # Log model
+        mlflow.pyfunc.log_model(
+            artifact_path="agent_model",
+            python_model=agent,
+            registered_model_name=f"{catalog}.{schema}.health_monitor_agent"
+        )
+
+# ===========================================================================
+# EXAMPLE 2: Evaluation (Evaluation Experiment)
+# ===========================================================================
+
+def run_agent_evaluation(model_uri: str, eval_dataset: pd.DataFrame):
+    """Run agent evaluation."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    
+    # Set evaluation experiment
+    mlflow.set_experiment(EXPERIMENT_EVALUATION)
+    
+    with mlflow.start_run(run_name=f"eval_comprehensive_{timestamp}"):
+        # Set standard tags
+        mlflow.set_tags({
+            "domain": "all",
+            "agent_version": "v4.0",
+            "dataset_type": "evaluation",
+            "dataset_version": "v2.1",
+            "evaluation_type": "comprehensive",
+            "environment": "development",
+        })
+        
+        # Run evaluation
+        eval_result = mlflow.genai.evaluate(
+            model=model_uri,
+            data=eval_dataset,
+            model_type="databricks-agent",
+            evaluators=evaluators,
+        )
+        
+        # Metrics logged automatically
+        return eval_result
+
+# ===========================================================================
+# EXAMPLE 3: Deployment Validation (Deployment Experiment)
+# ===========================================================================
+
+def pre_deploy_validation(
+    model_uri: str,
+    eval_metrics: Dict[str, float],
+    thresholds: Dict[str, float]
+):
+    """Pre-deployment validation check."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    
+    # Set deployment experiment
+    mlflow.set_experiment(EXPERIMENT_DEPLOYMENT)
+    
+    with mlflow.start_run(run_name=f"pre_deploy_validation_{timestamp}"):
+        # Set standard tags
+        mlflow.set_tags({
+            "domain": "all",
+            "agent_version": "v4.0",
+            "evaluation_type": "pre_deploy",
+            "environment": "staging",
+        })
+        
+        # Check thresholds
+        passed = check_thresholds(eval_metrics, thresholds)
+        
+        mlflow.log_params({
+            "model_uri": model_uri,
+            "deployment_approved": passed,
+        })
+        
+        mlflow.log_metrics(eval_metrics)
+        
+        return passed
+```
+
+### DON'T Log Runs for These Activities
+
+**These activities should NOT create MLflow runs (no logging needed):**
+
+```python
+# ❌ DON'T: Dataset creation
+def create_evaluation_dataset(...):
+    # Just create table - no MLflow run needed
+    spark.createDataFrame(data).write.saveAsTable(table_name)
+
+# ❌ DON'T: Prompt registration
+def register_prompts(...):
+    # Prompts have own versioning - no MLflow run needed
+    mlflow.genai.register_prompt(...)
+
+# ❌ DON'T: Scorer registration
+def register_scorers(...):
+    # Configuration only - no MLflow run needed
+    register_scorers_to_experiment(...)
+```
+
+### Run Naming Conventions
+
+**ALWAYS use structured naming for queryability:**
+
+```python
+from datetime import datetime
+
+timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+# Example: "20260114_1430"
+
+# Development Experiment
+# Pattern: dev_{feature}_{timestamp}
+run_name = f"dev_model_registration_{timestamp}"
+run_name = f"dev_feature_test_{timestamp}"
+run_name = f"dev_streaming_impl_{timestamp}"
+
+# Evaluation Experiment
+# Pattern: eval_{domain}_{timestamp}
+run_name = f"eval_cost_{timestamp}"
+run_name = f"eval_security_{timestamp}"
+run_name = f"eval_comprehensive_{timestamp}"  # All domains
+run_name = f"eval_pipeline_{timestamp}"       # End-to-end
+
+# Deployment Experiment
+# Pattern: pre_deploy_validation_{timestamp}
+run_name = f"pre_deploy_validation_{timestamp}"
+```
+
+**Benefits of Structured Naming:**
+- Easy sorting by time
+- Clear activity type from name
+- Grep-friendly for filtering
+- Programmatic querying via MLflow API
+
+```python
+# Query latest comprehensive evaluation
+runs = mlflow.search_runs(
+    experiment_names=[EXPERIMENT_EVALUATION],
+    filter_string="tags.mlflow.runName LIKE 'eval_comprehensive_%'",
+    order_by=["start_time DESC"],
+    max_results=1
+)
+```
+
+### Standard Tags (All Runs)
+
+**Required tags for every MLflow run:**
+
+```python
+mlflow.set_tags({
+    # Core metadata (ALWAYS)
+    "domain": "all",                       # Domain(s) evaluated
+    "agent_version": "v4.0",               # Agent version
+    "mlflow_version": mlflow.__version__,  # MLflow version
+    
+    # Evaluation metadata (for evaluation runs)
+    "dataset_type": "evaluation",          # Dataset used
+    "dataset_version": "v2.1",             # Dataset version
+    "evaluation_type": "comprehensive",    # Type of evaluation
+    
+    # Environment (ALWAYS)
+    "environment": "development",          # dev, staging, prod
+    "compute_type": "serverless",          # Compute type
+})
+```
+
+**Tag Value Standards:**
+
+**domain:**
+- `"all"` - Comprehensive evaluation
+- `"cost"` - Cost domain only
+- `"security"` - Security domain only
+- `"performance"` - Performance domain only
+- `"reliability"` - Reliability domain only
+- `"quality"` - Quality domain only
+
+**evaluation_type:**
+- `"comprehensive"` - Full evaluation (all scorers)
+- `"quick"` - Fast evaluation (built-in scorers only)
+- `"custom"` - Custom scorer set
+- `"regression"` - Regression testing
+- `"pre_deploy"` - Pre-deployment validation
+
+**dataset_type:**
+- `"evaluation"` - Standard eval dataset
+- `"synthetic"` - Synthetically generated
+- `"production"` - Production traces
+- `"manual"` - Manually curated
+
+**environment:**
+- `"development"` - Dev environment
+- `"staging"` - Staging environment
+- `"production"` - Production environment
+
+### Querying by Tags
+
+```python
+# Find all cost domain evaluations
+runs = mlflow.search_runs(
+    experiment_names=[EXPERIMENT_EVALUATION],
+    filter_string="tags.domain = 'cost' AND tags.evaluation_type = 'comprehensive'"
+)
+
+# Find evaluations for specific agent version
+runs = mlflow.search_runs(
+    experiment_names=[EXPERIMENT_EVALUATION],
+    filter_string="tags.agent_version = 'v4.0'"
+)
+
+# Find staging evaluations
+runs = mlflow.search_runs(
+    experiment_names=[EXPERIMENT_EVALUATION],
+    filter_string="tags.environment = 'staging'"
+)
+
+# Find latest comprehensive evaluation
+runs = mlflow.search_runs(
+    experiment_names=[EXPERIMENT_EVALUATION],
+    filter_string="tags.evaluation_type = 'comprehensive'",
+    order_by=["start_time DESC"],
+    max_results=1
+)
+```
+
+### Complete Example: Deployment Job with Proper Organization
+
+```python
+# File: src/agents/setup/deployment_job.py
+
+import mlflow
+from datetime import datetime
+from typing import Dict, Tuple
+
+# ===========================================================================
+# EXPERIMENT CONFIGURATION
+# ===========================================================================
+
+EXPERIMENT_DEVELOPMENT = "/Shared/health_monitor_agent_development"
+EXPERIMENT_EVALUATION = "/Shared/health_monitor_agent_evaluation"
+EXPERIMENT_DEPLOYMENT = "/Shared/health_monitor_agent_deployment"
+
+# ===========================================================================
+# MAIN DEPLOYMENT WORKFLOW
+# ===========================================================================
+
+def main():
+    """
+    Deployment job workflow with proper experiment organization.
+    """
+    # Get parameters from trigger
+    model_name = dbutils.widgets.get("model_name")
+    model_version = dbutils.widgets.get("model_version")
+    
+    model_uri = f"models:/{model_name}/{model_version}"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    
+    # ========== STEP 1: Run Evaluation (Evaluation Experiment) ==========
+    
+    mlflow.set_experiment(EXPERIMENT_EVALUATION)
+    
+    with mlflow.start_run(run_name=f"eval_pre_deploy_{timestamp}") as eval_run:
+        # Standard tags
+        mlflow.set_tags({
+            "domain": "all",
+            "agent_version": "v4.0",
+            "mlflow_version": mlflow.__version__,
+            "dataset_type": "evaluation",
+            "dataset_version": "v2.1",
+            "evaluation_type": "pre_deploy",
+            "environment": "staging",
+            "compute_type": "serverless",
+        })
+        
+        # Run evaluation
+        eval_result = run_comprehensive_evaluation(model_uri)
+        metrics = eval_result.metrics
+    
+    # ========== STEP 2: Check Thresholds (Deployment Experiment) ==========
+    
+    mlflow.set_experiment(EXPERIMENT_DEPLOYMENT)
+    
+    with mlflow.start_run(run_name=f"pre_deploy_validation_{timestamp}"):
+        # Standard tags
+        mlflow.set_tags({
+            "domain": "all",
+            "agent_version": "v4.0",
+            "evaluation_type": "pre_deploy",
+            "environment": "staging",
+            "source_eval_run": eval_run.info.run_id,  # Link to evaluation
+        })
+        
+        # Check thresholds
+        passed = check_thresholds(metrics, DEPLOYMENT_THRESHOLDS)
+        
+        mlflow.log_params({
+            "model_uri": model_uri,
+            "model_version": model_version,
+            "deployment_approved": passed,
+            "eval_run_id": eval_run.info.run_id,
+        })
+        
+        mlflow.log_metrics(metrics)
+        
+        # ========== STEP 3: Promote if Passed ==========
+        
+        if passed:
+            promote_to_production(model_name, model_version)
+            print("✅ Deployment APPROVED - Promoted to production")
+        else:
+            print("❌ Deployment BLOCKED - Thresholds not met")
+        
+        return passed
+```
+
+---
+
+## Validation Checklist
+
+### Deployment Job
+- [ ] Trigger configured for MODEL_VERSION_CREATED event
+- [ ] Model name and version passed from trigger
+- [ ] Evaluation dataset loaded from Unity Catalog
+- [ ] Dataset linked with `mlflow.log_input()`
+- [ ] Thresholds checked after evaluation
+- [ ] Model promoted only if thresholds passed
+- [ ] Notifications sent on success/failure
+
+### Dataset Lineage
+- [ ] Evaluation dataset in Unity Catalog table
+- [ ] Dataset loaded via `mlflow.data.from_spark()`
+- [ ] Dataset logged with `mlflow.log_input(context="evaluation")`
+- [ ] Lineage queryable via MLflow Client
+- [ ] Dataset schema and profile captured
+
+### Multi-Domain Genie
+- [ ] Genie Space IDs centralized in config
+- [ ] Each domain has dedicated Genie Space
+- [ ] Parallel query execution for multiple domains
+- [ ] Each query wrapped with `@mlflow.trace`
+- [ ] No LLM fallback on Genie failures
+- [ ] Intent classification routes to correct domains
+
+### Experiment Organization (CRITICAL)
+- [ ] ✅ **Three separate experiments defined** (development, evaluation, deployment)
+- [ ] ✅ **Model logging uses development experiment**
+- [ ] ✅ **Evaluation runs use evaluation experiment**
+- [ ] ✅ **Deployment validation uses deployment experiment**
+- [ ] ✅ **Run names follow structured convention** (`dev_*`, `eval_*`, `pre_deploy_*`)
+- [ ] ✅ **Timestamp format: `YYYYMMDD_HHMM`**
+- [ ] ✅ **Standard tags included in all runs**
+- [ ] Dataset/prompt/scorer setup does NOT create MLflow runs
+- [ ] Runs are queryable by tags and name patterns
+- [ ] Clear audit trail per activity type
+
+---
+
+## References
+
+### Official Documentation
+- [MLflow Deployment Jobs](https://docs.databricks.com/aws/en/mlflow/deployment-job)
+- [Dataset Lineage](https://mlflow.org/docs/latest/tracking/data-api.html)
+- [Unity Catalog Lineage](https://docs.databricks.com/data-governance/unity-catalog/data-lineage.html)
+- [Genie Spaces](https://docs.databricks.com/en/genie/)
+
+### Related Rules
+- [30-mlflow-genai-evaluation.mdc](30-mlflow-genai-evaluation.mdc) - Evaluation patterns
+- [33-mlflow-tracing-agent-patterns.mdc](33-mlflow-tracing-agent-patterns.mdc) - Tracing & multi-agent
+
+### Implementation Reference
+- `src/agents/setup/deployment_job.py` - Complete deployment automation
+- `src/agents/config/genie_spaces.py` - Genie Space configuration
+- `resources/agents/agent_deployment_job.yml` - Asset Bundle deployment job
+- SQL DDL for evaluation dataset table

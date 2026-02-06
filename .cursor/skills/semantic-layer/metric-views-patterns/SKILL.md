@@ -3,8 +3,13 @@ name: metric-views-patterns
 description: Standard patterns for creating Databricks Metric Views with semantic metadata for Genie and AI/BI. Use when creating metric views, troubleshooting metric view creation errors, validating schema references before deployment, implementing joins (including snowflake schema patterns), or optimizing metric views for Genie natural language queries.
 metadata:
   author: databricks-sa
-  version: "1.0"
+  version: "4.0"
   domain: semantic-layer
+  dependencies:
+    - gold-layer-design
+    - gold-layer-implementation
+    - databricks-asset-bundles
+    - databricks-expert-agent
 ---
 
 # Metric Views Patterns for Genie & AI/BI
@@ -12,6 +17,8 @@ metadata:
 ## Overview
 
 Metric Views provide a semantic layer for natural language queries via Genie and AI/BI dashboards. This skill standardizes the YAML structure for comprehensive, LLM-friendly metric definitions following Databricks Metric View Specification v1.1.
+
+**Predecessor:** Gold tables must exist before creating metric views. Use `gold-layer-design` + `gold-layer-implementation` skills first.
 
 **Key Capabilities:**
 - Create metric views with proper SQL syntax (`WITH METRICS LANGUAGE YAML`)
@@ -29,6 +36,38 @@ Use this skill when:
 - Implementing joins (including transitive relationships)
 - Optimizing metric views for Genie natural language queries
 - Ensuring compliance with v1.1 specification
+- Following the requirements gathering template to design metric views
+
+## Prerequisites
+
+⚠️ **MANDATORY:** Complete these before creating metric views:
+- [ ] Gold layer tables exist in Unity Catalog (use `gold-layer-design` + `gold-layer-implementation` skills)
+- [ ] Gold layer YAML schemas exist in `gold_layer_design/yaml/` (for validation script)
+- [ ] Serverless SQL warehouse available (for metric view creation and querying)
+
+## Quick Start (2 hours)
+
+**What You'll Create:**
+1. `metric_views/{view_name}.yaml` — Semantic definitions (dimensions, measures, joins, formats)
+2. `create_metric_views.py` — Script reads YAML, creates views with `WITH METRICS LANGUAGE YAML`
+3. `metric_views_job.yml` — Asset Bundle job for deployment
+
+**Deliverables Checklist:**
+- [ ] Metric view YAML files (one per view) with dimensions, measures, synonyms, formats
+- [ ] Creation script (`create_metric_views.py`) with error handling
+- [ ] Asset Bundle job (`metric_views_job.yml`) for deployment
+- [ ] Validation queries passing (METRIC_VIEW type verified)
+
+**Fast Track:**
+```bash
+# 1. Create metric view YAML files
+# 2. Deploy and run
+databricks bundle deploy -t dev
+databricks bundle run metric_views_job -t dev
+
+# 3. Query with natural language via Genie
+# "Show total revenue by store last 30 days"
+```
 
 ## Critical Rules
 
@@ -49,11 +88,11 @@ $$
 ```
 
 **Key Requirements:**
-1. `WITH METRICS` - Identifies the view as a metric view
-2. `LANGUAGE YAML` - Specifies YAML format
-3. `AS $$ ... $$` - YAML content wrapped in dollar-quote delimiters
-4. No SELECT statement - The YAML definition IS the view definition
-5. `version` field - Must be included in each metric view YAML
+1. `WITH METRICS` — Identifies the view as a metric view
+2. `LANGUAGE YAML` — Specifies YAML format
+3. `AS $$ ... $$` — YAML content wrapped in dollar-quote delimiters
+4. No SELECT statement — The YAML definition IS the view definition
+5. `version` field — Must be included in each metric view YAML
 
 **❌ WRONG:** Regular view with TBLPROPERTIES (creates regular VIEW, not METRIC_VIEW)
 
@@ -63,10 +102,10 @@ $$
 
 | Field | Error | Action |
 |-------|-------|--------|
-| `name` | `Unrecognized field "name"` | ❌ NEVER include - name is in CREATE VIEW statement |
+| `name` | `Unrecognized field "name"` | ❌ NEVER include — name is in CREATE VIEW statement |
 | `time_dimension` | `Unrecognized field "time_dimension"` | ❌ Remove entirely |
-| `window_measures` | `Unrecognized field "window_measures"` | ❌ Remove entirely - calculate in SQL/Python |
-| `join_type` | Unsupported | ❌ Remove - defaults to LEFT OUTER JOIN |
+| `window_measures` | `Unrecognized field "window_measures"` | ❌ Remove entirely — calculate in SQL/Python |
+| `join_type` | Unsupported | ❌ Remove — defaults to LEFT OUTER JOIN |
 | `table` (in joins) | `Missing required creator property 'source'` | ✅ Use `source` instead |
 
 ### ⚠️ MANDATORY: Pre-Creation Schema Validation
@@ -117,7 +156,53 @@ joins:
 
 **✅ CORRECT:** Use snowflake schema (nested joins) or denormalize fact table
 
-See `references/advanced-patterns.md` for snowflake schema patterns.
+See `references/advanced-patterns.md` for snowflake schema patterns and transitive join solutions.
+
+## Implementation Workflow
+
+### Phase 1: Design (30 min)
+
+**Read:** `references/requirements-template.md`
+
+- [ ] Identify fact table as primary source
+- [ ] List dimensions to join (2-5 dimension tables)
+- [ ] Define key measures (5-10 measures with aggregation type)
+- [ ] List common user questions (guides synonym creation)
+- [ ] Map synonyms for each dimension and measure (3-5 each)
+
+### Phase 2: YAML Creation (1 hour)
+
+**Read:** `references/yaml-reference.md` and `references/advanced-patterns.md`
+
+- [ ] Create one YAML file per metric view (filename = view name)
+- [ ] Define `source` table (fully qualified with `${catalog}` and `${gold_schema}` placeholders)
+- [ ] Add `joins` with `name`, `source`, `'on'` (include `is_current = true` for SCD2)
+- [ ] Define dimensions with correct prefix (`source.` or `{join_name}.`)
+  - [ ] Business-friendly comments and display names
+  - [ ] 3-5 synonyms each
+- [ ] Define measures with correct aggregation (SUM, AVG, COUNT)
+  - [ ] Proper formatting (currency, number, percentage)
+  - [ ] Comprehensive comments for Genie
+  - [ ] 3-5 synonyms each
+
+### Phase 3: Script & Bundle (30 min)
+
+**Read:** `references/implementation-workflow.md`
+
+- [ ] Validate YAML with `scripts/validate_metric_view.py`
+- [ ] Use `scripts/create_metric_views.py` for deployment
+- [ ] Configure Asset Bundle job (see `assets/templates/metric-views-job-template.yml`)
+- [ ] Add YAML file sync to `databricks.yml`
+
+### Phase 4: Deploy & Test (30 min)
+
+**Read:** `references/validation-queries.md`
+
+- [ ] Deploy: `databricks bundle deploy -t dev`
+- [ ] Run: `databricks bundle run metric_views_job -t dev`
+- [ ] Verify: `DESCRIBE EXTENDED` shows Type: METRIC_VIEW
+- [ ] Test: `SELECT ... MEASURE(\`Total Revenue\`) ... GROUP BY ...`
+- [ ] Test with Genie: Ask natural language questions
 
 ## Quick Reference
 
@@ -252,105 +337,146 @@ comment: >
   synonyms: [bookings, transactions]
 ```
 
-See `references/advanced-patterns.md` for complete examples.
+See `references/advanced-patterns.md` for complete examples including a full worked retail example.
+
+## Common Mistakes to Avoid
+
+### ❌ Mistake 1: Wrong Syntax (TBLPROPERTIES)
+```python
+# ❌ WRONG: Creates regular VIEW, not METRIC_VIEW
+create_sql = f"""CREATE VIEW {view_name} COMMENT '{comment}'
+TBLPROPERTIES ('metric_view_spec' = '{yaml}')
+AS SELECT 1 as __metric_view_placeholder__"""
+
+# ✅ CORRECT: Creates METRIC_VIEW
+create_sql = f"""CREATE VIEW {view_name}
+WITH METRICS LANGUAGE YAML COMMENT '{comment}'
+AS $$ {yaml_str} $$"""
+```
+
+### ❌ Mistake 2: Using Unsupported Fields
+```yaml
+# ❌ WRONG: v1.1 doesn't support time_dimension or window_measures
+time_dimension:
+  name: transaction_date
+window_measures:
+  - name: revenue_last_30_days
+    base_measure: total_revenue
+
+# ✅ CORRECT: Use regular dimension instead
+dimensions:
+  - name: transaction_date
+    expr: source.transaction_date
+    comment: Transaction date for time-based analysis
+```
+
+### ❌ Mistake 3: Wrong Column References
+```yaml
+# ❌ WRONG: Using table name instead of 'source.' / missing join prefix
+measures:
+  - name: total_revenue
+    expr: SUM(fact_sales_daily.net_revenue)  # ❌ Use source.net_revenue
+dimensions:
+  - name: store_name
+    expr: store_name  # ❌ Use dim_store.store_name
+```
+
+### ❌ Mistake 4: Including `name` in YAML Content
+```yaml
+# ❌ WRONG: 'name' inside AS $$...$$ causes "Unrecognized field" error
+name: sales_performance_metrics  # ❌ Remove! Name is in CREATE VIEW only
+version: "1.1"
+```
+
+### ❌ Mistake 5: Transitive Joins / Wrong Source Table
+```yaml
+# ❌ WRONG: Chained join (dim1 → dim2) — not supported
+'on': dim_property.destination_id = dim_destination.destination_id
+
+# ❌ WRONG: Revenue from dimension table (under-reports by 4x)
+source: catalog.schema.dim_property  # Use fact table instead!
+```
 
 ## Python Script Error Handling
 
 **⚠️ CRITICAL: Jobs Must Fail if Metric Views Don't Create**
 
-```python
-def create_metric_view(spark, catalog, schema, view_name, metric_view):
-    fqn = f"{catalog}.{schema}.{view_name}"
-    
-    # Drop existing table/view to avoid conflicts
-    try:
-        spark.sql(f"DROP VIEW IF EXISTS {fqn}")
-        spark.sql(f"DROP TABLE IF EXISTS {fqn}")
-    except:
-        pass
-    
-    try:
-        create_sql = f"""
-        CREATE VIEW {fqn}
-        WITH METRICS
-        LANGUAGE YAML
-        COMMENT '{comment}'
-        AS $$
-{yaml_str}
-        $$
-        """
-        spark.sql(create_sql)
-        return True
-    except Exception as e:
-        print(f"✗ Error creating {view_name}: {e}")
-        return False
+Key patterns (see `scripts/create_metric_views.py` for the full working script):
 
-def main():
-    metric_views = load_metric_views_yaml(catalog, schema)
-    failed_views = []
-    
-    for view_name, metric_view in metric_views:
-        if not create_metric_view(spark, catalog, schema, view_name, metric_view):
-            failed_views.append(view_name)
-    
-    if failed_views:
-        raise RuntimeError(
-            f"Failed to create {len(failed_views)} metric view(s): "
-            f"{', '.join(failed_views)}"
-        )
-```
+1. **Strip `name` before dumping YAML** — `metric_view.pop('name', None)` before `yaml.dump()`
+2. **Drop existing VIEW/TABLE** before CREATE to avoid conflicts
+3. **Track failed views** and raise `RuntimeError` at the end (no silent success)
+4. **Verify METRIC_VIEW type** via `DESCRIBE EXTENDED` after creation
+5. **Support dual mode** — per-file (preferred) or multi-file YAML loading
 
-## Common Mistakes to Avoid
+**Scripts:**
+- **`scripts/create_metric_views.py`** — Complete creation script with YAML loading, parameter substitution (`${catalog}`, `${gold_schema}`), dual-mode support, METRIC_VIEW verification, error handling
+- **`scripts/validate_metric_view.py`** — Pre-deployment column reference validation against Gold layer YAML schemas
 
-❌ **Don't:**
-- Include `name` field in YAML (name is in CREATE VIEW statement)
-- Use `time_dimension` or `window_measures` (not supported in v1.1)
-- Assume column names without validating schemas
-- Use transitive joins (dim1.fk = dim2.pk)
-- Source revenue metrics from dimension tables
+## Time Estimates
 
-✅ **Do:**
-- Validate all schemas before writing YAML
-- Use structured comment format for Genie
-- Use `source.` prefix for main table columns
-- Use join name prefix for joined table columns
-- Include `is_current = true` for SCD2 joins
+| Metric Views | Design | YAML Creation | Deploy & Test | Total |
+|---|---|---|---|---|
+| 1 view | 20 min | 30 min | 20 min | ~1 hour |
+| 2-3 views | 30 min | 1 hour | 30 min | ~2 hours |
+| 5+ views | 1 hour | 2 hours | 30 min | ~3.5 hours |
+
+## Next Steps
+
+After metric views are deployed and validated:
+
+1. **Test with Genie** — Ask natural language questions to verify synonyms and measures work
+2. **Create TVFs** — Use `databricks-table-valued-functions` skill for parameterized queries
+3. **Setup Genie Space** — Use `genie-space-patterns` skill to configure Genie with metric views, TVFs, and tables
+4. **Create Dashboards** — Use `databricks-aibi-dashboards` skill for Lakeview AI/BI dashboards
 
 ## Reference Files
 
-- **`references/yaml-reference.md`** - Complete YAML structure, fields, and syntax
-- **`references/validation-checklist.md`** - Detailed pre-creation validation steps
-- **`references/advanced-patterns.md`** - Dimension/measure patterns, joins, snowflake schema
+- **`references/yaml-reference.md`** — Complete YAML structure, fields, syntax, format options
+- **`references/validation-checklist.md`** — Detailed pre-creation validation steps
+- **`references/advanced-patterns.md`** — Dimension/measure patterns, joins, snowflake schema, complete worked example
+- **`references/requirements-template.md`** — Design template for dimensions, measures, joins, business questions
+- **`references/implementation-workflow.md`** — Detailed step-by-step creation workflow
+- **`references/validation-queries.md`** — SQL queries for deployment verification
 
 ## Scripts
 
-- **`scripts/validate_metric_view.py`** - Validation utility to check column references before deployment
+- **`scripts/validate_metric_view.py`** — Pre-deployment validation of column references against Gold layer YAML schemas
+- **`scripts/create_metric_views.py`** — Metric view creation script with YAML loading, parameter substitution, and error handling
 
 **Usage:**
 ```bash
+# Validate before deployment
 python scripts/validate_metric_view.py \
   --yaml-file src/semantic/metric_views/revenue_analytics_metrics.yaml \
   --gold-yaml-dir gold_layer_design/yaml
+
+# Deploy (via Asset Bundle job)
+databricks bundle run metric_views_job -t dev
 ```
 
 ## Assets
 
-- **`assets/templates/metric-view-template.yaml`** - Starter template for new metric views
+- **`assets/templates/metric-view-template.yaml`** — Starter template for new metric views
+- **`assets/templates/metric-views-job-template.yml`** — Asset Bundle job template for deployment
 
-## References
+## External References
 
 ### Official Documentation
 - [Metric Views SQL Creation](https://docs.databricks.com/aws/en/metric-views/create/sql)
 - [Metric Views YAML Reference](https://docs.databricks.com/aws/en/metric-views/yaml-ref)
 - [Metric Views Semantic Metadata](https://docs.databricks.com/aws/en/metric-views/semantic-metadata)
 - [Metric Views Joins](https://docs.databricks.com/aws/en/metric-views/joins)
+- [Metric Views Measure Formats](https://docs.databricks.com/aws/en/metric-views/measure-formats)
 
 ### Related Skills
-- `databricks-table-valued-functions` - TVF patterns for Genie
-- `genie-space-patterns` - Genie Space setup
+- `databricks-table-valued-functions` — TVF patterns for Genie
+- `genie-space-patterns` — Genie Space setup
+- `databricks-aibi-dashboards` — AI/BI dashboard patterns
 
 ## Version History
 
-- **v3.0** (Dec 19, 2025) - Standardized structured comment format
-- **v2.0** (Dec 16, 2025) - Genie optimization patterns from production post-mortem
-- **v1.0** (Oct 2025) - Initial rule based on metric view deployment learnings
+- **v4.0** (Feb 2026) — Merged prompt content: Quick Start, implementation workflow, requirements template, creation script, validation queries, worked examples, common mistakes with paired examples
+- **v3.0** (Dec 19, 2025) — Standardized structured comment format
+- **v2.0** (Dec 16, 2025) — Genie optimization patterns from production post-mortem
+- **v1.0** (Oct 2025) — Initial rule based on metric view deployment learnings

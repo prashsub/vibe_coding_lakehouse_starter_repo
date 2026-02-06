@@ -1,0 +1,867 @@
+---
+description: Lakebase memory patterns for stateful agents - short-term conversation continuity and long-term user preferences
+globs: src/agents/memory/**/*.py
+alwaysApply: false
+---
+# Lakebase Memory Patterns for Stateful Agents
+
+## Pattern Recognition
+Databricks Lakebase provides two memory patterns for stateful agents: **CheckpointSaver** for short-term conversation continuity (within a session) and **DatabricksStore** for long-term user preferences and insights (across sessions). Based on production implementation of Databricks Health Monitor Agent memory system.
+
+## Core Principles
+
+### 1. Two-Layer Memory Architecture
+- **Short-term**: Thread-based conversation state (LangGraph checkpoints)
+- **Long-term**: User-based semantic memory (vector embeddings)
+- Independent but complementary patterns
+- Different use cases and lifecycle management
+
+### 2. Unity Catalog-Backed Storage
+- All memory stored in Unity Catalog Delta tables
+- Governed, auditable, queryable
+- Automatic schema management via `.setup()`
+- TTL-based cleanup for GDPR compliance
+
+### 3. Graceful Degradation
+- Memory is optional enhancement, not requirement
+- Agent works without memory tables
+- Silent fallback if tables don't exist
+- No failures due to missing memory
+
+---
+
+## Short-Term Memory (Conversation Continuity)
+
+### Use Case
+Maintain conversation context **within a single session** (thread_id). Enables:
+- Multi-turn conversations with context
+- Follow-up questions without repeating context
+- State persistence across agent turns
+- LangGraph checkpoint/restore
+
+### Pattern: CheckpointSaver with LangGraph
+
+**File: `src/agents/memory/short_term.py`**
+
+```python
+"""
+Short-Term Memory with Lakebase CheckpointSaver
+==============================================
+
+Implements conversation-level state persistence using Databricks Lakebase.
+
+Reference:
+    https://docs.databricks.com/aws/en/notebooks/source/generative-ai/short-term-memory-agent-lakebase.html
+"""
+
+from typing import Optional, Generator
+from contextlib import contextmanager
+import uuid
+import mlflow
+
+from databricks_langchain import CheckpointSaver
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
+from ..config import settings
+
+
+class ShortTermMemory:
+    """
+    Short-term memory manager using Lakebase CheckpointSaver.
+    
+    Provides thread ID management for conversation continuity.
+    """
+    
+    def __init__(self, instance_name: Optional[str] = None):
+        """
+        Initialize short-term memory.
+        
+        Args:
+            instance_name: Lakebase instance name. Defaults to settings value.
+        """
+        self.instance_name = instance_name or settings.lakebase_instance_name
+        self._checkpointer: Optional[CheckpointSaver] = None
+    
+    def setup(self) -> None:
+        """
+        Initialize Lakebase checkpoint tables.
+        
+        Creates necessary tables for storing LangGraph checkpoints.
+        Should be called once during initial setup.
+        """
+        with mlflow.start_span(name="setup_checkpoint_tables", span_type="MEMORY") as span:
+            span.set_inputs({"instance_name": self.instance_name})
+            
+            with CheckpointSaver(instance_name=self.instance_name) as saver:
+                saver.setup()
+            
+            span.set_outputs({"status": "success"})
+    
+    @contextmanager
+    def get_checkpointer(self) -> Generator[BaseCheckpointSaver, None, None]:
+        """
+        Get a checkpoint saver context for LangGraph compilation.
+        
+        Yields:
+            CheckpointSaver instance for use with LangGraph.
+        
+        Example:
+            with memory.get_checkpointer() as checkpointer:
+                graph = workflow.compile(checkpointer=checkpointer)
+        """
+        with CheckpointSaver(instance_name=self.instance_name) as checkpointer:
+            yield checkpointer
+    
+    @staticmethod
+    def generate_thread_id() -> str:
+        """Generate a new unique thread ID for a conversation."""
+        return str(uuid.uuid4())
+    
+    @staticmethod
+    @mlflow.trace(name="resolve_thread_id", span_type="MEMORY")
+    def resolve_thread_id(
+        custom_inputs: Optional[dict] = None,
+        conversation_id: Optional[str] = None
+    ) -> str:
+        """
+        Resolve thread ID from various sources.
+        
+        Priority:
+            1. custom_inputs["thread_id"] - Explicit thread ID
+            2. conversation_id - From ChatContext
+            3. New UUID - Fresh conversation
+        
+        Args:
+            custom_inputs: Custom inputs dict from request
+            conversation_id: Conversation ID from ChatContext
+        
+        Returns:
+            Thread ID string for checkpoint configuration.
+        """
+        # Check custom_inputs first
+        if custom_inputs and custom_inputs.get("thread_id"):
+            return custom_inputs["thread_id"]
+        
+        # Fall back to conversation_id
+        if conversation_id:
+            return conversation_id
+        
+        # Generate new thread ID
+        return ShortTermMemory.generate_thread_id()
+    
+    @staticmethod
+    def get_checkpoint_config(thread_id: str) -> dict:
+        """
+        Build LangGraph checkpoint configuration.
+        
+        Args:
+            thread_id: Thread ID for the conversation
+        
+        Returns:
+            Configuration dict for LangGraph invocation.
+        """
+        return {"configurable": {"thread_id": thread_id}}
+
+
+# Module-level convenience function
+@contextmanager
+def get_checkpoint_saver(
+    instance_name: Optional[str] = None
+) -> Generator[BaseCheckpointSaver, None, None]:
+    """
+    Get a CheckpointSaver for LangGraph state persistence.
+    
+    This is the recommended way to use short-term memory with LangGraph.
+    
+    Example:
+        from agents.memory import get_checkpoint_saver
+        
+        with get_checkpoint_saver() as checkpointer:
+            graph = workflow.compile(checkpointer=checkpointer)
+            
+            thread_id = request.custom_inputs.get("thread_id") or str(uuid.uuid4())
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            result = graph.invoke({"messages": messages}, config)
+    """
+    memory = ShortTermMemory(instance_name)
+    with memory.get_checkpointer() as checkpointer:
+        yield checkpointer
+```
+
+### Integration with LangGraph Agent
+
+```python
+from agents.memory import get_checkpoint_saver, ShortTermMemory
+from langgraph.graph import StateGraph
+
+class HealthMonitorAgent(mlflow.pyfunc.ResponsesAgent):
+    """Agent with short-term memory."""
+    
+    def __init__(self):
+        super().__init__()
+        self._short_term_memory = None
+        self._short_term_memory_available = True
+    
+    def _get_short_term_memory(self):
+        """Lazy-load short-term memory."""
+        if self._short_term_memory is None:
+            self._short_term_memory = ShortTermMemory()
+        return self._short_term_memory
+    
+    def _build_graph(self) -> StateGraph:
+        """Build LangGraph workflow with checkpointing."""
+        workflow = StateGraph(AgentState)
+        
+        # Add nodes
+        workflow.add_node("orchestrator", self._orchestrator_node)
+        workflow.add_node("synthesizer", self._synthesizer_node)
+        
+        # Add edges
+        workflow.set_entry_point("orchestrator")
+        workflow.add_edge("orchestrator", "synthesizer")
+        workflow.set_finish_point("synthesizer")
+        
+        # ✅ CRITICAL: Compile with checkpointer
+        try:
+            memory = self._get_short_term_memory()
+            with memory.get_checkpointer() as checkpointer:
+                graph = workflow.compile(checkpointer=checkpointer)
+                self._short_term_memory_available = True
+                return graph
+        except Exception as e:
+            print(f"⚠ Short-term memory unavailable: {e}")
+            # Graceful fallback: compile without checkpointer
+            self._short_term_memory_available = False
+            return workflow.compile()
+    
+    def predict(self, context, model_input, params=None):
+        """Execute agent with conversation continuity."""
+        # Extract thread_id for conversation continuity
+        custom_inputs = model_input.get("custom_inputs", {})
+        conversation_id = context.get("conversation_id")
+        
+        # Resolve thread ID (priority: custom_inputs > conversation_id > new)
+        thread_id = ShortTermMemory.resolve_thread_id(
+            custom_inputs=custom_inputs,
+            conversation_id=conversation_id
+        )
+        
+        # Build LangGraph config with thread_id
+        if self._short_term_memory_available:
+            config = {"configurable": {"thread_id": thread_id}}
+        else:
+            config = {}
+        
+        # Execute graph with checkpoint persistence
+        graph = self._build_graph()
+        result = graph.invoke(
+            {"messages": model_input["messages"]},
+            config=config
+        )
+        
+        # Return response with thread_id for client to track
+        return {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": result["messages"][-1].content
+                }
+            }],
+            "custom_outputs": {
+                "thread_id": thread_id,  # ✅ Return for client tracking
+            }
+        }
+```
+
+### Setup Script
+
+**File: `src/agents/notebooks/setup_lakebase.py`**
+
+```python
+# Databricks notebook source
+"""Setup Lakebase memory tables for Health Monitor Agent."""
+
+from agents.memory import ShortTermMemory, LongTermMemory
+
+# COMMAND ----------
+
+# Parameters
+dbutils.widgets.text("lakebase_instance_name", "health_monitor_lakebase")
+
+instance_name = dbutils.widgets.get("lakebase_instance_name")
+
+# COMMAND ----------
+
+# Setup short-term memory
+print("Setting up short-term memory (CheckpointSaver)...")
+short_term = ShortTermMemory(instance_name=instance_name)
+short_term.setup()
+print("✓ Short-term memory tables created")
+
+# COMMAND ----------
+
+# Setup long-term memory
+print("Setting up long-term memory (DatabricksStore)...")
+long_term = LongTermMemory(
+    instance_name=instance_name,
+    embedding_endpoint="databricks-gte-large-en",
+    embedding_dims=1024
+)
+long_term.setup()
+print("✓ Long-term memory tables created")
+
+# COMMAND ----------
+
+print("\n" + "=" * 60)
+print("✅ Lakebase memory setup complete!")
+print("=" * 60)
+print(f"Instance: {instance_name}")
+print(f"Tables created in Unity Catalog")
+```
+
+---
+
+## Long-Term Memory (User Preferences)
+
+### Use Case
+Store user-specific information **across sessions** (user_id). Enables:
+- Remember user preferences (workspaces, thresholds, etc.)
+- Recall past insights or decisions
+- Personalized responses based on history
+- Semantic search over user's memory
+
+### Pattern: DatabricksStore with Vector Embeddings
+
+**File: `src/agents/memory/long_term.py`**
+
+```python
+"""
+Long-Term Memory with Lakebase DatabricksStore
+=============================================
+
+Implements user-based persistent memory using vector embeddings.
+
+Reference:
+    https://docs.databricks.com/aws/en/notebooks/source/generative-ai/long-term-memory-agent-lakebase.html
+"""
+
+from typing import Optional, List, Dict, Any
+from dataclasses import dataclass
+import json
+import mlflow
+
+from databricks_langchain import DatabricksStore
+from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
+
+from ..config import settings
+
+
+@dataclass
+class MemoryItem:
+    """Represents a stored memory item."""
+    
+    key: str
+    value: Dict[str, Any]
+    score: Optional[float] = None
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return {
+            "key": self.key,
+            "value": self.value,
+            "score": self.score,
+        }
+
+
+class LongTermMemory:
+    """
+    Long-term memory manager using Lakebase DatabricksStore.
+    
+    Provides:
+    - Vector-based semantic search over user memories
+    - Namespace isolation per user
+    - CRUD operations for memory items
+    - MLflow tracing for all operations
+    """
+    
+    def __init__(
+        self,
+        instance_name: Optional[str] = None,
+        embedding_endpoint: Optional[str] = None,
+        embedding_dims: Optional[int] = None,
+    ):
+        """
+        Initialize long-term memory.
+        
+        Args:
+            instance_name: Lakebase instance name
+            embedding_endpoint: Databricks embedding model endpoint
+            embedding_dims: Embedding vector dimensions
+        """
+        self.instance_name = instance_name or settings.lakebase_instance_name
+        self.embedding_endpoint = embedding_endpoint or settings.embedding_endpoint
+        self.embedding_dims = embedding_dims or settings.embedding_dims
+        self._store: Optional[DatabricksStore] = None
+    
+    def _get_store(self) -> DatabricksStore:
+        """Get or create the DatabricksStore instance."""
+        if self._store is None:
+            self._store = DatabricksStore(
+                instance_name=self.instance_name,
+                embedding_endpoint=self.embedding_endpoint,
+                embedding_dims=self.embedding_dims,
+            )
+        return self._store
+    
+    def setup(self) -> None:
+        """
+        Initialize Lakebase memory store.
+        
+        Creates necessary tables and indexes for vector storage.
+        Should be called once during initial setup.
+        """
+        with mlflow.start_span(name="setup_memory_store", span_type="MEMORY") as span:
+            span.set_inputs({
+                "instance_name": self.instance_name,
+                "embedding_endpoint": self.embedding_endpoint,
+            })
+            
+            store = self._get_store()
+            store.setup()
+            
+            span.set_outputs({"status": "success"})
+    
+    @staticmethod
+    def _get_namespace(user_id: str) -> tuple:
+        """
+        Get namespace tuple for user memory isolation.
+        
+        Args:
+            user_id: User identifier (e.g., email)
+        
+        Returns:
+            Namespace tuple for DatabricksStore operations.
+        """
+        # Sanitize user_id for namespace (replace dots and special chars)
+        sanitized = user_id.replace(".", "-").replace("@", "-at-")
+        return ("user_memories", sanitized)
+    
+    @mlflow.trace(name="save_memory", span_type="MEMORY")
+    def save_memory(
+        self,
+        user_id: str,
+        memory_key: str,
+        memory_data: Dict[str, Any],
+    ) -> str:
+        """
+        Save a memory item for a user.
+        
+        Args:
+            user_id: User identifier
+            memory_key: Unique key for this memory
+            memory_data: Memory data as a dictionary
+        
+        Returns:
+            Success message string.
+        """
+        with mlflow.start_span(name="store_put") as span:
+            span.set_inputs({
+                "user_id": user_id,
+                "memory_key": memory_key,
+                "data_keys": list(memory_data.keys()),
+            })
+            
+            namespace = self._get_namespace(user_id)
+            store = self._get_store()
+            store.put(namespace, memory_key, memory_data)
+            
+            span.set_outputs({"status": "success"})
+        
+        return f"Successfully saved memory with key '{memory_key}'"
+    
+    @mlflow.trace(name="search_memories", span_type="RETRIEVER")
+    def search_memories(
+        self,
+        user_id: str,
+        query: str,
+        limit: int = 5,
+    ) -> List[MemoryItem]:
+        """
+        Search user's memories using semantic similarity.
+        
+        Args:
+            user_id: User identifier
+            query: Natural language search query
+            limit: Maximum number of results
+        
+        Returns:
+            List of relevant MemoryItem objects.
+        """
+        with mlflow.start_span(name="store_search") as span:
+            span.set_inputs({
+                "user_id": user_id,
+                "query": query,
+                "limit": limit,
+            })
+            
+            namespace = self._get_namespace(user_id)
+            store = self._get_store()
+            
+            results = store.search(namespace, query=query, limit=limit)
+            
+            memories = [
+                MemoryItem(
+                    key=item.key,
+                    value=item.value,
+                    score=getattr(item, "score", None),
+                )
+                for item in results
+            ]
+            
+            span.set_outputs({
+                "result_count": len(memories),
+                "keys": [m.key for m in memories],
+            })
+            
+            return memories
+    
+    @mlflow.trace(name="get_memory", span_type="MEMORY")
+    def get_memory(
+        self,
+        user_id: str,
+        memory_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific memory by key.
+        
+        Args:
+            user_id: User identifier
+            memory_key: Memory key to retrieve
+        
+        Returns:
+            Memory data dict or None if not found.
+        """
+        namespace = self._get_namespace(user_id)
+        store = self._get_store()
+        
+        try:
+            item = store.get(namespace, memory_key)
+            return item.value if item else None
+        except Exception:
+            return None
+    
+    @mlflow.trace(name="delete_memory", span_type="MEMORY")
+    def delete_memory(
+        self,
+        user_id: str,
+        memory_key: str,
+    ) -> str:
+        """
+        Delete a specific memory.
+        
+        Args:
+            user_id: User identifier
+            memory_key: Memory key to delete
+        
+        Returns:
+            Success message string.
+        """
+        namespace = self._get_namespace(user_id)
+        store = self._get_store()
+        store.delete(namespace, memory_key)
+        
+        return f"Successfully deleted memory with key '{memory_key}'"
+```
+
+### Creating Memory Tools for Agent
+
+```python
+"""
+LangChain Tools for Agent Integration
+======================================
+
+Create tools that agents can use autonomously to manage memory.
+"""
+
+from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
+import json
+
+
+def create_memory_tools(memory: LongTermMemory) -> list:
+    """
+    Create LangChain tools for memory operations.
+    
+    These tools can be added to an agent's tool list to enable
+    autonomous memory management.
+    
+    Args:
+        memory: LongTermMemory instance
+    
+    Returns:
+        List of LangChain tools for memory operations.
+    """
+    
+    @tool
+    def get_user_memory(query: str, config: RunnableConfig) -> str:
+        """
+        Search user's long-term memory using semantic similarity.
+        
+        Use this tool to recall user preferences, past insights,
+        or any previously stored information relevant to the query.
+        
+        Args:
+            query: Natural language description of what to find
+            config: LangChain config (contains user_id)
+        
+        Returns:
+            Formatted string of relevant memories.
+        """
+        user_id = config.get("configurable", {}).get("user_id", "unknown")
+        
+        results = memory.search_memories(user_id, query, limit=5)
+        
+        if not results:
+            return "No memories found for this user."
+        
+        memory_items = [
+            f"- [{item.key}]: {json.dumps(item.value)}"
+            for item in results
+        ]
+        return "\n".join(memory_items)
+    
+    @tool
+    def save_user_memory(
+        memory_key: str,
+        memory_data_json: str,
+        config: RunnableConfig,
+    ) -> str:
+        """
+        Save structured information to user's long-term memory.
+        
+        Use this tool to persist user preferences, important insights,
+        or any information that should be remembered across conversations.
+        
+        Args:
+            memory_key: Unique identifier for this memory (e.g., "preferred_workspace")
+            memory_data_json: JSON string containing the memory data
+            config: LangChain config (contains user_id)
+        
+        Returns:
+            Success or error message.
+        """
+        user_id = config.get("configurable", {}).get("user_id", "unknown")
+        
+        try:
+            memory_data = json.loads(memory_data_json)
+            if not isinstance(memory_data, dict):
+                return "Error: Memory data must be a JSON object (dictionary)"
+            
+            return memory.save_memory(user_id, memory_key, memory_data)
+        except json.JSONDecodeError as e:
+            return f"Error: Invalid JSON - {str(e)}"
+    
+    @tool
+    def delete_user_memory(memory_key: str, config: RunnableConfig) -> str:
+        """
+        Delete a specific memory from user's long-term storage.
+        
+        Use this tool when the user explicitly requests to forget
+        or remove stored information.
+        
+        Args:
+            memory_key: Key of the memory to delete
+            config: LangChain config (contains user_id)
+        
+        Returns:
+            Success message.
+        """
+        user_id = config.get("configurable", {}).get("user_id", "unknown")
+        return memory.delete_memory(user_id, memory_key)
+    
+    return [get_user_memory, save_user_memory, delete_user_memory]
+
+
+# Usage in agent
+memory = LongTermMemory()
+memory_tools = create_memory_tools(memory)
+
+# Add to agent's tool list
+agent_tools = [genie_tool, web_search_tool] + memory_tools
+```
+
+---
+
+## Graceful Degradation Pattern
+
+**CRITICAL: Memory is optional - agent must work without it.**
+
+```python
+class HealthMonitorAgent(mlflow.pyfunc.ResponsesAgent):
+    """Agent with optional memory support."""
+    
+    def __init__(self):
+        super().__init__()
+        self._short_term_memory = None
+        self._long_term_memory = None
+        
+        # Track availability (set to False if setup fails)
+        self._short_term_memory_available = True
+        self._long_term_memory_available = True
+    
+    def _get_short_term_memory(self):
+        """Lazy-load short-term memory with error handling."""
+        if self._short_term_memory is None and self._short_term_memory_available:
+            try:
+                self._short_term_memory = ShortTermMemory()
+                # Test if tables exist by attempting to get checkpointer
+                with self._short_term_memory.get_checkpointer():
+                    pass
+            except Exception as e:
+                print(f"⚠ Short-term memory unavailable: {e}")
+                self._short_term_memory_available = False
+                self._short_term_memory = None
+        
+        return self._short_term_memory
+    
+    def _get_long_term_memory(self):
+        """Lazy-load long-term memory with error handling."""
+        if self._long_term_memory is None and self._long_term_memory_available:
+            try:
+                self._long_term_memory = LongTermMemory()
+                # Test if tables exist by attempting a search
+                self._long_term_memory.search_memories("test", "test", limit=1)
+            except Exception as e:
+                print(f"⚠ Long-term memory unavailable: {e}")
+                self._long_term_memory_available = False
+                self._long_term_memory = None
+        
+        return self._long_term_memory
+    
+    def predict(self, context, model_input, params=None):
+        """Execute agent with optional memory."""
+        # Try to use short-term memory, fall back to stateless
+        if self._short_term_memory_available:
+            memory = self._get_short_term_memory()
+            if memory:
+                # Build with checkpointer
+                with memory.get_checkpointer() as checkpointer:
+                    graph = self._workflow.compile(checkpointer=checkpointer)
+            else:
+                # Compile without checkpointer
+                graph = self._workflow.compile()
+        else:
+            # Compile without checkpointer
+            graph = self._workflow.compile()
+        
+        # Execute normally
+        result = graph.invoke({"messages": model_input["messages"]})
+        
+        return self._format_response(result)
+```
+
+---
+
+## Common Mistakes to Avoid
+
+### ❌ DON'T: Assume Memory Tables Exist
+
+```python
+# BAD: Will fail if tables not created
+class Agent:
+    def __init__(self):
+        self.memory = ShortTermMemory()
+        with self.memory.get_checkpointer() as checkpointer:
+            self.graph = workflow.compile(checkpointer=checkpointer)
+```
+
+### ✅ DO: Graceful Degradation
+
+```python
+# GOOD: Falls back gracefully
+class Agent:
+    def __init__(self):
+        try:
+            self.memory = ShortTermMemory()
+            with self.memory.get_checkpointer() as checkpointer:
+                self.graph = workflow.compile(checkpointer=checkpointer)
+        except Exception as e:
+            print(f"⚠ Memory unavailable, using stateless mode: {e}")
+            self.graph = workflow.compile()  # No checkpointer
+```
+
+### ❌ DON'T: Hardcode User IDs
+
+```python
+# BAD: Hardcoded user
+memories = store.search_memories("hardcoded@example.com", query)
+```
+
+### ✅ DO: Extract from Context
+
+```python
+# GOOD: Dynamic user from request context
+user_id = context.get("user_id") or custom_inputs.get("user_id") or "unknown"
+memories = store.search_memories(user_id, query)
+```
+
+### ❌ DON'T: Forget to Return thread_id
+
+```python
+# BAD: Client can't track conversation
+return {
+    "choices": [{"message": {"content": response}}]
+}
+```
+
+### ✅ DO: Return thread_id for Client Tracking
+
+```python
+# GOOD: Client can continue conversation
+return {
+    "choices": [{"message": {"content": response}}],
+    "custom_outputs": {
+        "thread_id": thread_id,  # ✅ Return for next turn
+    }
+}
+```
+
+---
+
+## Validation Checklist
+
+Before deploying agent with memory:
+- [ ] Lakebase instance name configured in settings
+- [ ] Setup script run once (creates tables)
+- [ ] Short-term memory uses `CheckpointSaver` with context manager
+- [ ] Long-term memory uses `DatabricksStore` with embeddings
+- [ ] Embedding endpoint configured (e.g., `databricks-gte-large-en`)
+- [ ] Embedding dimensions match model (1024 for GTE-large)
+- [ ] Thread ID resolution: custom_inputs → conversation_id → new UUID
+- [ ] User ID extracted from context/custom_inputs
+- [ ] Graceful degradation if tables don't exist
+- [ ] thread_id returned in custom_outputs for client tracking
+- [ ] Memory tools created with `create_memory_tools()` if autonomous use
+- [ ] MLflow tracing enabled for memory operations
+
+---
+
+## References
+
+### Official Documentation
+- [Databricks Short-Term Memory Pattern](https://docs.databricks.com/aws/en/notebooks/source/generative-ai/short-term-memory-agent-lakebase.html)
+- [Databricks Long-Term Memory Pattern](https://docs.databricks.com/aws/en/notebooks/source/generative-ai/long-term-memory-agent-lakebase.html)
+- [Stateful Agents Guide](https://learn.microsoft.com/en-us/azure/databricks/generative-ai/agent-framework/stateful-agents)
+- [Lakebase Documentation](https://docs.databricks.com/en/lakebase/)
+
+### Related Rules
+- [32-prompt-registry-patterns.mdc](mdc:.cursor/rules/genai-agents/32-prompt-registry-patterns.mdc) - Prompt versioning
+- [33-mlflow-tracing-patterns.mdc](mdc:.cursor/rules/genai-agents/33-mlflow-tracing-patterns.mdc) - Tracing patterns
+
+### Implementation Reference
+- `src/agents/memory/short_term.py` - Short-term memory implementation
+- `src/agents/memory/long_term.py` - Long-term memory implementation
+- `src/agents/notebooks/setup_lakebase.py` - Memory table setup
+- `src/agents/setup/log_agent_model.py` - Agent integration example
