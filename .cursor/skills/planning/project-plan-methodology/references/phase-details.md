@@ -25,7 +25,7 @@ Phase 1 creates all data consumption artifacts organized by Agent Domain. These 
 - **Deliverables:** 15-25 models across all agent domains
 - **Dependencies:** Gold layer tables
 - **Output:** Prediction tables for consumption by TVFs, Genie Spaces, and Dashboards
-- **Key Artifacts:** Demand predictors, pricing optimizers, conversion predictors, customer LTV models, segmentation models, revenue forecasters
+- **Key Artifacts:** {metric} predictors, {metric} optimizers, {entity} classifiers, {entity} LTV models, segmentation models, {metric} forecasters
 
 #### 1.2: Table-Valued Functions (TVFs)
 - **Purpose:** Parameterized SQL queries for Genie Spaces
