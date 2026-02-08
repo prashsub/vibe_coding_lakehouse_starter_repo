@@ -1,12 +1,12 @@
 # Prompt: Convert GenAI Agent Rules to Agent Skills (Orchestrator + Dependencies)
 
-> **Purpose**: Use this prompt in a new Cursor chat session to convert all GenAI agent cursor rules, context prompts, and implementation documentation into a structured set of Agent Skills under `.cursor/skills/genai-agents/`.
+> **Purpose**: Use this prompt in a new Cursor chat session to convert all GenAI agent cursor rules, context prompts, and implementation documentation into a structured set of Agent Skills under `skills/genai-agents/`.
 
 ---
 
 ## Task
 
-Convert the following source materials into a complete set of **Agent Skills** organized as an orchestrator with dependencies, placed in `.cursor/skills/genai-agents/`. Follow the `cursor-rule-to-skill` skill methodology at `.cursor/skills/cursor-rule-to-skill/SKILL.md`.
+Convert the following source materials into a complete set of **Agent Skills** organized as an orchestrator with dependencies, placed in `skills/genai-agents/`. Follow the `cursor-rule-to-skill` skill methodology at `skills/cursor-rule-to-skill/SKILL.md`.
 
 **IMPORTANT:** Do NOT miss any functionality. Every pattern, anti-pattern, code example, checklist, and production learning from every source file MUST be preserved in the output skills. This is a comprehensive migration, not a summary.
 
@@ -39,10 +39,10 @@ Convert the following source materials into a complete set of **Agent Skills** o
 
 ## Output Structure
 
-Create the following skill structure under `.cursor/skills/genai-agents/`:
+Create the following skill structure under `skills/genai-agents/`:
 
 ```
-.cursor/skills/genai-agents/
+skills/genai-agents/
 ├── genai-agent-implementation/                    # ORCHESTRATOR SKILL
 │   ├── SKILL.md                                   # Main orchestrator
 │   ├── references/
@@ -155,7 +155,7 @@ Create the following skill structure under `.cursor/skills/genai-agents/`:
 
 ### Phase 1: Read the cursor-rule-to-skill Methodology
 
-Read `.cursor/skills/cursor-rule-to-skill/SKILL.md` first. Follow its conversion workflow:
+Read `skills/cursor-rule-to-skill/SKILL.md` first. Follow its conversion workflow:
 1. Parse frontmatter and body from each `.mdc` file
 2. Generate valid skill names (lowercase, hyphens, max 64 chars)
 3. Generate descriptions (max 1024 chars, WHAT + WHEN)
@@ -434,7 +434,7 @@ These are the most important patterns that must be prominently featured:
 11. Create `genie-space-optimization/`
 12. Create `mlflow-genai-foundation/`
 13. Validate: every pattern from every source exists in output
-14. Update `.cursor/skills/skill-navigator/SKILL.md` with new genai-agents domain
+14. Update `skills/skill-navigator/SKILL.md` with new genai-agents domain
 
 ---
 

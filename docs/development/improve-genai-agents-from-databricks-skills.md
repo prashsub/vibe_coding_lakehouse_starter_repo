@@ -2,7 +2,7 @@
 
 ## Objective
 
-Analyze the external reference skills in `databricks-skills/model-serving/` and `databricks-skills/mlflow-evaluation/` and use them to improve the existing `.cursor/skills/genai-agents/` skills. The external skills represent the latest official Databricks patterns (MLflow 3.6.0+, DBR 16.1+) and contain patterns, gotchas, and API details that our genai-agents skills are missing or have outdated.
+Analyze the external reference skills in `databricks-skills/model-serving/` and `databricks-skills/mlflow-evaluation/` and use them to improve the existing `skills/genai-agents/` skills. The external skills represent the latest official Databricks patterns (MLflow 3.6.0+, DBR 16.1+) and contain patterns, gotchas, and API details that our genai-agents skills are missing or have outdated.
 
 **Goal:** Merge the new knowledge into existing genai-agents skills by updating reference files. Do NOT create new worker skills unless there is a clearly distinct domain not covered by any existing skill.
 
@@ -41,7 +41,7 @@ Read ALL files in order:
 | `references/patterns-context-optimization.md` | Token optimization, context management |
 | `references/user-journeys.md` | End-to-end workflow guides |
 
-### Target: `.cursor/skills/genai-agents/`
+### Target: `skills/genai-agents/`
 
 These are the skills to improve:
 

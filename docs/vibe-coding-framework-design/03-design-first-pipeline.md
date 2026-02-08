@@ -44,7 +44,7 @@ context/*.csv
 
 **Prompt:**
 ```
-I have a customer schema at @context/Wanderbricks_Schema.csv. Please design the Gold layer using @.cursor/skills/gold/00-gold-layer-design/SKILL.md
+I have a customer schema at @context/Wanderbricks_Schema.csv. Please design the Gold layer using @skills/gold/00-gold-layer-design/SKILL.md
 ```
 
 ---
@@ -68,7 +68,7 @@ I have a customer schema at @context/Wanderbricks_Schema.csv. Please design the 
 
 **Prompt:**
 ```
-Set up the Bronze layer using @.cursor/skills/bronze/00-bronze-layer-setup/SKILL.md with Approach A
+Set up the Bronze layer using @skills/bronze/00-bronze-layer-setup/SKILL.md with Approach A
 ```
 
 ---
@@ -90,7 +90,7 @@ Set up the Bronze layer using @.cursor/skills/bronze/00-bronze-layer-setup/SKILL
 
 **Prompt:**
 ```
-Set up the Silver layer using @.cursor/skills/silver/00-silver-layer-setup/SKILL.md
+Set up the Silver layer using @skills/silver/00-silver-layer-setup/SKILL.md
 ```
 
 ---
@@ -113,7 +113,7 @@ Set up the Silver layer using @.cursor/skills/silver/00-silver-layer-setup/SKILL
 
 **Prompt:**
 ```
-Implement the Gold layer using @.cursor/skills/gold/01-gold-layer-setup/SKILL.md
+Implement the Gold layer using @skills/gold/01-gold-layer-setup/SKILL.md
 ```
 
 ---
@@ -152,7 +152,7 @@ Each downstream orchestrator has a **Phase 0: Read Plan** step. If no manifest e
 
 **Prompt:**
 ```
-Perform project planning using @.cursor/skills/planning/00-project-planning/SKILL.md
+Perform project planning using @skills/planning/00-project-planning/SKILL.md
 ```
 
 ---
@@ -175,7 +175,7 @@ Perform project planning using @.cursor/skills/planning/00-project-planning/SKIL
 
 **Prompt:**
 ```
-Set up the semantic layer using @.cursor/skills/semantic-layer/00-semantic-layer-setup/SKILL.md
+Set up the semantic layer using @skills/semantic-layer/00-semantic-layer-setup/SKILL.md
 ```
 
 ---
@@ -197,7 +197,7 @@ Set up the semantic layer using @.cursor/skills/semantic-layer/00-semantic-layer
 
 **Prompt:**
 ```
-Set up observability using @.cursor/skills/monitoring/00-observability-setup/SKILL.md
+Set up observability using @skills/monitoring/00-observability-setup/SKILL.md
 ```
 
 ---
@@ -220,7 +220,7 @@ Set up observability using @.cursor/skills/monitoring/00-observability-setup/SKI
 
 **Prompt:**
 ```
-Set up the ML pipeline using @.cursor/skills/ml/00-ml-pipeline-setup/SKILL.md
+Set up the ML pipeline using @skills/ml/00-ml-pipeline-setup/SKILL.md
 ```
 
 ---
@@ -243,7 +243,7 @@ Set up the ML pipeline using @.cursor/skills/ml/00-ml-pipeline-setup/SKILL.md
 
 **Prompt:**
 ```
-Set up GenAI agents using @.cursor/skills/genai-agents/00-genai-agents-setup/SKILL.md
+Set up GenAI agents using @skills/genai-agents/00-genai-agents-setup/SKILL.md
 ```
 
 ---
@@ -260,4 +260,4 @@ Set up GenAI agents using @.cursor/skills/genai-agents/00-genai-agents-setup/SKI
 ## References
 
 - [QUICKSTART.md](../../QUICKSTART.md) — One-prompt-per-stage reference with exact prompts
-- [Skill Navigator](../../.cursor/skills/skill-navigator/SKILL.md) — Full routing table and domain indexes
+- [Skill Navigator](../../skills/skill-navigator/SKILL.md) — Full routing table and domain indexes

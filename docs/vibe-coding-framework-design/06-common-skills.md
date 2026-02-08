@@ -4,7 +4,7 @@
 
 The 8 common skills are cross-cutting concerns that apply across all pipeline stages. Every orchestrator declares which common skills it depends on in its `common_dependencies` metadata. At minimum, every orchestrator reads `databricks-expert-agent` and `naming-tagging-standards`.
 
-These skills live in `.cursor/skills/common/` and are indexed by the always-on `common-skills-reference.mdc` cursor rule.
+These skills live in `skills/common/` and are indexed in the `AGENTS.md` entry point at the repository root.
 
 ## Skill Deep Dives
 
@@ -12,7 +12,7 @@ These skills live in `.cursor/skills/common/` and are indexed by the always-on `
 
 | Field | Value |
 |-------|-------|
-| **Path** | `.cursor/skills/common/databricks-expert-agent/SKILL.md` |
+| **Path** | `skills/common/databricks-expert-agent/SKILL.md` |
 | **Read When** | Every task (core agent behavior) |
 | **Key Pattern** | "Extract, Don't Generate" — script names from source files |
 
@@ -33,7 +33,7 @@ The "Extract, Don't Generate" principle is the most critical pattern: never hard
 
 | Field | Value |
 |-------|-------|
-| **Path** | `.cursor/skills/common/databricks-asset-bundles/SKILL.md` |
+| **Path** | `skills/common/databricks-asset-bundles/SKILL.md` |
 | **Read When** | Creating jobs, pipelines, dashboards, alerts |
 | **Key Patterns** | `notebook_task` (not `python_task`), `base_parameters` (not `parameters`), serverless environments |
 
@@ -51,7 +51,7 @@ Defines standard patterns for Databricks Asset Bundles (DABs) — the Infrastruc
 
 | Field | Value |
 |-------|-------|
-| **Path** | `.cursor/skills/common/databricks-autonomous-operations/SKILL.md` |
+| **Path** | `skills/common/databricks-autonomous-operations/SKILL.md` |
 | **Read When** | Deploy/poll/diagnose/fix loop when jobs fail |
 | **Key Pattern** | Self-healing Deploy → Poll → Diagnose → Fix → Redeploy cycle |
 
@@ -71,7 +71,7 @@ This skill also serves as the SDK/CLI/REST API reference for all Databricks oper
 
 | Field | Value |
 |-------|-------|
-| **Path** | `.cursor/skills/common/naming-tagging-standards/SKILL.md` |
+| **Path** | `skills/common/naming-tagging-standards/SKILL.md` |
 | **Read When** | Creating ANY DDL, COMMENTs, tags, workflows |
 | **Key Patterns** | `snake_case`, `dim_`/`fact_` prefixes, dual-purpose COMMENTs, governed tags |
 
@@ -90,7 +90,7 @@ Enforces enterprise naming conventions across every artifact:
 
 | Field | Value |
 |-------|-------|
-| **Path** | `.cursor/skills/common/databricks-python-imports/SKILL.md` |
+| **Path** | `skills/common/databricks-python-imports/SKILL.md` |
 | **Read When** | Sharing code between notebooks |
 | **Key Pattern** | `sys.path` setup for Asset Bundle paths, `restartPython()` patterns |
 
@@ -107,7 +107,7 @@ Enables code reuse across Databricks notebooks using pure Python files and stand
 
 | Field | Value |
 |-------|-------|
-| **Path** | `.cursor/skills/common/databricks-table-properties/SKILL.md` |
+| **Path** | `skills/common/databricks-table-properties/SKILL.md` |
 | **Read When** | Creating tables at any medallion layer |
 | **Key Patterns** | TBLPROPERTIES by layer, CDF, auto-optimize, CLUSTER BY AUTO |
 
@@ -124,7 +124,7 @@ Standardizes Delta table properties across all medallion layers:
 
 | Field | Value |
 |-------|-------|
-| **Path** | `.cursor/skills/common/schema-management-patterns/SKILL.md` |
+| **Path** | `skills/common/schema-management-patterns/SKILL.md` |
 | **Read When** | Creating schemas, enabling predictive optimization |
 | **Key Pattern** | `CREATE SCHEMA IF NOT EXISTS` + predictive optimization |
 
@@ -141,7 +141,7 @@ Provides patterns for Unity Catalog schema creation and management:
 
 | Field | Value |
 |-------|-------|
-| **Path** | `.cursor/skills/common/unity-catalog-constraints/SKILL.md` |
+| **Path** | `skills/common/unity-catalog-constraints/SKILL.md` |
 | **Read When** | Applying PK/FK constraints in Gold layer |
 | **Key Patterns** | Surrogate keys as PK, `ALTER TABLE` after creation, `NOT ENFORCED` |
 
@@ -173,6 +173,6 @@ Shows which common skills each orchestrator depends on:
 
 ## References
 
-- [common-skills-reference.mdc](../../.cursor/rules/common-skills-reference.mdc) — Always-on index
+- [AGENTS.md](../../AGENTS.md) — Universal entry point with common skills index
 - [04-Agent Skills System](04-agent-skills-system.md) — Skills architecture
 - [05-Skill Domains](05-skill-domains.md) — Complete skill inventory

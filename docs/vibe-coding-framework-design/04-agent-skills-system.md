@@ -4,7 +4,7 @@
 
 Agent Skills are the primary knowledge mechanism in the Vibe Coding Framework. Each skill is a structured directory containing a `SKILL.md` file (the entry point), `references/` files (detailed patterns), `scripts/` (executable utilities), and `assets/templates/` (starter files). Skills follow the [AgentSkills.io specification](https://agentskills.io) and are designed for progressive disclosure — the AI assistant reads only what it needs, keeping context usage efficient.
 
-The skills system replaces the original 46-rule cursor architecture with a more scalable pattern: 2 routing rules + 50+ skills.
+The skills system replaces the original 46-rule cursor architecture with a more scalable pattern: a single `AGENTS.md` entry point + 51 Agent Skills.
 
 ## Skill Types
 
@@ -107,7 +107,7 @@ The skills-first architecture is designed to stay within Claude Opus's 200K toke
 
 | Tier | What | Token Budget | Loaded When |
 |------|------|-------------|-------------|
-| Tier 1 | 2 routing rules | ~1K tokens | Every turn (always on) |
+| Tier 1 | AGENTS.md entry point | ~1K tokens | Every turn (always on) |
 | Tier 2 | Orchestrator SKILL.md | ~1-2K tokens | Task routed to domain |
 | Tier 3 | Worker SKILL.md files | ~1-2K each | Orchestrator requests them |
 | Tier 4 | Reference files | ~2-8K each | Specific pattern needed |
@@ -199,6 +199,6 @@ Before deploying any skill-generated code:
 ## References
 
 - [AgentSkills.io Specification](https://agentskills.io) — Skill format standard
-- [Skill Navigator](../../.cursor/skills/skill-navigator/SKILL.md) — Full routing table
+- [Skill Navigator](../../skills/skill-navigator/SKILL.md) — Full routing table
 - [05-Skill Domains](05-skill-domains.md) — Complete per-domain inventory
 - [06-Common Skills](06-common-skills.md) — Shared skill deep dive

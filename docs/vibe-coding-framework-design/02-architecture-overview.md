@@ -2,20 +2,20 @@
 
 ## System Architecture
 
-The Vibe Coding Framework uses a **skills-first architecture** where domain expertise lives in Agent Skills rather than in Cursor rules. This is a deliberate evolution: the original framework embedded all patterns in 46+ `.mdc` cursor rules, which created context-window pressure. The restructured framework uses just 2 lightweight routing rules that point to 50+ Agent Skills, each following a progressive disclosure pattern.
+The Vibe Coding Framework uses a **skills-first architecture** where domain expertise lives in Agent Skills using the open [SKILL.md format](https://agentskills.io). This is a deliberate evolution: the original framework embedded all patterns in 46+ IDE-specific rules, which created context-window pressure and IDE lock-in. The restructured framework uses a single `AGENTS.md` entry point that routes to 51 Agent Skills, each following a progressive disclosure pattern.
 
-The architecture has three layers: a **routing layer** (2 always-on rules), a **knowledge layer** (50+ Agent Skills), and a **generation layer** (the output code, configurations, and documentation that the AI assistant produces).
+The architecture has three layers: a **routing layer** (`AGENTS.md` — universal entry point), a **knowledge layer** (51 Agent Skills), and a **generation layer** (the output code, configurations, and documentation that the AI assistant produces).
 
 ### Architecture Diagram
 
 ```mermaid
 graph TB
-    subgraph Routing["Routing Layer (Always Loaded, ~1K tokens)"]
-        SN["skill-navigator.mdc<br/>Task → Orchestrator routing"]
-        CSR["common-skills-reference.mdc<br/>8 shared skills index"]
+    subgraph Routing["Routing Layer (AGENTS.md — Always Loaded)"]
+        SN["Orchestrator Routing<br/>Task → Skill routing"]
+        CSR["Common Skills Index<br/>8 shared skills"]
     end
 
-    subgraph Skills["Knowledge Layer (.cursor/skills/)"]
+    subgraph Skills["Knowledge Layer (skills/)"]
         subgraph Orchestrators["Orchestrators (00-*)"]
             O1["gold/00-gold-layer-design"]
             O2["bronze/00-bronze-layer-setup"]
@@ -34,7 +34,7 @@ graph TB
             C1["8 cross-cutting skills"]
         end
         subgraph Admin["Admin/Utility"]
-            A1["6 utility skills"]
+            A1["4 utility skills"]
         end
     end
 
@@ -53,15 +53,15 @@ graph TB
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                   ROUTING LAYER (2 Always-On Rules)                  │
+│                   ROUTING LAYER (AGENTS.md — Universal Entry Point)  │
 │                                                                     │
-│  skill-navigator.mdc          common-skills-reference.mdc           │
+│  Orchestrator Routing         Common Skills Index                   │
 │  "What task?" → route to      "Which shared skills to read?"        │
 │  correct orchestrator                                               │
 └────────────────────────────────┬────────────────────────────────────┘
                                  │ routes to
 ┌────────────────────────────────▼────────────────────────────────────┐
-│                  KNOWLEDGE LAYER (50+ Agent Skills)                  │
+│                  KNOWLEDGE LAYER (51 Agent Skills)                  │
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │  ORCHESTRATORS (00-*)        WORKERS (01-*, 02-*, ...)       │  │
@@ -74,7 +74,7 @@ graph TB
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐  │
-│  │  COMMON SKILLS (8 shared)        ADMIN SKILLS (6 utilities)  │  │
+│  │  COMMON SKILLS (8 shared)        ADMIN SKILLS (4 utilities)  │  │
 │  │  Expert Agent, Asset Bundles     Skill Creator, Freshness    │  │
 │  │  Autonomous Ops, Naming          Self-Improvement, Docs      │  │
 │  │  Python Imports, Table Props     Cursor Rules, Rule-to-Skill │  │
@@ -137,38 +137,36 @@ sequenceDiagram
 
 | Category | Count | Components |
 |----------|-------|------------|
-| Orchestrator Skills | 10 | Gold Design, Bronze, Silver, Gold Impl, Planning, Semantic, Observability, ML, GenAI, Exploration |
-| Worker Skills | 30+ | Faker, DLT expectations, DQX, YAML setup, Merge patterns, Dedup, Schema validation, Grain validation, ERD patterns, Metric Views, TVFs, Genie Spaces, Genie API, Genie Optimization, Lakehouse Monitoring, Dashboards, Alerts, Anomaly Detection, Responses Agent, Evaluation, Memory, Prompts, Multi-agent, Deployment, Production Monitoring, MLflow Foundation |
+| Orchestrator Skills | 9 | Gold Design, Bronze, Silver, Gold Impl, Planning, Semantic, Observability, ML, GenAI |
+| Worker Skills | 27 | Faker, DLT expectations, DQX, YAML setup, Merge patterns, Dedup, Schema validation, Grain validation, ERD patterns, Gold documentation, Metric Views, TVFs, Genie Spaces, Genie API, Genie Optimization, Lakehouse Monitoring, Dashboards, Alerts, Anomaly Detection, Responses Agent, Evaluation, Memory, Prompts, Multi-agent, Deployment, Production Monitoring |
 | Common Skills | 8 | Expert Agent, Asset Bundles, Autonomous Ops, Naming Standards, Python Imports, Table Properties, Schema Management, UC Constraints |
-| Admin/Utility Skills | 6 | Skill Creator, Cursor Rules, Documentation Org, Self-Improvement, Skill Freshness Audit, Rule-to-Skill |
-| Cursor Rules | 2 | Skill Navigator, Common Skills Reference |
+| Admin/Utility Skills | 4 | Skill Creator, Documentation Org, Self-Improvement, Skill Freshness Audit |
+| Standalone Skills | 3 | Exploration Notebooks, Skill Navigator, MLflow GenAI Foundation |
+| Entry Point | 1 | AGENTS.md (universal routing + common skills index) |
 
 ### Repository Structure
 
 ```
 project_root/
-├── .cursor/
-│   ├── rules/                          # 2 always-on routing rules
-│   │   ├── skill-navigator.mdc
-│   │   └── common-skills-reference.mdc
-│   └── skills/                         # 50+ Agent Skills
-│       ├── admin/                      # 6 utility skills
-│       ├── bronze/                     # 2 skills (00-orchestrator, 01-worker)
-│       ├── common/                     # 8 shared skills
-│       ├── exploration/                # 1 skill
-│       ├── genai-agents/               # 10+ skills
-│       ├── gold/                       # 9+ skills (2 orchestrators, 7 workers)
-│       ├── ml/                         # 1 orchestrator skill
-│       ├── monitoring/                 # 5 skills
-│       ├── planning/                   # 2 skills
-│       ├── semantic-layer/             # 6 skills
-│       ├── silver/                     # 4+ skills
-│       └── skill-navigator/            # Navigator skill (full version)
+├── AGENTS.md                           # Universal entry point (routing + common skills index)
+├── QUICKSTART.md                       # One-prompt-per-stage guide
+├── README.md                           # Project overview
+├── skills/                             # 51 Agent Skills (open SKILL.md format)
+│   ├── admin/                          # 4 utility skills
+│   ├── bronze/                         # 2 skills (00-orchestrator, 01-worker)
+│   ├── common/                         # 8 shared skills
+│   ├── exploration/                    # 1 skill
+│   ├── genai-agents/                   # 10 skills
+│   ├── gold/                           # 9 skills (2 orchestrators, 7 workers)
+│   ├── ml/                             # 1 orchestrator skill
+│   ├── monitoring/                     # 5 skills
+│   ├── planning/                       # 1 skill
+│   ├── semantic-layer/                 # 6 skills
+│   ├── silver/                         # 3 skills
+│   └── skill-navigator/               # Navigator skill (full version)
 ├── context/
 │   └── Wanderbricks_Schema.csv         # Customer schema input
-├── docs/                               # Human-readable documentation
-├── QUICKSTART.md                       # One-prompt-per-stage guide
-└── README.md                           # Project overview
+└── docs/                               # Human-readable documentation
 ```
 
 ## Technology Stack

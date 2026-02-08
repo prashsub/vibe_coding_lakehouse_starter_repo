@@ -2,14 +2,14 @@
 
 ## Objective
 
-Merge all unique content from `context/prompts/11-project-plan-prompt.md` into the existing `.cursor/skills/planning/project-plan-methodology/` skill (SKILL.md + references + assets), preserving 100% of functionality from BOTH files.
+Merge all unique content from `context/prompts/11-project-plan-prompt.md` into the existing `skills/planning/project-plan-methodology/` skill (SKILL.md + references + assets), preserving 100% of functionality from BOTH files.
 
 After the merge, the skill alone must be able to reproduce everything the prompt + skill combination could do before.
 
 ## Source Material
 
 - **Source Prompt:** `context/prompts/11-project-plan-prompt.md` (1375 lines — interactive templates, worked examples, phase document templates)
-- **Existing Skill:** `.cursor/skills/planning/project-plan-methodology/SKILL.md` (391 lines — methodology, standards, anti-patterns)
+- **Existing Skill:** `skills/planning/project-plan-methodology/SKILL.md` (391 lines — methodology, standards, anti-patterns)
 - **Existing References:**
   - `references/phase-details.md` (131 lines — abbreviated phase descriptions)
   - `references/estimation-guide.md` (75 lines — effort estimation, dependency management, risks)
@@ -110,7 +110,7 @@ metadata:
 ### 2. Target Directory Structure
 
 ```
-.cursor/skills/planning/project-plan-methodology/
+skills/planning/project-plan-methodology/
 ├── SKILL.md                                    # REWRITE (methodology + quick start + workflow)
 ├── references/
 │   ├── phase-details.md                        # EXPAND (full addendum details from prompt)

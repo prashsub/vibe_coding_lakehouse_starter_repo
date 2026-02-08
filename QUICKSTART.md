@@ -6,9 +6,11 @@ This guide walks you through building a complete Databricks data platform — fr
 
 ## Prerequisites
 
-- Cursor IDE with Agent mode enabled
+- AI coding assistant with file reference support (Cursor, Claude Code, Windsurf, Copilot, Codex, etc.)
 - A Databricks workspace with Unity Catalog
 - A schema CSV exported from the customer's source system
+
+> **File references:** The prompts below use `@` to reference files (supported by Cursor, Windsurf, and others). If your IDE doesn't support `@`, ask the agent to "read the file at [path]" instead.
 
 ---
 
@@ -32,7 +34,7 @@ Design the target dimensional model first — ERDs, YAML schemas, and documentat
 **Prompt:**
 
 ```
-I have a customer schema at @context/Wanderbricks_Schema.csv. Please design the Gold layer using @.cursor/skills/gold/00-gold-layer-design/SKILL.md
+I have a customer schema at @context/Wanderbricks_Schema.csv. Please design the Gold layer using @skills/gold/00-gold-layer-design/SKILL.md
 ```
 
 **What it produces:**
@@ -51,19 +53,19 @@ Create Bronze tables and populate them with data. Three approaches available:
 **Approach A — Schema CSV + Faker (recommended for demos):**
 
 ```
-Set up the Bronze layer using @.cursor/skills/bronze/00-bronze-layer-setup/SKILL.md with Approach A — generate Faker data matching the source schema.
+Set up the Bronze layer using @skills/bronze/00-bronze-layer-setup/SKILL.md with Approach A — generate Faker data matching the source schema.
 ```
 
 **Approach B — Existing tables (data already in Databricks):**
 
 ```
-Set up the Bronze layer using @.cursor/skills/bronze/00-bronze-layer-setup/SKILL.md with Approach B — read from existing tables in the wanderbricks schema.
+Set up the Bronze layer using @skills/bronze/00-bronze-layer-setup/SKILL.md with Approach B — read from existing tables in the wanderbricks schema.
 ```
 
 **Approach C — Copy from source:**
 
 ```
-Set up the Bronze layer using @.cursor/skills/bronze/00-bronze-layer-setup/SKILL.md with Approach C — copy data from the existing source tables in the wanderbricks schema.
+Set up the Bronze layer using @skills/bronze/00-bronze-layer-setup/SKILL.md with Approach C — copy data from the existing source tables in the wanderbricks schema.
 ```
 
 **What it produces:**
@@ -80,7 +82,7 @@ Create DLT pipelines with data quality expectations.
 **Prompt:**
 
 ```
-Set up the Silver layer using @.cursor/skills/silver/00-silver-layer-setup/SKILL.md
+Set up the Silver layer using @skills/silver/00-silver-layer-setup/SKILL.md
 ```
 
 **What it produces:**
@@ -98,7 +100,7 @@ Create the Gold tables, merge scripts, and FK constraints from the YAML designs.
 **Prompt:**
 
 ```
-Implement the Gold layer using @.cursor/skills/gold/01-gold-layer-setup/SKILL.md
+Implement the Gold layer using @skills/gold/01-gold-layer-setup/SKILL.md
 ```
 
 **What it produces:**
@@ -116,7 +118,7 @@ Plan the semantic layer, observability, ML, and GenAI phases. This stage asks yo
 **Prompt:**
 
 ```
-Perform project planning using @.cursor/skills/planning/00-project-planning/SKILL.md
+Perform project planning using @skills/planning/00-project-planning/SKILL.md
 ```
 
 **What it produces:**
@@ -133,7 +135,7 @@ Create Metric Views, Table-Valued Functions, and Genie Spaces.
 **Prompt:**
 
 ```
-Set up the semantic layer using @.cursor/skills/semantic-layer/00-semantic-layer-setup/SKILL.md
+Set up the semantic layer using @skills/semantic-layer/00-semantic-layer-setup/SKILL.md
 ```
 
 **What it produces:**
@@ -151,7 +153,7 @@ Set up Lakehouse Monitors, AI/BI Dashboards, and SQL Alerts.
 **Prompt:**
 
 ```
-Set up observability using @.cursor/skills/monitoring/00-observability-setup/SKILL.md
+Set up observability using @skills/monitoring/00-observability-setup/SKILL.md
 ```
 
 **What it produces:**
@@ -169,7 +171,7 @@ Create ML experiments, model training, and batch inference.
 **Prompt:**
 
 ```
-Set up the ML pipeline using @.cursor/skills/ml/00-ml-pipeline-setup/SKILL.md
+Set up the ML pipeline using @skills/ml/00-ml-pipeline-setup/SKILL.md
 ```
 
 **What it produces:**
@@ -187,7 +189,7 @@ Build AI agents with Genie Space integration, evaluation, and deployment.
 **Prompt:**
 
 ```
-Set up GenAI agents using @.cursor/skills/genai-agents/00-genai-agents-setup/SKILL.md
+Set up GenAI agents using @skills/genai-agents/00-genai-agents-setup/SKILL.md
 ```
 
 **What it produces:**
@@ -201,7 +203,7 @@ Set up GenAI agents using @.cursor/skills/genai-agents/00-genai-agents-setup/SKI
 ## Tips
 
 - **One prompt per stage.** Each orchestrator skill handles the full workflow for its stage.
-- **New conversation per stage.** Start a fresh Cursor Agent conversation for each stage to keep context clean.
+- **New conversation per stage.** Start a fresh agent conversation for each stage to keep context clean.
 - **The skill does the thinking.** You don't need to specify details — the orchestrator reads its worker skills, common skills, and your existing artifacts automatically.
 - **If something fails,** the `databricks-autonomous-operations` common skill kicks in for troubleshooting (Deploy → Poll → Diagnose → Fix → Redeploy).
 

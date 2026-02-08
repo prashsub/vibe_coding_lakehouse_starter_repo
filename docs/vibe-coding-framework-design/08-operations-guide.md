@@ -10,8 +10,8 @@ This guide covers the ongoing maintenance, evolution, and operational procedures
 
 | Check | Frequency | How | Expected Result |
 |-------|-----------|-----|-----------------|
-| Skill count | Weekly | `find .cursor/skills -name "SKILL.md" \| wc -l` | 50+ skills present |
-| Rule count | Weekly | `ls .cursor/rules/*.mdc \| wc -l` | 2 routing rules |
+| Skill count | Weekly | `find skills -name "SKILL.md" \| wc -l` | 51 skills present |
+| Entry point | Weekly | `test -f AGENTS.md && echo "OK"` | AGENTS.md present |
 | Broken references | Monthly | Grep for dead links in SKILL.md files | 0 broken links |
 | Skill freshness | Monthly | Run `skill-freshness-audit` skill | All skills within verification window |
 
@@ -33,7 +33,7 @@ Skills encode Databricks platform patterns that evolve over time. The `admin/ski
 ### Running an Audit
 
 ```
-Audit skill freshness using @.cursor/skills/admin/skill-freshness-audit/SKILL.md
+Audit skill freshness using @skills/admin/skill-freshness-audit/SKILL.md
 ```
 
 The audit skill:
@@ -81,7 +81,7 @@ The `admin/self-improvement` skill should be invoked when:
 ### How It Works
 
 ```
-Learn from this error using @.cursor/skills/admin/self-improvement/SKILL.md
+Learn from this error using @skills/admin/self-improvement/SKILL.md
 ```
 
 The self-improvement skill:
@@ -106,7 +106,7 @@ The self-improvement skill:
 ### Creation Process
 
 ```
-Create a new skill using @.cursor/skills/admin/create-agent-skill/SKILL.md
+Create a new skill using @skills/admin/create-agent-skill/SKILL.md
 ```
 
 ### Required Steps
@@ -198,9 +198,9 @@ Create a new skill using @.cursor/skills/admin/create-agent-skill/SKILL.md
 
 | Role | Permissions | Responsibility |
 |------|-------------|----------------|
-| Framework Maintainer | Full write to `.cursor/skills/` | Skill updates, freshness audits |
-| Contributor | PR to `.cursor/skills/` | New patterns, bug fixes |
-| User | Read `.cursor/skills/` | Use skills via Cursor Agent |
+| Framework Maintainer | Full write to `skills/` | Skill updates, freshness audits |
+| Contributor | PR to `skills/` | New patterns, bug fixes |
+| User | Read `skills/` | Use skills via Cursor Agent |
 
 ### Skill Update Procedure
 
@@ -225,7 +225,7 @@ All skill changes should go through version control (git). The recommended workf
 
 ## References
 
-- [Skill Freshness Audit](../../.cursor/skills/admin/skill-freshness-audit/SKILL.md)
-- [Self-Improvement](../../.cursor/skills/admin/self-improvement/SKILL.md)
-- [Create Agent Skill](../../.cursor/skills/admin/create-agent-skill/SKILL.md)
-- [Skill Navigator](../../.cursor/skills/skill-navigator/SKILL.md)
+- [Skill Freshness Audit](../../skills/admin/skill-freshness-audit/SKILL.md)
+- [Self-Improvement](../../skills/admin/self-improvement/SKILL.md)
+- [Create Agent Skill](../../skills/admin/create-agent-skill/SKILL.md)
+- [Skill Navigator](../../skills/skill-navigator/SKILL.md)

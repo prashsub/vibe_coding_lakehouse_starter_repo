@@ -34,7 +34,7 @@ metadata:
 Create the following directory structure:
 
 ```
-.cursor/skills/gold/gold-layer-design/
+skills/gold/gold-layer-design/
 ├── SKILL.md                                    # Main orchestration workflow
 ├── references/
 │   ├── dimensional-modeling-guide.md          # Extract from Steps 1.1-1.5
@@ -159,7 +159,7 @@ This skill orchestrates the following skills (MUST be read and followed):
 
 **Invoke:** `mermaid-erd-patterns` skill (MANDATORY)
 
-**Read and Follow:** `.cursor/skills/gold/mermaid-erd-patterns/SKILL.md`
+**Read and Follow:** `skills/gold/mermaid-erd-patterns/SKILL.md`
 
 **Activities:**
 1. Assess table count to determine ERD strategy (1-8, 9-20, 20+)
@@ -186,7 +186,7 @@ This skill orchestrates the following skills (MUST be read and followed):
 
 **Invoke:** `yaml-driven-gold-setup` skill (MANDATORY)
 
-**Read and Follow:** `.cursor/skills/gold/yaml-driven-gold-setup/SKILL.md`
+**Read and Follow:** `skills/gold/yaml-driven-gold-setup/SKILL.md`
 
 **Activities:**
 1. Create domain-organized YAML directory structure
@@ -197,7 +197,7 @@ This skill orchestrates the following skills (MUST be read and followed):
 
 **Invoke:** `gold-layer-documentation` skill (MANDATORY)
 
-**Read and Follow:** `.cursor/skills/gold/gold-layer-documentation/SKILL.md`
+**Read and Follow:** `skills/gold/gold-layer-documentation/SKILL.md`
 
 **Critical Rules:**
 - Dual-purpose descriptions (business + technical) for ALL columns
@@ -309,7 +309,7 @@ This skill orchestrates the following skills (MUST be read and followed):
 
 **Invoke:** `gold-layer-schema-validation` skill
 
-**Read and Follow:** `.cursor/skills/gold/gold-layer-schema-validation/SKILL.md`
+**Read and Follow:** `skills/gold/gold-layer-schema-validation/SKILL.md`
 
 **Validation Activities:**
 1. Consistency check: YAML ↔ ERD ↔ Lineage CSV

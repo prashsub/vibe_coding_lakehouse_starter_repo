@@ -2,7 +2,7 @@
 
 ## Overview
 
-The framework's 50+ Agent Skills are organized into 12 domain directories. Each domain corresponds to a layer of the Medallion Architecture, a platform capability, or an administrative function. This document provides the complete inventory of every skill in every domain.
+The framework's 51 Agent Skills are organized into 12 domain directories. Each domain corresponds to a layer of the Medallion Architecture, a platform capability, or an administrative function. This document provides the complete inventory of every skill in every domain.
 
 ## Domain Summary
 
@@ -10,16 +10,16 @@ The framework's 50+ Agent Skills are organized into 12 domain directories. Each 
 |--------|-----------|-------------|---------|-------|---------------|
 | Gold (Design) | `gold/` | `00-gold-layer-design` | 7 workers | 9 | Stage 1 |
 | Bronze | `bronze/` | `00-bronze-layer-setup` | 1 worker | 2 | Stage 2 |
-| Silver | `silver/` | `00-silver-layer-setup` | 2 workers | 4+ | Stage 3 |
+| Silver | `silver/` | `00-silver-layer-setup` | 2 workers | 3 | Stage 3 |
 | Gold (Impl) | `gold/` | `01-gold-layer-setup` | (shared) | (shared) | Stage 4 |
-| Planning | `planning/` | `00-project-planning` | 0 | 2 | Stage 5 |
+| Planning | `planning/` | `00-project-planning` | 0 | 1 | Stage 5 |
 | Semantic Layer | `semantic-layer/` | `00-semantic-layer-setup` | 5 workers | 6 | Stage 6 |
 | Monitoring | `monitoring/` | `00-observability-setup` | 4 workers | 5 | Stage 7 |
 | ML | `ml/` | `00-ml-pipeline-setup` | 0 | 1 | Stage 8 |
-| GenAI Agents | `genai-agents/` | `00-genai-agents-setup` | 8+ workers | 10+ | Stage 9 |
+| GenAI Agents | `genai-agents/` | `00-genai-agents-setup` | 9 workers | 10 | Stage 9 |
 | Exploration | `exploration/` | `00-adhoc-exploration-notebooks` | 0 | 1 | Standalone |
 | Common | `common/` | — | — | 8 | All stages |
-| Admin | `admin/` | — | — | 6 | Meta/utility |
+| Admin | `admin/` | — | — | 4 | Meta/utility |
 
 ---
 
@@ -156,11 +156,9 @@ See [06-Common Skills](06-common-skills.md) for the detailed deep dive.
 | Skill | Description |
 |-------|-------------|
 | `create-agent-skill` | Guides creation of new Agent Skills |
-| `cursor-rules` | Cursor rule file management |
 | `documentation-organization` | Documentation structure enforcement + framework authoring |
 | `self-improvement` | Agent learning from mistakes |
 | `skill-freshness-audit` | Verify skills against latest docs |
-| `cursor-rule-to-skill` | Convert `.mdc` rules to SKILL.md format |
 
 ---
 
@@ -170,4 +168,4 @@ See [06-Common Skills](06-common-skills.md) for the detailed deep dive.
 |-------|-------------|
 | `skill-navigator` | Master routing, domain indexes, context budget management |
 
-This is the full version of the skill navigator (the cursor rule `skill-navigator.mdc` is a condensed routing table that points here).
+This is the full version of the skill navigator. The condensed routing table lives in `AGENTS.md` at the repository root (the universal entry point for any AI coding assistant).

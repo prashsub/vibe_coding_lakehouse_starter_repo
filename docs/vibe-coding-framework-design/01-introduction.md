@@ -69,7 +69,7 @@ The architecture is **skills-first**: instead of embedding patterns in cursor ru
 |---|---------------|----------------|----------|
 | 1 | Design-First | Design Gold target model before building Bronze/Silver layers | [03-Pipeline](03-design-first-pipeline.md) |
 | 2 | Extract, Don't Generate | Script names from Gold YAML; never hardcode table/column names | [04-Agent Skills](04-agent-skills-system.md) |
-| 3 | Skills-First | 2 routing rules + 50 skills (not 46 monolithic rules) | [02-Architecture](02-architecture-overview.md) |
+| 3 | Skills-First | AGENTS.md entry point + 51 skills (not 46 monolithic rules) | [02-Architecture](02-architecture-overview.md) |
 | 4 | Progressive Disclosure | SKILL.md → references/ → scripts/ → assets/ | [04-Agent Skills](04-agent-skills-system.md) |
 | 5 | Orchestrator-First Routing | Always start with 00-* orchestrator, which loads workers | [04-Agent Skills](04-agent-skills-system.md) |
 | 6 | Plan-as-Contract | Planning emits YAML manifests consumed downstream | [03-Pipeline](03-design-first-pipeline.md) |
@@ -103,7 +103,7 @@ The architecture is **skills-first**: instead of embedding patterns in cursor ru
 
 ### Skill References
 
-Skills are referenced using their domain path: `.cursor/skills/{domain}/{skill-name}/SKILL.md`. In the Cursor IDE, use the `@` syntax to reference them directly (e.g., `@.cursor/skills/gold/00-gold-layer-design/SKILL.md`).
+Skills are referenced using their domain path: `skills/{domain}/{skill-name}/SKILL.md`. In the Cursor IDE, use the `@` syntax to reference them directly (e.g., `@skills/gold/00-gold-layer-design/SKILL.md`).
 
 ### Diagrams
 

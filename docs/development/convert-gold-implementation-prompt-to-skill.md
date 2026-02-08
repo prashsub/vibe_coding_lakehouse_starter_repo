@@ -7,7 +7,7 @@ Convert `context/prompts/03b-gold-layer-implementation-prompt.md` into a properl
 ## Source Material
 
 - **Source Prompt:** `context/prompts/03b-gold-layer-implementation-prompt.md`
-- **Predecessor Skill:** `.cursor/skills/gold/gold-layer-design/SKILL.md` (design orchestrator — this implementation skill is its natural successor)
+- **Predecessor Skill:** `skills/gold/gold-layer-design/SKILL.md` (design orchestrator — this implementation skill is its natural successor)
 
 ## Conversion Instructions
 
@@ -47,7 +47,7 @@ metadata:
 Create the following directory structure:
 
 ```
-.cursor/skills/gold/gold-layer-implementation/
+skills/gold/gold-layer-implementation/
 ├── SKILL.md                                        # Main orchestration workflow
 ├── references/
 │   ├── setup-script-patterns.md                   # Extract from Step 1 (setup_tables.py patterns)
@@ -181,11 +181,11 @@ databricks bundle run gold_merge_job -t dev
 
 **Read and Follow These Skills:**
 ```
-.cursor/skills/gold/yaml-driven-gold-setup/SKILL.md
-.cursor/skills/gold/gold-layer-documentation/SKILL.md
-.cursor/skills/common/databricks-table-properties/SKILL.md
-.cursor/skills/common/unity-catalog-constraints/SKILL.md
-.cursor/skills/common/schema-management-patterns/SKILL.md
+skills/gold/yaml-driven-gold-setup/SKILL.md
+skills/gold/gold-layer-documentation/SKILL.md
+skills/common/databricks-table-properties/SKILL.md
+skills/common/unity-catalog-constraints/SKILL.md
+skills/common/schema-management-patterns/SKILL.md
 ```
 
 **Activities:**
@@ -227,11 +227,11 @@ See `scripts/add_fk_constraints_template.py` for starter template.
 
 **Read and Follow These Skills:**
 ```
-.cursor/skills/gold/gold-layer-merge-patterns/SKILL.md
-.cursor/skills/gold/gold-delta-merge-deduplication/SKILL.md
-.cursor/skills/gold/fact-table-grain-validation/SKILL.md
-.cursor/skills/gold/gold-layer-schema-validation/SKILL.md
-.cursor/skills/common/databricks-python-imports/SKILL.md
+skills/gold/gold-layer-merge-patterns/SKILL.md
+skills/gold/gold-delta-merge-deduplication/SKILL.md
+skills/gold/fact-table-grain-validation/SKILL.md
+skills/gold/gold-layer-schema-validation/SKILL.md
+skills/common/databricks-python-imports/SKILL.md
 ```
 
 **Activities:**
@@ -303,7 +303,7 @@ See `scripts/merge_gold_tables_template.py` for starter template.
 
 **Read and Follow This Skill:**
 ```
-.cursor/skills/common/databricks-asset-bundles/SKILL.md
+skills/common/databricks-asset-bundles/SKILL.md
 ```
 
 **Activities:**

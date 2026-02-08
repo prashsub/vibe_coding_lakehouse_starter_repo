@@ -6,11 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [1.0.0] — 2026-02-07
 
 ### Architecture — Skills-First Migration
 
-Complete restructuring from a rules-heavy architecture (46 cursor rules) to a **skills-first architecture** (2 routing rules + 50+ Agent Skills). This is the largest change in the project's history.
+Complete restructuring from a rules-heavy architecture (46 cursor rules) to a **skills-first architecture** (2 routing rules + 50+ Agent Skills). This is the largest change in the project's history — a **breaking change** that consolidates duplicated patterns and establishes clear skill ordering.
 
 ### Added
 
@@ -30,6 +30,7 @@ Complete restructuring from a rules-heavy architecture (46 cursor rules) to a **
 - **Common Skills Reference** — always-on index of 8 cross-cutting shared skills
 - **QUICKSTART.md** — one-prompt-per-stage guide for the 9-stage pipeline
 - **Framework design documentation** — 8 documents + 3 appendices in `docs/vibe-coding-framework-design/`
+- **CHANGELOG.md** — project changelog following Keep a Changelog format
 - **Naming and tagging standards** skill — enterprise naming conventions, dual-purpose comments, governed tags
 - **Autonomous operations** skill — self-healing deploy-poll-diagnose-fix-redeploy loop
 - **Anomaly detection** skill — schema-level freshness/completeness monitoring via Data Quality API

@@ -35,15 +35,15 @@ The Vibe Coding Lakehouse Starter Framework is an **AI-assisted development syst
 │                     VIBE CODING FRAMEWORK                            │
 │                                                                      │
 │  ┌──────────────────────────────────────────────────────────────┐    │
-│  │             .cursor/rules/ (2 Always-On Rules)               │    │
+│  │              AGENTS.md (Universal Entry Point)                │    │
 │  │  ┌─────────────────────────┐ ┌────────────────────────────┐  │    │
-│  │  │  skill-navigator.mdc    │ │ common-skills-reference.mdc│  │    │
-│  │  │  (Route to skills)      │ │ (Index 8 shared skills)    │  │    │
+│  │  │  Orchestrator Routing   │ │ Common Skills Index        │  │    │
+│  │  │  (Route to skills)      │ │ (8 shared skills)          │  │    │
 │  │  └─────────────────────────┘ └────────────────────────────┘  │    │
 │  └──────────────────────────────────┬───────────────────────────┘    │
 │                                     │ routes to                      │
 │  ┌──────────────────────────────────▼───────────────────────────┐    │
-│  │              .cursor/skills/ (50+ Agent Skills)               │    │
+│  │              skills/ (51 Agent Skills)               │    │
 │  │                                                               │    │
 │  │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────┐  │    │
 │  │  │ Orchestrators │  │    Workers     │  │  Common Skills   │  │    │
@@ -91,7 +91,7 @@ The Vibe Coding Lakehouse Starter Framework is an **AI-assisted development syst
 | 1 | Extract, Don't Generate | Script table/column names from Gold YAML, never hardcode | [04-Agent Skills](04-agent-skills-system.md) |
 | 2 | Design-First Pipeline | Design Gold target model before building Bronze/Silver layers | [03-Pipeline](03-design-first-pipeline.md) |
 | 3 | Progressive Disclosure | SKILL.md (~2K) → references/ (2-8K) → scripts/ (on demand) | [04-Agent Skills](04-agent-skills-system.md) |
-| 4 | Skills-First Architecture | 2 routing rules + 50 skills (not 46 rules) | [02-Architecture](02-architecture-overview.md) |
+| 4 | Skills-First Architecture | AGENTS.md entry point + 51 skills (not 46 rules) | [02-Architecture](02-architecture-overview.md) |
 | 5 | Plan-as-Contract | Planning emits YAML manifests consumed by downstream stages | [03-Pipeline](03-design-first-pipeline.md) |
 | 6 | Orchestrator-First Routing | Route to 00-* orchestrator, which loads worker skills as needed | [04-Agent Skills](04-agent-skills-system.md) |
 | 7 | Autonomous Operations | Deploy → Poll → Diagnose → Fix → Redeploy without human intervention | [06-Common Skills](06-common-skills.md) |
@@ -101,7 +101,7 @@ The Vibe Coding Lakehouse Starter Framework is an **AI-assisted development syst
 
 | Metric | Value |
 |--------|-------|
-| Agent Skills | 50+ across 12 domains |
+| Agent Skills | 51 across 12 domains |
 | Orchestrator Skills | 10 (one per pipeline stage + utilities) |
 | Worker Skills | 30+ (domain-specific patterns) |
 | Common/Shared Skills | 8 (cross-cutting concerns) |
@@ -116,4 +116,4 @@ The Vibe Coding Lakehouse Starter Framework is an **AI-assisted development syst
 
 - [QUICKSTART.md](../../QUICKSTART.md) — One-prompt-per-stage guide (the primary usage guide)
 - [README.md](../../README.md) — Project overview
-- [Skill Navigator](../../.cursor/skills/skill-navigator/SKILL.md) — Intelligent skill routing system
+- [Skill Navigator](../../skills/skill-navigator/SKILL.md) — Intelligent skill routing system

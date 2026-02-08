@@ -10,8 +10,8 @@ A comprehensive **AI-assisted development framework** for building production-gr
 
 | Component | Description | Count |
 |-----------|-------------|-------|
-| **Agent Skills** | Structured knowledge packages for AI-assisted Databricks development | 50+ skills across 12 domains |
-| **Cursor Rules** | Lightweight always-on routing rules that direct the agent to skills | 2 rules |
+| **Agent Skills** | Structured knowledge packages for AI-assisted Databricks development | 51 skills across 12 domains |
+| **AGENTS.md** | Universal entry point with routing table and common skills index | 1 file |
 | **Context Files** | Customer schema CSV (the starting input for the pipeline) | 1 file |
 
 ---
@@ -21,7 +21,7 @@ A comprehensive **AI-assisted development framework** for building production-gr
 ### Prerequisites
 
 - Databricks workspace with Unity Catalog enabled
-- [Cursor IDE](https://cursor.sh/) with Agent mode enabled
+- AI coding assistant with file reference support (Cursor, Claude Code, Windsurf, Copilot, Codex, etc.)
 - Databricks CLI v0.200+ installed and configured
 - Git for version control
 
@@ -36,12 +36,14 @@ cd vibe_coding_lakehouse_starter_repo
 
 2. **Place your schema CSV** in the `context/` directory
 
-3. **Open in Cursor IDE** and start with the first prompt:
+3. **Open in your AI coding assistant** and start with the first prompt:
 
 ```
 I have a customer schema at @context/Wanderbricks_Schema.csv.
-Please design the Gold layer using @.cursor/skills/gold/00-gold-layer-design/SKILL.md
+Please design the Gold layer using @skills/gold/00-gold-layer-design/SKILL.md
 ```
+
+> **Note:** Most IDEs support `@` for file references. If yours doesn't, ask the agent to "read the file at skills/gold/00-gold-layer-design/SKILL.md" instead.
 
 4. **Follow the [QUICKSTART guide](QUICKSTART.md)** for all 9 stages
 
@@ -49,11 +51,11 @@ Please design the Gold layer using @.cursor/skills/gold/00-gold-layer-design/SKI
 
 ## How It Works
 
-The framework uses a **skills-first architecture**: 2 lightweight routing rules point the AI assistant to 50+ Agent Skills organized by domain. Each skill contains production-tested patterns, reference documentation, executable scripts, and starter templates.
+The framework uses a **skills-first architecture**: a single `AGENTS.md` entry point routes the AI assistant to 51 Agent Skills organized by domain. Each skill contains production-tested patterns, reference documentation, executable scripts, and starter templates. Skills use the open [SKILL.md format](https://agentskills.io) — portable across any AI coding assistant.
 
 ### Design-First Pipeline (9 Stages)
 
-One prompt per stage. One new Cursor Agent conversation per stage.
+One prompt per stage. One new agent conversation per stage.
 
 ```
 context/*.csv
@@ -78,32 +80,29 @@ Design the target Gold dimensional model **first** (from the customer's schema C
 
 ```
 .
-├── .cursor/
-│   ├── rules/                          # 2 always-on routing rules
-│   │   ├── skill-navigator.mdc         #   Routes tasks to orchestrator skills
-│   │   └── common-skills-reference.mdc #   Indexes 8 shared common skills
-│   └── skills/                         # 50+ Agent Skills
-│       ├── admin/                      #   Skill creation, auditing, docs (6)
-│       ├── bronze/                     #   Bronze layer + Faker data (2)
-│       ├── common/                     #   Cross-cutting shared skills (8)
-│       ├── exploration/                #   Ad-hoc notebooks (1)
-│       ├── genai-agents/               #   GenAI agent patterns (10+)
-│       ├── gold/                       #   Gold design + implementation (9)
-│       ├── ml/                         #   MLflow pipelines (1)
-│       ├── monitoring/                 #   Monitors, dashboards, alerts (5)
-│       ├── planning/                   #   Project planning (2)
-│       ├── semantic-layer/             #   Metric Views, TVFs, Genie (6)
-│       ├── silver/                     #   DLT pipelines, DQ rules (4)
-│       └── skill-navigator/            #   Master routing system (1)
+├── AGENTS.md                           # Universal entry point (routing table + common skills index)
+├── QUICKSTART.md                       # One-prompt-per-stage guide
+├── README.md                           # This file
+│
+├── skills/                            # 51 Agent Skills (open SKILL.md format)
+│   ├── admin/                          #   Skill creation, auditing, docs (4)
+│   ├── bronze/                         #   Bronze layer + Faker data (2)
+│   ├── common/                         #   Cross-cutting shared skills (8)
+│   ├── exploration/                    #   Ad-hoc notebooks (1)
+│   ├── genai-agents/                   #   GenAI agent patterns (10)
+│   ├── gold/                           #   Gold design + implementation (9)
+│   ├── ml/                             #   MLflow pipelines (1)
+│   ├── monitoring/                     #   Monitors, dashboards, alerts (5)
+│   ├── planning/                       #   Project planning (1)
+│   ├── semantic-layer/                 #   Metric Views, TVFs, Genie (6)
+│   ├── silver/                         #   DLT pipelines, DQ rules (3)
+│   └── skill-navigator/                #   Master routing system (1)
 │
 ├── context/
 │   └── Wanderbricks_Schema.csv         # Customer schema input
 │
-├── docs/                               # Framework documentation
-│   └── vibe-coding-framework-design/   #   Complete design documentation
-│
-├── QUICKSTART.md                       # One-prompt-per-stage guide
-└── README.md                           # This file
+└── docs/                               # Framework documentation
+    └── vibe-coding-framework-design/   #   Complete design documentation
 ```
 
 ---
@@ -168,9 +167,10 @@ After using this framework:
 
 | Document | Purpose |
 |----------|---------|
+| [AGENTS.md](AGENTS.md) | Universal entry point for any AI coding assistant |
 | [QUICKSTART.md](QUICKSTART.md) | One-prompt-per-stage guide (start here) |
 | [Framework Design Docs](docs/vibe-coding-framework-design/00-index.md) | Complete architecture and design documentation |
-| [Skill Navigator](.cursor/skills/skill-navigator/SKILL.md) | Master skill routing system |
+| [Skill Navigator](skills/skill-navigator/SKILL.md) | Master skill routing system |
 
 ---
 
@@ -213,9 +213,9 @@ These patterns work for any industry:
 
 ### Framework Support
 
-- See the [Skill Navigator](.cursor/skills/skill-navigator/SKILL.md) for routing to the right skill
-- Run `@.cursor/skills/admin/self-improvement/SKILL.md` to capture learnings from errors
-- Run `@.cursor/skills/admin/skill-freshness-audit/SKILL.md` to verify skills are current
+- See the [Skill Navigator](skills/skill-navigator/SKILL.md) for routing to the right skill
+- Run `@skills/admin/self-improvement/SKILL.md` to capture learnings from errors
+- Run `@skills/admin/skill-freshness-audit/SKILL.md` to verify skills are current
 
 ---
 
@@ -231,8 +231,8 @@ This repository is intended for educational and development purposes. Please rev
 # Clone the repository
 git clone https://github.com/prashsub/vibe_coding_lakehouse_starter_repo.git
 
-# Open in Cursor IDE
-cursor vibe_coding_lakehouse_starter_repo
+# Open in your AI coding assistant
+cd vibe_coding_lakehouse_starter_repo
 
 # Follow the QUICKSTART guide
 # → QUICKSTART.md
