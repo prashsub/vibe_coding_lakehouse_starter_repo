@@ -2,9 +2,13 @@
 name: unity-catalog-constraints
 description: Unity Catalog Primary Key and Foreign Key constraint patterns for proper relational modeling in Databricks. Use when implementing star schema dimensional models with PK/FK relationships in Gold layer tables. Covers surrogate keys as PRIMARY KEYS (not business keys), facts referencing surrogate PKs via FOREIGN KEY constraints, NOT NULL requirements for PK columns, proper dimensional modeling patterns (SCD Type 1/2, date dimensions), production deployment error prevention (never define FK inline in CREATE TABLE, DATE type casting from DATE_TRUNC, avoid module imports, widget parameter naming consistency), and validation checklists. Critical for ensuring proper relational modeling and preventing constraint application errors during Gold layer deployment.
 metadata:
-  author: databricks-sa
-  version: "1.0"
-  domain: gold
+  author: prashanth subrahmanyam
+  version: "2.0"
+  domain: infrastructure
+  role: shared
+  used_by_stages: [3, 4]
+  last_verified: "2026-02-07"
+  volatility: medium
 ---
 
 # Unity Catalog Primary Key and Foreign Key Constraints

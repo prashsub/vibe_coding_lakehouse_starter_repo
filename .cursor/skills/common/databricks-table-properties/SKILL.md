@@ -1,9 +1,14 @@
 ---
 name: databricks-table-properties
 description: Provides standard TBLPROPERTIES and metadata patterns for Unity Catalog Delta tables across Bronze, Silver, and Gold medallion layers. Ensures governance compliance, performance optimization, and proper metadata tagging for all table creation operations. Covers required TBLPROPERTIES by layer (Bronze, Silver DLT, Gold), mandatory CLUSTER BY AUTO configuration, Change Data Feed (CDF) enablement, auto-optimize settings, table and column comment patterns (LLM-friendly for Bronze/Silver, dual-purpose for Gold), domain values, data classification tags, and validation checklists. Use when creating Delta tables, configuring table properties, enabling CDF, setting up auto-optimize, or ensuring governance metadata consistency. Critical for preventing missing properties, incorrect clustering configurations, and governance compliance issues.
-author: databricks-sa
-version: "1.0"
-domain: [infrastructure]
+metadata:
+  author: prashanth subrahmanyam
+  version: "1.0"
+  domain: infrastructure
+  role: shared
+  used_by_stages: [1, 2, 3, 4]
+  last_verified: "2026-02-07"
+  volatility: medium
 ---
 
 # Databricks Table Properties Standards

@@ -1,47 +1,134 @@
 ---
 name: skill-navigator
-description: Intelligent skill navigation system with tiered loading for context-efficient agent operation. Routes tasks to the correct domain skill based on keyword detection. Each skill uses progressive disclosure with references/, scripts/, and assets/ directories. Use this skill as the entry point for any Databricks-related task to determine which specialized skills to load and how to navigate within them.
+description: Intelligent skill navigation system with tiered loading and orchestrator-first routing for context-efficient agent operation. Routes tasks to the correct domain skill based on keyword detection with orchestrator priority. Each skill uses progressive disclosure with references/, scripts/, and assets/ directories. Use this skill as the entry point for any Databricks-related task to determine which specialized skills to load.
 metadata:
-  author: databricks-sa
-  version: "2.0"
+  author: prashanth subrahmanyam
+  version: "3.0"
   domain: meta
+  role: navigator
+  last_verified: "2026-02-07"
+  volatility: low
 ---
 
 # Skill Navigator: Context-Aware Tiered Loading System
 
 ## Purpose
 
-This navigation skill implements **tiered context loading** to keep total context under Claude Opus's 200K token limit. After restructuring, ALL SKILL.md files are lightweight (< 2K tokens each). The heavy content lives in `references/` files loaded on demand.
+This navigation skill implements **tiered context loading** with **orchestrator-first routing** to keep total context under Claude Opus's 200K token limit. After restructuring, ALL SKILL.md files are lightweight (< 2K tokens each). The heavy content lives in `references/` files loaded on demand.
 
 **For detailed domain index summaries, see:** [references/domain-indexes.md](references/domain-indexes.md)
 
 ---
 
+## Pipeline Progression Overview (Design-First)
+
+This framework uses a **Design-First** pipeline: design the target Gold model from the customer's schema CSV, then build the data layers (Bronze → Silver) to feed it, then implement.
+
+**Entry point:** Customer provides a source schema CSV in `context/`. Start with Gold Design.
+
+| Stage | Name | Orchestrator Skill | Key Deliverables |
+|-------|------|-------------------|-----------------|
+| 1 | Gold Design | `gold/00-gold-layer-design` | Read schema CSV → ERDs, YAML schemas, documentation |
+| 2 | Bronze | `bronze/00-bronze-layer-setup` | Bronze Delta tables matching source schema + Faker data |
+| 3 | Silver | `silver/00-silver-layer-setup` | DLT pipelines with DQ rules |
+| 4 | Gold Implementation | `gold/01-gold-layer-setup` | Tables, merge scripts, FK constraints |
+| 5 | Planning | `planning/00-project-planning` | Plan semantic, observability, ML, GenAI phases |
+| 6 | Semantic Layer | `semantic-layer/00-semantic-layer-setup` | Metric Views, TVFs, Genie Spaces |
+| 7 | Observability | `monitoring/00-observability-setup` | Monitors, dashboards, alerts |
+| 8 | ML | `ml/00-ml-pipeline-setup` | ML experiments, models, inference |
+| 9 | GenAI Agents | `genai-agents/00-genai-agents-setup` | Agents, evaluation, deployment |
+
+```
+context/*.csv → Gold Design (1) → Bronze (2) → Silver (3) → Gold Impl (4) → Planning (5) → Semantic (6) → Observability (7) → ML (8) → GenAI (9)
+```
+
+---
+
+## Plan-as-Contract Pattern
+
+The Planning orchestrator (stage 5) generates **YAML manifest files** that downstream orchestrators (stages 6-9) consume as implementation contracts. This follows the "Extract, Don't Generate" principle for the planning-to-implementation handoff.
+
+```
+Gold YAML ─► Planning (stage 5) ─► Manifests ─► Downstream Orchestrators (stages 6-9)
+                   │                    │
+                emits:              consumes:
+                4 manifests         1 manifest each
+```
+
+| Manifest | Emitted By | Consumed By |
+|---|---|---|
+| `plans/manifests/semantic-layer-manifest.yaml` | `planning/00-*` | `semantic-layer/00-*` (stage 6) |
+| `plans/manifests/observability-manifest.yaml` | `planning/00-*` | `monitoring/00-*` (stage 7) |
+| `plans/manifests/ml-manifest.yaml` | `planning/00-*` | `ml/00-*` (stage 8) |
+| `plans/manifests/genai-agents-manifest.yaml` | `planning/00-*` | `genai-agents/00-*` (stage 9) |
+
+Each downstream orchestrator has a **Phase 0: Read Plan** step that reads its manifest. If the manifest doesn't exist (e.g., user skipped Planning), the orchestrator falls back to **self-discovery** from Gold tables.
+
+**Key metadata fields:** `emits` (on Planning), `consumes` + `consumes_fallback` (on downstream orchestrators).
+
+---
+
+## Input Convention: `context/` Directory
+
+The `context/` directory is the **standard location** for customer-provided input metadata that drives the entire pipeline:
+
+```
+context/
+├── {ProjectName}_Schema.csv     # MANDATORY: Customer source schema (THE starting input)
+├── business_requirements.md     # Optional: Business context, use cases, stakeholders
+└── prompts/                     # Legacy prompt templates (reference only)
+```
+
+**The schema CSV** (e.g., `context/Wanderbricks_Schema.csv`) contains table and column metadata exported from the customer's source system. Expected columns: `table_catalog`, `table_schema`, `table_name`, `column_name`, `ordinal_position`, `full_data_type`, `data_type`, `is_nullable`, `comment`.
+
+**Who reads it:**
+- `gold/00-gold-layer-design` (Phase 0: Schema Intake) — parses into table inventory for dimensional modeling
+- `bronze/00-bronze-layer-setup` (Approach A) — creates Bronze DDLs matching source schema
+
+---
+
 ## CRITICAL: Skill Structure (Post-Restructuring)
 
-Every skill now follows **progressive disclosure**:
+Every skill now follows **progressive disclosure** and **numbered ordering**:
 
 ```
-skill-name/
-├── SKILL.md            # ~1-2K tokens — overview, critical rules, quick reference
-├── references/         # Loaded ON DEMAND — detailed patterns, API docs, checklists
-│   ├── patterns.md
-│   └── guide.md
-├── scripts/            # EXECUTED, not read — validation utilities, setup tools
-│   └── validate.py
-└── assets/
-    └── templates/      # Templates — YAML, SQL, JSON starters
-        └── template.yaml
+domain-folder/
+├── 00-orchestrator-skill/       # Orchestrator (manages end-to-end workflow)
+│   ├── SKILL.md                 # Overview, critical rules, mandatory deps
+│   ├── references/              # Detailed patterns (loaded on demand)
+│   ├── scripts/                 # Validation utilities
+│   └── assets/templates/        # YAML, SQL, JSON starters
+├── 01-worker-skill/             # Worker (specific patterns)
+│   ├── SKILL.md
+│   └── references/
+├── 02-worker-skill/             # Worker (more patterns)
+│   └── SKILL.md
+└── ...
 ```
+
+### Numbering Convention
+- `00-` = Orchestrator (start here for end-to-end workflows)
+- `01-`, `02-`, ... = Workers (specific patterns, loaded by orchestrator or standalone)
 
 ### How to Navigate Within a Skill
-
 1. **Read SKILL.md first** (~1-2K tokens) — Contains overview, critical rules, and links
-2. **Read specific references/ files** only when you need detailed patterns for the task
-3. **Execute scripts/** as black-box utilities — don't read source unless necessary
-4. **Copy assets/templates/** as starting points for new files
+2. **Read specific references/ files** only when you need detailed patterns
+3. **Execute scripts/** as black-box utilities
+4. **Copy assets/templates/** as starting points
 
-**Key insight:** You can now safely load 5-10 SKILL.md files simultaneously. Context pressure comes from loading multiple `references/` files, not from SKILL.md files themselves.
+---
+
+## Routing Algorithm
+
+```
+1. User request received
+2. Detect domain keywords (see table below)
+3. IF keyword matches an ORCHESTRATOR skill → Route to orchestrator
+   - Orchestrator will call worker skills via MANDATORY Read pattern
+4. IF keyword matches a WORKER skill AND no orchestrator context → Route to worker directly
+   - Worker skills have standalone: true and work independently
+5. IF keyword matches a WORKER skill AND orchestrator is active → Let orchestrator handle it
+```
 
 ---
 
@@ -60,74 +147,70 @@ skill-name/
 
 ---
 
-## Tier 1: Core Skills (Always Loaded)
+## Task Detection & Skill Routing Table
 
-**Budget: ~4K tokens** — Essential for every interaction
+### Bootstrap / New Project Route (start here)
 
-| Skill | Location | ~Tokens | Purpose |
-|---|---|---|---|
-| `skill-navigator` | `.cursor/skills/skill-navigator/SKILL.md` | ~1.5K | This navigation system |
-| `databricks-expert-agent` | `.cursor/skills/common/databricks-expert-agent/SKILL.md` | ~1.2K | Core agent behavior |
-| `cursor-rules` | `.cursor/skills/admin/cursor-rules/SKILL.md` | ~0.3K | Rules management |
-| `documentation-organization` | `.cursor/skills/admin/documentation-organization/SKILL.md` | ~0.9K | Documentation standards |
+| Task Keywords | Route To |
+|---|---|
+| "new project", "schema CSV", "customer schema", "bootstrap", "start from scratch", "onboarding", "build data platform" | `gold/00-gold-layer-design` (Stage 1 — reads schema CSV from `context/`) |
 
----
+### Orchestrator Routes (prefer these for end-to-end workflows)
 
-## Tier 2: Domain Detection & Index Loading
-
-When a domain is detected, load the domain index summary from [references/domain-indexes.md](references/domain-indexes.md).
-
-### Domain Detection Keywords
-
-| Domain | Keywords | Index to Load |
+| Task Keywords | Domain | Route To (Orchestrator) |
 |---|---|---|
-| **Semantic Layer** | metric view, TVF, Genie, semantic | Semantic Layer Index |
-| **Gold Layer** | Gold, merge, fact, dimension, SCD2 | Gold Layer Index |
-| **Infrastructure** | deploy, Asset Bundle, job, workflow, imports | Infrastructure Index |
-| **Monitoring** | monitoring, dashboard, alert | Monitoring Index |
-| **Silver Layer** | DLT, Silver, expectations, quality, create Silver, Bronze to Silver, Silver pipeline | Silver Layer Index |
-| **Bronze Layer** | Bronze, Faker, synthetic, ingestion | Bronze Layer Index |
-| **ML** | MLflow, model, training, inference | ML Index |
+| "design Gold", "dimensional model", "Gold from scratch", "schema CSV" | Gold | `gold/00-gold-layer-design` (stage 1) |
+| "Bronze setup", "Bronze tables", "test data", "demo data" | Bronze | `bronze/00-bronze-layer-setup` (stage 2) |
+| "Silver layer", "create Silver", "Bronze to Silver", "Silver pipeline" | Silver | `silver/00-silver-layer-setup` (stage 3) |
+| "implement Gold", "Gold tables", "Gold merge scripts" | Gold | `gold/01-gold-layer-setup` (stage 4) |
+| "project plan", "architecture planning" | Planning | `planning/00-project-planning` (stage 5) |
+| "semantic layer", "build Genie", "Metric Views and TVFs" | Semantic | `semantic-layer/00-semantic-layer-setup` (stage 6) |
+| "observability", "monitoring setup", "dashboards and alerts" | Monitoring | `monitoring/00-observability-setup` (stage 7) |
+| "MLflow", "ML pipeline", "model training" | ML | `ml/00-ml-pipeline-setup` (stage 8) |
+| "GenAI agent", "build agent", "ResponsesAgent" | GenAI | `genai-agents/00-genai-agents-setup` (stage 9) |
 
----
+### Worker Routes (for standalone/specific tasks)
 
-## Tier 3: Task-Specific Skill Loading
-
-Load the specific SKILL.md for the task. All are lightweight (~1-2K tokens each).
-
-| Skill | ~Tokens | Has refs/ | Has scripts/ | Has assets/ |
-|---|---|---|---|---|
-| `databricks-asset-bundles` | ~1.2K | 3 files | 1 file | 1 template |
-| `lakehouse-monitoring-comprehensive` | ~1.7K | 3 files | 1 file | 1 template |
-| `dqx-patterns` | ~1.3K | 3 files | 1 file | 1 template |
-| `mlflow-mlmodels-patterns` | ~1.1K | 6 files | 1 file | 1 template |
-| `databricks-aibi-dashboards` | ~1.4K | 3 files | 3 files | 1 template |
-| `metric-views-patterns` | ~1.4K | 3 files | 1 file | 1 template |
-| `silver-layer-creation` | ~1.8K | 3 files | — | 1 template |
-| `dlt-expectations-patterns` | ~1.7K | 2 files | — | 1 template |
-| `genie-space-patterns` | ~1.5K | 4 files | — | 1 template |
-| `genie-space-export-import-api` | ~1.1K | 3 files | 2 files | — |
-| `databricks-table-valued-functions` | ~1.3K | 2 files | — | 1 template |
-| `gold-layer-documentation` | ~1.1K | 3 files | — | 1 template |
-| `unity-catalog-constraints` | ~0.8K | 2 files | 1 file | 1 template |
-| `sql-alerting-patterns` | ~1.8K | 1 file | — | 1 template |
-| `project-plan-methodology` | ~1.6K | 2 files | — | 1 template |
-| `mermaid-erd-patterns` | ~1.2K | 3 files | — | 1 template |
-| `adhoc-exploration-notebooks` | ~0.9K | 2 files | — | 1 template |
-| `fact-table-grain-validation` | ~1.2K | 1 file | 1 file | — |
-| `gold-layer-schema-validation` | ~1.1K | 2 files | 1 file | — |
-| `gold-delta-merge-deduplication` | ~1.4K | 1 file | 1 file | — |
-| `yaml-driven-gold-setup` | ~1.8K | 1 file | — | 1 template |
-| `gold-layer-design` | ~1.4K | 6 files | 1 file | 3 templates |
-| `gold-layer-implementation` | ~1.5K | 6 files | 3 files | 3 templates |
-| `gold-layer-merge-patterns` | ~1.3K | — | — | 3 templates |
-| `bronze-layer-setup` | ~1.5K | 3 files | 2 files | 2 templates |
-| `faker-data-generation` | ~1.0K | 1 file | 1 file | 1 template |
-| `databricks-python-imports` | ~1.9K | — | — | — |
-| `databricks-table-properties` | ~1.0K | — | — | 1 template |
-| `schema-management-patterns` | ~0.7K | — | — | 1 template |
-| `self-improvement` | ~1.7K | 1 file | 1 file | 1 template |
-| `cursor-rule-to-skill` | ~1.5K | 2 files | 1 file | 1 template |
+| Task Keywords | Domain | Route To (Worker) |
+|---|---|---|
+| "Faker", "synthetic", "corruption" | Bronze | `bronze/01-faker-data-generation` |
+| "DLT", "expectations" | Silver | `silver/01-dlt-expectations-patterns` |
+| "DQX", "validation" | Silver | `silver/02-dqx-patterns` |
+| "Gold merge", "MERGE" | Gold | `gold/04-gold-layer-merge-patterns` |
+| "duplicate key" | Gold | `gold/05-gold-delta-merge-deduplication` |
+| "Gold documentation" | Gold | `gold/03-gold-layer-documentation` |
+| "ERD", "diagram" | Gold | `gold/08-mermaid-erd-patterns` |
+| "schema validation" | Gold | `gold/07-gold-layer-schema-validation` |
+| "fact grain" | Gold | `gold/06-fact-table-grain-validation` |
+| "YAML setup" | Gold | `gold/02-yaml-driven-gold-setup` |
+| "metric view", "semantic" | Semantic | `semantic-layer/01-metric-views-patterns` |
+| "TVF", "function" | Semantic | `semantic-layer/02-databricks-table-valued-functions` |
+| "Genie Space", "Genie setup" | Semantic | `semantic-layer/03-genie-space-patterns` |
+| "Genie API", "export/import" | Semantic | `semantic-layer/04-genie-space-export-import-api` |
+| "optimize Genie", "Genie accuracy", "benchmark" | Semantic | `semantic-layer/05-genie-space-optimization` |
+| "monitoring", "Lakehouse" | Monitor | `monitoring/01-lakehouse-monitoring-comprehensive` |
+| "dashboard", "AI/BI" | Monitor | `monitoring/02-databricks-aibi-dashboards` |
+| "alert", "SQL alert" | Monitor | `monitoring/03-sql-alerting-patterns` |
+| "anomaly detection", "freshness", "completeness", "stale tables", "unhealthy tables" | Monitor | `monitoring/04-anomaly-detection` |
+| "deploy", "Asset Bundle" | Infra | `common/databricks-asset-bundles` |
+| "schema", "CREATE SCHEMA" | Infra | `common/schema-management-patterns` |
+| "table properties" | Infra | `common/databricks-table-properties` |
+| "constraints", "PK/FK" | Infra | `common/unity-catalog-constraints` |
+| "Python imports" | Infra | `common/databricks-python-imports` |
+| "job failed", "troubleshoot", "self-heal", "redeploy", "diagnose", "deploy failed", "pipeline failed" | Ops | `common/databricks-autonomous-operations` |
+| "naming", "snake_case", "COMMENT", "tag", "PII", "cost_center", "dim_", "fact_", "governed tag", "budget policy" | Standards | `common/naming-tagging-standards` |
+| "ResponsesAgent", "predict_stream", "AI Playground" | GenAI | `genai-agents/01-responses-agent-patterns` |
+| "evaluation", "LLM judge", "scorer" | GenAI | `genai-agents/02-mlflow-genai-evaluation` |
+| "Lakebase memory", "CheckpointSaver", "stateful agent" | GenAI | `genai-agents/03-lakebase-memory-patterns` |
+| "prompt registry", "prompt versioning" | GenAI | `genai-agents/04-prompt-registry-patterns` |
+| "multi-agent", "Genie orchestration", "intent classification" | GenAI | `genai-agents/05-multi-agent-genie-orchestration` |
+| "deploy agent", "deployment job" | GenAI | `genai-agents/06-deployment-automation` |
+| "production monitoring", "registered scorers" | GenAI | `genai-agents/07-production-monitoring` |
+| "MLflow GenAI", "MLflow tracing", "GenAI foundation" | GenAI | `genai-agents/08-mlflow-genai-foundation` |
+| "exploration notebook" | Explore | `exploration/00-adhoc-exploration-notebooks` |
+| "create skill", "new skill", "SKILL.md" | Admin | `admin/create-agent-skill` |
+| "improve skills" | Admin | `admin/self-improvement` |
+| "audit skills", "check freshness", "stale skills", "verify skills", "skill audit", "update check" | Admin | `admin/skill-freshness-audit` |
 
 ---
 
@@ -147,7 +230,8 @@ Example: "metric view" → Semantic Layer index section
 ### Step 3: Load Skill Overview (~7-8K tokens total)
 ```
 Identify task → Read the specific SKILL.md (~1-2K tokens)
-Example: "fix duplicate key" → Read gold-delta-merge-deduplication/SKILL.md
+If end-to-end → Load orchestrator (00-*) first
+If specific task → Load worker directly
 ```
 
 ### Step 4: Deep Dive into References (as needed)
@@ -161,43 +245,6 @@ Example: Need dedup SQL → Read references/dedup-patterns.md
 Need validation → Run scripts/validate.py
 Need starter file → Copy assets/templates/template.yaml
 ```
-
----
-
-## Task Detection & Skill Routing Table
-
-| Task Keywords | Domain | Skill to Load |
-|---|---|---|
-| "metric view", "semantic" | Semantic | metric-views-patterns |
-| "TVF", "function" | Semantic | databricks-table-valued-functions |
-| "Genie Space", "Genie setup" | Semantic | genie-space-patterns |
-| "Genie API", "export/import" | Semantic | genie-space-export-import-api |
-| "design Gold", "dimensional model", "Gold from scratch" | Gold | gold-layer-design |
-| "implement Gold", "Gold tables", "Gold merge scripts" | Gold | gold-layer-implementation |
-| "Gold merge", "MERGE" | Gold | gold-layer-merge-patterns |
-| "duplicate key" | Gold | gold-delta-merge-deduplication |
-| "Gold documentation" | Gold | gold-layer-documentation |
-| "ERD", "diagram" | Gold | mermaid-erd-patterns |
-| "schema validation" | Gold | gold-layer-schema-validation |
-| "fact grain" | Gold | fact-table-grain-validation |
-| "YAML setup" | Gold | yaml-driven-gold-setup |
-| "deploy", "Asset Bundle" | Infra | databricks-asset-bundles |
-| "schema", "CREATE SCHEMA" | Infra | schema-management-patterns |
-| "table properties" | Infra | databricks-table-properties |
-| "constraints", "PK/FK" | Infra | unity-catalog-constraints |
-| "Python imports" | Infra | databricks-python-imports |
-| "monitoring", "Lakehouse" | Monitor | lakehouse-monitoring-comprehensive |
-| "dashboard", "AI/BI" | Monitor | databricks-aibi-dashboards |
-| "alert", "SQL alert" | Monitor | sql-alerting-patterns |
-| "Silver layer", "create Silver", "Bronze to Silver", "Silver pipeline" | Silver | silver-layer-creation |
-| "DLT", "expectations" | Silver | dlt-expectations-patterns |
-| "DQX", "validation" | Silver | dqx-patterns |
-| "Bronze setup", "Bronze tables", "test data", "demo data" | Bronze | bronze-layer-setup |
-| "Faker", "synthetic", "corruption" | Bronze | faker-data-generation |
-| "MLflow", "model" | ML | mlflow-mlmodels-patterns |
-| "exploration notebook" | Explore | adhoc-exploration-notebooks |
-| "project plan" | Plan | project-plan-methodology |
-| "improve skills" | Admin | self-improvement |
 
 ---
 
@@ -223,130 +270,80 @@ Need starter file → Copy assets/templates/template.yaml
 
 ```
 .cursor/skills/
-├── skill-navigator/SKILL.md                              # This navigator
+├── skill-navigator/SKILL.md                                     # This navigator
 │
 ├── admin/
-│   ├── cursor-rules/SKILL.md                             # Rule/skill creation standards
-│   └── documentation-organization/SKILL.md               # Documentation structure
-│       └── scripts/organize_docs.sh
+│   ├── create-agent-skill/SKILL.md                              # Agent Skill creation guide [utility]
+│   ├── documentation-organization/SKILL.md                      # Documentation structure [utility]
+│   ├── self-improvement/SKILL.md                                # Agent learning [utility]
+│   └── skill-freshness-audit/SKILL.md                           # Skill currency verification [utility]
 │
 ├── bronze/
-│   ├── bronze-layer-setup/SKILL.md                       # End-to-end Bronze setup
-│   │   ├── references/{requirements-template,data-source-approaches,validation-queries}.md
-│   │   ├── scripts/{setup_tables,copy_from_source}.py
-│   │   └── assets/templates/{bronze-setup-job,bronze-data-generator-job}.yaml
-│   └── faker-data-generation/SKILL.md                    # Synthetic data with Faker
-│       ├── references/faker-providers.md
-│       ├── scripts/generate_data.py
-│       └── assets/templates/faker-config.yaml
+│   ├── 00-bronze-layer-setup/SKILL.md                           # ORCHESTRATOR: Bronze setup [stage 2]
+│   └── 01-faker-data-generation/SKILL.md                        # Worker: Synthetic data [stage 2]
 │
-├── common/
-│   ├── databricks-expert-agent/SKILL.md                  # Core SA agent behavior
-│   │   └── references/extraction-patterns.md
-│   ├── databricks-asset-bundles/SKILL.md                 # DAB YAML configuration
-│   │   ├── references/{configuration-guide,job-patterns,common-errors}.md
-│   │   ├── scripts/validate_bundle.py
-│   │   └── assets/templates/bundle-template.yaml
-│   ├── schema-management-patterns/SKILL.md               # Schema management
-│   │   └── assets/templates/create-schema.sql
-│   ├── databricks-table-properties/SKILL.md              # Table properties
-│   │   └── assets/templates/table-properties.sql
-│   ├── unity-catalog-constraints/SKILL.md                # PK/FK constraints
-│   │   ├── references/{constraint-patterns,validation-guide}.md
-│   │   ├── scripts/apply_constraints.py
-│   │   └── assets/templates/constraints-template.sql
-│   └── databricks-python-imports/SKILL.md                # Python imports
-│
-├── semantic-layer/
-│   ├── metric-views-patterns/SKILL.md                    # Metric view YAML + SQL
-│   │   ├── references/{yaml-reference,validation-checklist,advanced-patterns}.md
-│   │   ├── scripts/validate_metric_view.py
-│   │   └── assets/templates/metric-view-template.yaml
-│   ├── databricks-table-valued-functions/SKILL.md        # TVFs for Genie
-│   │   ├── references/{tvf-patterns,genie-integration}.md
-│   │   └── assets/templates/tvf-template.sql
-│   ├── genie-space-patterns/SKILL.md                     # Genie Space setup
-│   │   ├── references/{configuration-guide,agent-instructions,troubleshooting}.md
-│   │   └── assets/templates/genie-space-config.yaml
-│   └── genie-space-export-import-api/SKILL.md            # Genie API automation
-│       ├── references/{api-reference,workflow-patterns,troubleshooting}.md
-│       └── scripts/{export,import}_genie_space.py
-│
-├── gold/
-│   ├── gold-layer-design/SKILL.md                        # ORCHESTRATOR: Gold design
-│   │   ├── references/{dimensional-modeling-guide,erd-organization-strategy,...}.md
-│   │   ├── scripts/generate_lineage_csv.py
-│   │   └── assets/templates/{business-onboarding,column-lineage,source-table-mapping}.*
-│   ├── gold-layer-implementation/SKILL.md                # ORCHESTRATOR: Gold implementation
-│   │   ├── references/{setup-script-patterns,merge-script-patterns,fk-constraint-patterns,...}.md
-│   │   ├── scripts/{setup_tables,merge_gold_tables,add_fk_constraints}_template.py
-│   │   └── assets/templates/{gold-setup-job,gold-merge-job}-template.yml
-│   ├── gold-layer-merge-patterns/SKILL.md                # MERGE operations
-│   │   └── assets/templates/{scd-type1,scd-type2,fact-table}-merge.py
-│   ├── gold-delta-merge-deduplication/SKILL.md           # Dedup before MERGE
-│   │   └── references/dedup-patterns.md
-│   ├── gold-layer-documentation/SKILL.md                 # Gold doc standards
-│   │   ├── references/{documentation-templates,llm-optimization}.md
-│   │   └── assets/templates/gold-table-docs.yaml
-│   ├── mermaid-erd-patterns/SKILL.md                     # ERD diagrams
-│   │   ├── references/erd-syntax-reference.md
-│   │   └── assets/templates/erd-template.md
-│   ├── gold-layer-schema-validation/SKILL.md             # Schema validation
-│   │   ├── references/validation-patterns.md
-│   │   └── scripts/validate_schema.py
-│   ├── fact-table-grain-validation/SKILL.md              # Grain validation
-│   │   ├── references/grain-patterns.md
-│   │   └── scripts/validate_grain.py
-│   └── yaml-driven-gold-setup/SKILL.md                   # YAML-driven tables
-│       └── assets/templates/gold-table-template.yaml
+├── common/                                                       # Shared skills (no numbering)
+│   ├── databricks-expert-agent/SKILL.md                         # Core SA agent [shared, stages 1-9]
+│   ├── databricks-asset-bundles/SKILL.md                        # DAB configuration [shared, stages 1-9]
+│   ├── databricks-autonomous-operations/SKILL.md                # Autonomous SRE ops [shared, stages 1-9]
+│   ├── naming-tagging-standards/SKILL.md                        # Naming, comments & tags [shared, stages 1-9]
+│   ├── databricks-python-imports/SKILL.md                       # Python imports [shared, stages 1-9]
+│   ├── databricks-table-properties/SKILL.md                     # Table properties [shared, stages 1-4]
+│   ├── schema-management-patterns/SKILL.md                      # Schema management [shared, stages 1-4]
+│   └── unity-catalog-constraints/SKILL.md                       # PK/FK constraints [shared, stages 3-4]
 │
 ├── silver/
-│   ├── silver-layer-creation/SKILL.md                    # Silver layer orchestrator
-│   │   ├── references/{silver-table-patterns,monitoring-patterns,pipeline-configuration}.md
-│   │   └── assets/templates/requirements-template.md
-│   ├── dlt-expectations-patterns/SKILL.md                # DLT expectations
-│   │   ├── references/{expectation-patterns,quarantine-patterns}.md
-│   │   └── assets/templates/expectations-config.yaml
-│   └── dqx-patterns/SKILL.md                             # DQX framework
-│       ├── references/{dqx-configuration,rule-patterns,integration-guide}.md
-│       ├── scripts/setup_dqx.py
-│       └── assets/templates/dqx-rules.yaml
+│   ├── 00-silver-layer-setup/SKILL.md                         # ORCHESTRATOR: Silver DLT [stage 3]
+│   ├── 01-dlt-expectations-patterns/SKILL.md                     # Worker: DLT expectations [stage 3]
+│   └── 02-dqx-patterns/SKILL.md                                # Worker: DQX framework [stage 3]
 │
-├── ml/
-│   └── mlflow-mlmodels-patterns/SKILL.md                 # MLflow patterns
-│       ├── references/{experiment-patterns,model-registry,dab-integration,...}.md
-│       ├── scripts/setup_experiment.py
-│       └── assets/templates/ml-job-config.yaml
-│
-├── monitoring/
-│   ├── lakehouse-monitoring-comprehensive/SKILL.md       # Monitoring guide
-│   │   ├── references/{monitor-configuration,custom-metrics,deployment-guide}.md
-│   │   └── scripts/create_monitor.py
-│   ├── databricks-aibi-dashboards/SKILL.md               # AI/BI dashboards
-│   │   ├── references/{dashboard-json-reference,widget-patterns,deployment-guide}.md
-│   │   ├── scripts/{deploy_dashboard,validate_*}.py
-│   │   └── assets/templates/dashboard-template.json
-│   └── sql-alerting-patterns/SKILL.md                    # SQL alerting
-│       ├── references/alert-patterns.md
-│       └── assets/templates/alert-config.yaml
+├── gold/
+│   ├── 00-gold-layer-design/SKILL.md                            # ORCHESTRATOR: Gold design [stage 1 — entry point]
+│   ├── 01-gold-layer-setup/SKILL.md                      # ORCHESTRATOR: Gold implementation [stage 4]
+│   ├── 02-yaml-driven-gold-setup/SKILL.md                       # Worker: YAML-driven tables [stage 4]
+│   ├── 03-gold-layer-documentation/SKILL.md                      # Worker: Documentation [stage 1]
+│   ├── 04-gold-layer-merge-patterns/SKILL.md                     # Worker: MERGE operations [stage 4]
+│   ├── 05-gold-delta-merge-deduplication/SKILL.md               # Worker: Deduplication [stage 4]
+│   ├── 06-fact-table-grain-validation/SKILL.md                  # Worker: Grain validation [stage 1]
+│   ├── 07-gold-layer-schema-validation/SKILL.md                 # Worker: Schema validation [stage 4]
+│   └── 08-mermaid-erd-patterns/SKILL.md                         # Worker: ERD diagrams [stage 1]
 │
 ├── planning/
-│   └── project-plan-methodology/SKILL.md                 # Project planning
-│       ├── references/{phase-details,estimation-guide}.md
-│       └── assets/templates/project-plan-template.md
+│   └── 00-project-planning/SKILL.md                     # ORCHESTRATOR: Planning [stage 5]
+│
+├── semantic-layer/
+│   ├── 00-semantic-layer-setup/SKILL.md                         # ORCHESTRATOR: Semantic layer [stage 6]
+│   ├── 01-metric-views-patterns/SKILL.md                        # Worker: Metric views [stage 6]
+│   ├── 02-databricks-table-valued-functions/SKILL.md            # Worker: TVFs for Genie [stage 6]
+│   ├── 03-genie-space-patterns/SKILL.md                         # Worker: Genie Space setup [stage 6]
+│   ├── 04-genie-space-export-import-api/SKILL.md                # Worker: Genie API [stage 6]
+│   └── 05-genie-space-optimization/SKILL.md                     # Worker: Genie optimization [stage 6]
+│
+├── monitoring/
+│   ├── 00-observability-setup/SKILL.md                         # ORCHESTRATOR: Observability [stage 7]
+│   ├── 01-lakehouse-monitoring-comprehensive/SKILL.md            # Worker: Monitoring [stage 7]
+│   ├── 02-databricks-aibi-dashboards/SKILL.md                   # Worker: Dashboards [stage 7]
+│   ├── 03-sql-alerting-patterns/SKILL.md                        # Worker: Alerts [stage 7]
+│   └── 04-anomaly-detection/SKILL.md                            # Worker: Freshness/completeness [stage 7] (auto-triggered by Silver/Gold setup)
+│
+├── ml/
+│   └── 00-ml-pipeline-setup/SKILL.md                     # ORCHESTRATOR: ML patterns [stage 8]
+│
+├── genai-agents/
+│   ├── 00-genai-agents-setup/SKILL.md                    # ORCHESTRATOR: GenAI agents [stage 9]
+│   ├── 01-responses-agent-patterns/SKILL.md                     # Worker: ResponsesAgent [stage 9]
+│   ├── 02-mlflow-genai-evaluation/SKILL.md                      # Worker: LLM evaluation [stage 9]
+│   ├── 03-lakebase-memory-patterns/SKILL.md                     # Worker: Agent memory [stage 9]
+│   ├── 04-prompt-registry-patterns/SKILL.md                     # Worker: Prompt registry [stage 9]
+│   ├── 05-multi-agent-genie-orchestration/SKILL.md              # Worker: Multi-agent [stage 9]
+│   ├── 06-deployment-automation/SKILL.md                        # Worker: Agent CI/CD [stage 9]
+│   ├── 07-production-monitoring/SKILL.md                        # Worker: Prod monitoring [stage 9]
+│   └── 08-mlflow-genai-foundation/SKILL.md                      # Worker: MLflow GenAI basics [stage 9]
 │
 ├── exploration/
-│   └── adhoc-exploration-notebooks/SKILL.md              # Exploration notebooks
-│       ├── references/notebook-patterns.md
-│       └── assets/templates/exploration-notebook.py
+│   └── 00-adhoc-exploration-notebooks/SKILL.md                  # Utility: Exploration [standalone]
 │
-├── self-improvement/SKILL.md                             # Agent learning
-│   ├── references/LEARNING-FORMAT.md
-│   └── scripts/create-skill.sh
-│
-└── cursor-rule-to-skill/SKILL.md                         # Rule conversion
-    ├── references/{CURSOR-RULE-FORMAT,PROGRESSIVE-DISCLOSURE}.md
-    └── scripts/convert-rule-to-skill.py
+└── cursor-rule-to-skill/SKILL.md                                # Utility: Rule conversion [standalone]
 ```
 
 ---
@@ -356,7 +353,8 @@ Need starter file → Copy assets/templates/template.yaml
 When adding new skills:
 1. Calculate token size (`wc -l SKILL.md` — roughly lines/2.5 = tokens in K)
 2. Ensure SKILL.md is under 500 lines; use references/ for detailed content
-3. Assign to appropriate domain
-4. Update [references/domain-indexes.md](references/domain-indexes.md) with the new skill
-5. Update the Task Detection & Routing Table above
-6. Update the Complete Skill Directory Map above
+3. Assign to appropriate domain with correct numbered prefix
+4. Add `role`, `pipeline_stage`, and relationship metadata to frontmatter
+5. Update [references/domain-indexes.md](references/domain-indexes.md) with the new skill
+6. Update the Task Detection & Routing Table above
+7. Update the Complete Skill Directory Map above

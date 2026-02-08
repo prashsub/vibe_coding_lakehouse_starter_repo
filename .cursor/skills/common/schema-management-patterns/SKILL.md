@@ -1,9 +1,14 @@
 ---
 name: schema-management-patterns
 description: Provides schema management patterns for Databricks Asset Bundles with Unity Catalog. Enables programmatic schema creation and configuration for medallion architecture layers. Covers CREATE SCHEMA IF NOT EXISTS patterns, DLT pipeline schema configuration, enabling Predictive Optimization at schema level using ALTER SCHEMA ENABLE PREDICTIVE OPTIMIZATION (not TBLPROPERTIES), schema variable usage, and common pitfalls to avoid. Use when creating Unity Catalog schemas programmatically in setup scripts, configuring DLT pipelines, enabling Predictive Optimization, or managing schema-level properties. Note: Schemas are NOT defined as Bundle resources - they are created programmatically for flexibility and idempotency. Critical for preventing schema creation errors, ensuring proper DLT configuration, and enabling schema-level optimizations.
-author: databricks-sa
-version: "1.0"
-domain: [infrastructure]
+metadata:
+  author: prashanth subrahmanyam
+  version: "1.0"
+  domain: infrastructure
+  role: shared
+  used_by_stages: [1, 2, 3, 4]
+  last_verified: "2026-02-07"
+  volatility: medium
 ---
 
 # Schema Management Patterns for Databricks Asset Bundles

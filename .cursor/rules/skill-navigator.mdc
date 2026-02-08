@@ -1,0 +1,53 @@
+---
+title: Skill Navigator — Always-Loaded Routing Table
+alwaysApply: true
+version: 1.0
+description: >
+  Lightweight routing table loaded on every turn. Directs the agent to the correct
+  orchestrator skill based on task keywords. For full routing details, read the
+  complete skill: .cursor/skills/skill-navigator/SKILL.md
+---
+
+# Skill Navigator (Quick Reference)
+
+**MANDATORY:** Before starting any Databricks implementation task, consult this routing table. For ambiguous tasks, read the full skill navigator: `.cursor/skills/skill-navigator/SKILL.md`
+
+## Design-First Pipeline
+
+```
+context/*.csv → Gold Design (1) → Bronze (2) → Silver (3) → Gold Impl (4) → Planning (5) → Semantic (6) → Observability (7) → ML (8) → GenAI (9)
+```
+
+**New project?** Start at stage 1: place schema CSV in `context/`, then read `gold/00-gold-layer-design`.
+
+## Orchestrator Routing
+
+| Keywords | Stage | Read This Skill |
+|----------|-------|-----------------|
+| "new project", "schema CSV", "bootstrap", "build data platform" | 1 | `.cursor/skills/gold/00-gold-layer-design/SKILL.md` |
+| "design Gold", "dimensional model", "ERD", "YAML schema" | 1 | `.cursor/skills/gold/00-gold-layer-design/SKILL.md` |
+| "Bronze", "test data", "Faker", "demo data" | 2 | `.cursor/skills/bronze/00-bronze-layer-setup/SKILL.md` |
+| "Silver", "DLT", "expectations", "data quality" | 3 | `.cursor/skills/silver/00-silver-layer-setup/SKILL.md` |
+| "Gold tables", "merge scripts", "Gold setup" | 4 | `.cursor/skills/gold/01-gold-layer-setup/SKILL.md` |
+| "project plan", "architecture plan", "planning" | 5 | `.cursor/skills/planning/00-project-planning/SKILL.md` |
+| "metric view", "TVF", "Genie Space", "semantic layer" | 6 | `.cursor/skills/semantic-layer/00-semantic-layer-setup/SKILL.md` |
+| "monitoring", "dashboard", "alert", "observability" | 7 | `.cursor/skills/monitoring/00-observability-setup/SKILL.md` |
+| "MLflow", "ML model", "training", "inference" | 8 | `.cursor/skills/ml/00-ml-pipeline-setup/SKILL.md` |
+| "GenAI agent", "ResponsesAgent", "AI agent" | 9 | `.cursor/skills/genai-agents/00-genai-agents-setup/SKILL.md` |
+
+## Worker Routing (specific tasks)
+
+| Keywords | Read This Skill |
+|----------|-----------------|
+| "job failed", "troubleshoot", "deploy failed", "self-heal" | `.cursor/skills/common/databricks-autonomous-operations/SKILL.md` |
+| "naming", "COMMENT", "tag", "PII", "snake_case", "budget policy" | `.cursor/skills/common/naming-tagging-standards/SKILL.md` |
+| "Asset Bundle", "DAB", "deploy", "job YAML" | `.cursor/skills/common/databricks-asset-bundles/SKILL.md` |
+| "import", "sys.path", "restartPython", "notebook module" | `.cursor/skills/common/databricks-python-imports/SKILL.md` |
+| "TBLPROPERTIES", "CDF", "auto-optimize", "table properties" | `.cursor/skills/common/databricks-table-properties/SKILL.md` |
+| "CREATE SCHEMA", "schema setup", "predictive optimization" | `.cursor/skills/common/schema-management-patterns/SKILL.md` |
+| "PRIMARY KEY", "FOREIGN KEY", "constraint", "PK/FK" | `.cursor/skills/common/unity-catalog-constraints/SKILL.md` |
+| "audit skills", "check freshness", "stale skills", "verify skills" | `.cursor/skills/admin/skill-freshness-audit/SKILL.md` |
+
+## Key Rule
+
+**Read the orchestrator skill FIRST.** It will tell you which worker skills and common skills to read for each phase.

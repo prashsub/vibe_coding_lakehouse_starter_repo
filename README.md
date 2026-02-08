@@ -1,189 +1,180 @@
 # Vibe Coding Lakehouse Starter Repository
 
-A comprehensive **AI-assisted development framework** for building production-grade Databricks Lakehouse solutions. This repository provides cursor rules and reusable prompts that enable rapid development of complete Medallion Architecture implementations.
+A comprehensive **AI-assisted development framework** for building production-grade Databricks Lakehouse solutions. This repository provides Agent Skills that encode domain expertise directly into your AI coding assistant, enabling rapid development of complete Medallion Architecture implementations — from a raw schema CSV to production GenAI agents.
 
-> **"Vibe Coding"** - Leverage AI coding assistants to accelerate data platform development from weeks to hours.
+> **"Vibe Coding"** — Leverage AI coding assistants to accelerate data platform development from weeks to hours.
 
 ---
 
-## 🎯 What's Inside
+## What's Inside
 
 | Component | Description | Count |
 |-----------|-------------|-------|
-| **Cursor Rules** | Production-tested patterns for Databricks development | 27 rules (~13,100 lines) |
-| **Reusable Prompts** | Templates for AI-assisted code generation | 17 prompts |
-| **Context Files** | Schema definitions and example configurations | 2 files |
+| **Agent Skills** | Structured knowledge packages for AI-assisted Databricks development | 50+ skills across 12 domains |
+| **Cursor Rules** | Lightweight always-on routing rules that direct the agent to skills | 2 rules |
+| **Context Files** | Customer schema CSV (the starting input for the pipeline) | 1 file |
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
 - Databricks workspace with Unity Catalog enabled
-- [Cursor IDE](https://cursor.sh/) or compatible AI coding assistant
-- Databricks CLI installed
+- [Cursor IDE](https://cursor.sh/) with Agent mode enabled
+- Databricks CLI v0.200+ installed and configured
 - Git for version control
 
 ### Getting Started
 
 1. **Clone the repository**
-   ```bash
-   git clone https://github.com/prashsub/vibe_coding_lakehouse_starter_repo.git
-   cd vibe_coding_lakehouse_starter_repo
-   ```
 
-2. **Read the framework guides**
-   - [Cursor Rules README](.cursor/rules/README.md) - Complete framework overview
-   - [Prompts README](context/prompts/README.md) - How to use the prompts
+```bash
+git clone https://github.com/prashsub/vibe_coding_lakehouse_starter_repo.git
+cd vibe_coding_lakehouse_starter_repo
+```
 
-3. **Start building**
-   - Use prompts with your AI assistant for code generation
-   - Follow cursor rules for best practices enforcement
+2. **Place your schema CSV** in the `context/` directory
+
+3. **Open in Cursor IDE** and start with the first prompt:
+
+```
+I have a customer schema at @context/Wanderbricks_Schema.csv.
+Please design the Gold layer using @.cursor/skills/gold/00-gold-layer-design/SKILL.md
+```
+
+4. **Follow the [QUICKSTART guide](QUICKSTART.md)** for all 9 stages
 
 ---
 
-## 📂 Repository Structure
+## How It Works
+
+The framework uses a **skills-first architecture**: 2 lightweight routing rules point the AI assistant to 50+ Agent Skills organized by domain. Each skill contains production-tested patterns, reference documentation, executable scripts, and starter templates.
+
+### Design-First Pipeline (9 Stages)
+
+One prompt per stage. One new Cursor Agent conversation per stage.
+
+```
+context/*.csv
+  → Gold Design (1)      — dimensional model, ERDs, YAML schemas
+  → Bronze (2)           — source tables + test data
+  → Silver (3)           — DLT pipelines + data quality
+  → Gold Impl (4)        — tables, merges, constraints
+  → Planning (5)         — phase plans + manifest contracts
+  → Semantic (6)         — Metric Views, TVFs, Genie Spaces
+  → Observability (7)    — monitors, dashboards, alerts
+  → ML (8)               — experiments, training, inference
+  → GenAI Agents (9)     — agents, evaluation, deployment
+```
+
+### Key Principle: Design-First
+
+Design the target Gold dimensional model **first** (from the customer's schema CSV), then build the data layers (Bronze → Silver) to feed it. This is the opposite of the traditional bottom-up approach.
+
+---
+
+## Repository Structure
 
 ```
 .
-├── .cursor/rules/              # AI-enforced development patterns
-│   ├── common/                 # Foundation & infrastructure (9 rules)
-│   ├── bronze/                 # Raw data ingestion (1 rule)
-│   ├── silver/                 # Data quality & validation (2 rules)
-│   ├── gold/                   # Analytics-ready models (7 rules)
-│   ├── semantic-layer/         # Natural language & BI (4 rules)
-│   ├── monitoring/             # Observability & dashboards (3 rules)
-│   ├── exploration/            # Ad-hoc analysis (1 rule)
-│   ├── planning/               # Project methodology (1 rule)
-│   └── admin/                  # Meta rules (3 rules)
+├── .cursor/
+│   ├── rules/                          # 2 always-on routing rules
+│   │   ├── skill-navigator.mdc         #   Routes tasks to orchestrator skills
+│   │   └── common-skills-reference.mdc #   Indexes 8 shared common skills
+│   └── skills/                         # 50+ Agent Skills
+│       ├── admin/                      #   Skill creation, auditing, docs (6)
+│       ├── bronze/                     #   Bronze layer + Faker data (2)
+│       ├── common/                     #   Cross-cutting shared skills (8)
+│       ├── exploration/                #   Ad-hoc notebooks (1)
+│       ├── genai-agents/               #   GenAI agent patterns (10+)
+│       ├── gold/                       #   Gold design + implementation (9)
+│       ├── ml/                         #   MLflow pipelines (1)
+│       ├── monitoring/                 #   Monitors, dashboards, alerts (5)
+│       ├── planning/                   #   Project planning (2)
+│       ├── semantic-layer/             #   Metric Views, TVFs, Genie (6)
+│       ├── silver/                     #   DLT pipelines, DQ rules (4)
+│       └── skill-navigator/            #   Master routing system (1)
 │
 ├── context/
-│   ├── prompts/                # Reusable AI prompts (17 templates)
-│   ├── Wanderbricks_Schema.csv # Example schema definition
-│   └── *.lvdash.json           # Example AI/BI dashboard
+│   └── Wanderbricks_Schema.csv         # Customer schema input
 │
-└── Instructions.pdf            # Getting started guide
+├── docs/                               # Framework documentation
+│   └── vibe-coding-framework-design/   #   Complete design documentation
+│
+├── QUICKSTART.md                       # One-prompt-per-stage guide
+└── README.md                           # This file
 ```
 
 ---
 
-## 📚 Framework Components
+## Agent Skills by Domain
 
-### Cursor Rules (27 Rules)
+Skills follow an **orchestrator/worker** pattern: orchestrators (prefixed `00-`) manage end-to-end workflows, workers (prefixed `01-`, `02-`, etc.) handle specific patterns.
 
-Production-tested patterns organized by Medallion Architecture layer:
-
-| Category | Rules | Focus |
-|----------|-------|-------|
-| **Common** | 9 | Unity Catalog, Asset Bundles, Schema Management |
-| **Bronze** | 1 | Faker data generation for testing |
-| **Silver** | 2 | DLT expectations, DQX integration |
-| **Gold** | 7 | YAML-driven setup, MERGE patterns, validation |
-| **Semantic Layer** | 4 | Metric Views, TVFs, Genie Spaces |
-| **Monitoring** | 3 | Lakehouse Monitoring, AI/BI Dashboards, Alerting |
-| **Exploration** | 1 | Dual-format notebooks |
-| **Planning** | 1 | Project methodology |
-
-### Reusable Prompts (17 Templates)
-
-AI-optimized prompts for complete implementations:
-
-| Prompt | Purpose | Time |
-|--------|---------|------|
-| **01-bronze-layer** | Raw data ingestion with UC compliance | 2-3h |
-| **02-silver-layer** | Data quality with DLT | 2-4h |
-| **03a/b-gold-layer** | Design + Implementation | 5-7h |
-| **04-metric-views** | Semantic layer for Genie | 2h |
-| **05-monitoring** | Lakehouse Monitoring setup | 2h |
-| **06-genie-space** | Natural language interface | 1-2h |
-| **07-dqx-integration** | Advanced DQ diagnostics | 3-4h |
-| **08-exploration-notebook** | Ad-hoc analysis | 1h |
-| **09-table-valued-functions** | Pre-built queries for Genie | 2-3h |
-| **10-aibi-dashboards** | Lakeview visual dashboards | 2-4h |
-| **11-project-plan** | Comprehensive planning | 2-4h |
-| **12-ml-models** | MLflow pipelines | 6-12h |
-| **13-agent-architecture** | Agent system design | 2-4h |
-| **14-sql-alerts** | Proactive alerting | 2-3h |
-| **15-documentation** | Framework documentation | 1-2h |
-| **16-capability-audit** | Feature assessment | 1h |
-| **17-figma-interface** | UI/UX design | 2-4h |
+| Domain | Orchestrator | Workers | Focus |
+|--------|-------------|---------|-------|
+| **Gold (Design)** | `00-gold-layer-design` | 7 | ERDs, YAML schemas, dimensional modeling |
+| **Bronze** | `00-bronze-layer-setup` | 1 | Table DDLs, Faker data, source copy |
+| **Silver** | `00-silver-layer-setup` | 2 | DLT expectations, DQX diagnostics |
+| **Gold (Impl)** | `01-gold-layer-setup` | shared | MERGE scripts, FK constraints |
+| **Planning** | `00-project-planning` | 0 | Phase plans, YAML manifest contracts |
+| **Semantic** | `00-semantic-layer-setup` | 5 | Metric Views, TVFs, Genie Spaces |
+| **Monitoring** | `00-observability-setup` | 4 | Monitors, dashboards, SQL alerts |
+| **ML** | `00-ml-pipeline-setup` | 0 | MLflow, Feature Store, inference |
+| **GenAI** | `00-genai-agents-setup` | 8+ | ResponsesAgent, evaluation, deployment |
+| **Common** | — | 8 | Asset Bundles, naming, constraints, imports |
 
 ---
 
-## 🗺️ Learning Paths
-
-### Rapid Prototyping (8 hours)
-```
-Foundation → Bronze → Silver → Gold → Validate
-```
-**Output:** Working Medallion Architecture with test data
-
-### Production Implementation (4 weeks)
-```
-Week 1: Foundation + Bronze + Silver
-Week 2: Gold Layer (complete)
-Week 3: Semantic Layer
-Week 4: Monitoring + Polish
-```
-**Output:** Complete data product with semantic layer and monitoring
-
-### Data Quality Focus (2 weeks)
-```
-Standard DQ → Advanced DQ (DQX) → Monitoring
-```
-**Output:** Multi-layered data quality strategy
-
----
-
-## ✅ What You Get
+## What You Get
 
 After using this framework:
 
-- ✅ **5-10 Bronze tables** with governance metadata
-- ✅ **5-10 Silver tables** with streaming + DQ validation
-- ✅ **3-5 Gold tables** as analytics-ready models
-- ✅ **20-50 data quality rules** (centralized)
-- ✅ **Metric Views** for Genie AI natural language queries
-- ✅ **Table-Valued Functions** for pre-built analytics
-- ✅ **Lakehouse Monitoring** with custom metrics
-- ✅ **AI/BI Dashboards** for visualization
-- ✅ **Complete governance** (PII tags, classifications, constraints)
+- **Complete Medallion Architecture** — Bronze, Silver, and Gold tables with governance
+- **Data Quality** — DLT expectations with quarantine patterns, stored in Unity Catalog
+- **Dimensional Model** — Fact and dimension tables with PK/FK constraints
+- **Semantic Layer** — Metric Views and TVFs for Genie natural language queries
+- **Observability** — Lakehouse Monitors, AI/BI Dashboards, and SQL Alerts
+- **ML Pipelines** — MLflow experiments, model training, and batch inference
+- **GenAI Agents** — ResponsesAgent with multi-agent Genie orchestration
+- **Governance** — PII tags, data classification, rich comments, full lineage
 
 ### Time Savings
 
 | Approach | Time | Savings |
 |----------|------|---------|
-| **Using Framework** | 18-28 hours | - |
-| **From Scratch** | 80-120 hours | - |
-| **Savings** | - | **4-6x faster** |
+| **Using Framework (core)** | 17-28 hours | — |
+| **Using Framework (full stack)** | 31-56 hours | — |
+| **From Scratch** | 80-120 hours | — |
+| **Savings** | — | **4-6x faster** |
 
 ---
 
-## 🔧 Key Technologies
+## Key Technologies
 
-- **Databricks Unity Catalog** - Governance & lineage
-- **Delta Lake** - ACID transactions & time travel
-- **Delta Live Tables (DLT)** - Streaming pipelines
-- **Databricks Asset Bundles** - Infrastructure as Code
-- **Metric Views** - Semantic layer for AI/BI
-- **Genie Spaces** - Natural language queries
-- **Lakehouse Monitoring** - Automated observability
-- **MLflow** - ML lifecycle management
+- **Databricks Unity Catalog** — Governance, lineage, and data classification
+- **Delta Lake** — ACID transactions, time travel, and Change Data Feed
+- **Delta Live Tables (DLT)** — Streaming pipelines with data quality expectations
+- **Databricks Asset Bundles** — Infrastructure as Code for all resources
+- **Metric Views** — Semantic metadata layer for AI/BI and Genie
+- **Genie Spaces** — Natural language query interface
+- **Lakehouse Monitoring** — Data profiling with custom business metrics
+- **MLflow** — ML experiment tracking, model registry, and GenAI agents
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 | Document | Purpose |
 |----------|---------|
-| [Cursor Rules TOC](.cursor/rules/00_TABLE_OF_CONTENTS.md) | Complete guide with learning paths |
-| [Cursor Rules README](.cursor/rules/README.md) | Framework overview |
-| [Prompts README](context/prompts/README.md) | Prompt usage guide |
+| [QUICKSTART.md](QUICKSTART.md) | One-prompt-per-stage guide (start here) |
+| [Framework Design Docs](docs/vibe-coding-framework-design/00-index.md) | Complete architecture and design documentation |
+| [Skill Navigator](.cursor/skills/skill-navigator/SKILL.md) | Master skill routing system |
 
 ---
 
-## 🌐 Domain Adaptation
+## Domain Adaptation
 
 These patterns work for any industry:
 
@@ -196,41 +187,45 @@ These patterns work for any industry:
 
 ---
 
-## 💡 Pro Tips
+## Pro Tips
 
-1. **Start Small** - Begin with 3-5 tables, not 50
-2. **Test with Faker** - Generate sample data before connecting real sources
-3. **Use Git** - Version control everything from day 1
-4. **Deploy to Dev First** - Test thoroughly before production
-5. **Leverage AI** - These prompts are optimized for AI assistants
-6. **Read the Docs** - Each prompt links to official Databricks documentation
+1. **One prompt per stage** — Each orchestrator skill handles the full workflow
+2. **New conversation per stage** — Start fresh to keep context clean
+3. **Start with Gold Design** — Design the target model before building Bronze/Silver
+4. **Let the skill do the thinking** — The orchestrator loads its workers and common skills automatically
+5. **Test with Faker** — Generate synthetic data before connecting real sources
+6. **Deploy to dev first** — Use `databricks bundle deploy -t dev`
+7. **If something fails** — The autonomous operations skill handles troubleshooting
 
 ---
 
-## 📞 Resources
+## Resources
 
 ### Official Documentation
+
 - [Databricks Documentation](https://docs.databricks.com/)
 - [Unity Catalog](https://docs.databricks.com/unity-catalog/)
 - [Delta Lake](https://docs.databricks.com/delta/)
 - [DLT Expectations](https://docs.databricks.com/dlt/expectations)
 - [Metric Views](https://docs.databricks.com/metric-views/)
 - [Lakehouse Monitoring](https://docs.databricks.com/lakehouse-monitoring/)
+- [MLflow](https://mlflow.org/docs/latest/)
 
 ### Framework Support
-- Check cursor rules for inline documentation
-- Each prompt has complete examples and common mistakes to avoid
-- See self-improvement patterns in `common/21-self-improvement.mdc`
+
+- See the [Skill Navigator](.cursor/skills/skill-navigator/SKILL.md) for routing to the right skill
+- Run `@.cursor/skills/admin/self-improvement/SKILL.md` to capture learnings from errors
+- Run `@.cursor/skills/admin/skill-freshness-audit/SKILL.md` to verify skills are current
 
 ---
 
-## 📋 License
+## License
 
 This repository is intended for educational and development purposes. Please review and customize the patterns for your specific use case and compliance requirements.
 
 ---
 
-## 🚀 Get Started Now
+## Get Started Now
 
 ```bash
 # Clone the repository
@@ -239,11 +234,9 @@ git clone https://github.com/prashsub/vibe_coding_lakehouse_starter_repo.git
 # Open in Cursor IDE
 cursor vibe_coding_lakehouse_starter_repo
 
-# Start with the first prompt
-# Reference: context/prompts/01-bronze-layer-prompt.md
+# Follow the QUICKSTART guide
+# → QUICKSTART.md
 ```
 
-**Time to first deployment: 10-15 hours**  
-**Complete framework: 20-30 hours**
-
-Happy Building! 🏗️✨
+**Core platform (stages 1-7): 17-28 hours**
+**Full stack with ML and GenAI (stages 1-9): 31-56 hours**

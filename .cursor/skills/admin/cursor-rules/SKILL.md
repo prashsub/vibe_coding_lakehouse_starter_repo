@@ -1,9 +1,14 @@
 ---
 name: cursor-rules
 description: Provides guidance for creating, editing, and managing Cursor rules (.mdc files) in Databricks projects. Enforces proper file location (.cursor/rules/), naming conventions (kebab-case with .mdc extension), frontmatter format (description, globs, alwaysApply), and integration with Context7 MCP tools for library documentation. Use when creating new cursor rules, updating existing rules, understanding project rule structure, or configuring rule file organization. Covers rule file structure, frontmatter requirements, glob patterns for file-specific rules, and Context7 MCP tool usage for Databricks API documentation. Critical for maintaining consistent rule organization and ensuring proper rule discovery by Cursor IDE.
-author: databricks-sa
-version: "1.0"
-domain: [admin]
+metadata:
+  author: prashanth subrahmanyam
+  version: "1.0"
+  domain: admin
+  role: utility
+  standalone: true
+  last_verified: "2026-02-07"
+  volatility: low
 ---
 
 # Cursor Rules Location

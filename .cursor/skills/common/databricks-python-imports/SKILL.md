@@ -2,9 +2,13 @@
 name: databricks-python-imports
 description: Patterns for sharing code between Databricks notebooks using pure Python files and standard imports. Enables code reuse across notebooks, especially after dbutils.library.restartPython(). Covers Asset Bundle path setup, notebook-to-module conversion, import patterns vs %run magic commands, and troubleshooting ModuleNotFoundError. Use when creating shared configuration modules, utility functions, or helper code that needs to be imported across multiple notebooks in serverless environments.
 metadata:
-  author: databricks-sa
+  author: prashanth subrahmanyam
   version: "1.0"
   domain: infrastructure
+  role: shared
+  used_by_stages: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  last_verified: "2026-02-07"
+  volatility: medium
 ---
 # Databricks Python Imports and Code Sharing
 
@@ -477,7 +481,7 @@ get_config()  # ✅ Works
 ## Related Patterns
 
 - [Databricks Asset Bundles Configuration](../databricks-asset-bundles/SKILL.md) - Deployment patterns
-- [Lakehouse Monitoring Patterns](../../monitoring/lakehouse-monitoring-comprehensive/SKILL.md) - Monitor configuration sharing
+- [Lakehouse Monitoring Patterns](../../monitoring/01-lakehouse-monitoring-comprehensive/SKILL.md) - Monitor configuration sharing
 - [DLT Expectations Patterns](../../silver/dlt-expectations-patterns/SKILL.md) - DQ rules sharing
 
 ---

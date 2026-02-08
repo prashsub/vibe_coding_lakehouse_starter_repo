@@ -1,0 +1,33 @@
+---
+title: Common Skills Reference — Always-Loaded Index
+alwaysApply: true
+version: 1.0
+description: >
+  Lightweight index of all shared common skills. These cross-cutting skills are
+  referenced by every orchestrator. Read the full SKILL.md when a task matches.
+---
+
+# Common Skills (Read When Needed)
+
+These 8 shared skills apply across all pipeline stages. **Read the full SKILL.md** when the task triggers apply.
+
+| Skill | Path | Read When |
+|-------|------|-----------|
+| **databricks-expert-agent** | `.cursor/skills/common/databricks-expert-agent/SKILL.md` | Every task (core SA agent behavior, "Extract Don't Generate" principle) |
+| **databricks-asset-bundles** | `.cursor/skills/common/databricks-asset-bundles/SKILL.md` | Creating jobs, pipelines, dashboards, alerts; `notebook_task` vs `python_task`; `base_parameters` |
+| **databricks-autonomous-operations** | `.cursor/skills/common/databricks-autonomous-operations/SKILL.md` | Deploy/poll/diagnose/fix loop when jobs fail; troubleshooting; SDK/CLI reference |
+| **naming-tagging-standards** | `.cursor/skills/common/naming-tagging-standards/SKILL.md` | Creating ANY DDL, COMMENTs, tags, workflows; naming compliance review |
+| **databricks-python-imports** | `.cursor/skills/common/databricks-python-imports/SKILL.md` | Sharing code between notebooks; `sys.path` setup; `restartPython()` patterns |
+| **databricks-table-properties** | `.cursor/skills/common/databricks-table-properties/SKILL.md` | Creating tables (any layer); TBLPROPERTIES, CDF, auto-optimize, clustering |
+| **schema-management-patterns** | `.cursor/skills/common/schema-management-patterns/SKILL.md` | Creating schemas; `CREATE SCHEMA IF NOT EXISTS`; predictive optimization |
+| **unity-catalog-constraints** | `.cursor/skills/common/unity-catalog-constraints/SKILL.md` | Applying PK/FK constraints; `ALTER TABLE` timing; surrogate key patterns |
+
+## Mandatory Common Skills Per Orchestrator
+
+Every orchestrator's `common_dependencies` metadata lists which of these skills to read. At minimum, always read:
+1. `databricks-expert-agent` — Core behavior and "Extract, Don't Generate" principle
+2. `naming-tagging-standards` — Enterprise naming, comments, and tags
+
+## Input Convention
+
+Customer schema CSVs go in `context/` directory (e.g., `context/Wanderbricks_Schema.csv`). This is the starting input for the Design-First pipeline.

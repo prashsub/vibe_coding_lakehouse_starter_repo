@@ -2,9 +2,13 @@
 name: databricks-asset-bundles
 description: Standard patterns for Databricks Asset Bundles configuration files for serverless jobs, DLT pipelines, dashboards, alerts, apps, and workflows. Use when creating, configuring, or deploying DABs for infrastructure-as-code deployments. Covers mandatory serverless environment configuration, hierarchical job architecture (atomic/composite/orchestrator), DLT pipeline patterns, dashboard resources with dataset_catalog/dataset_schema, SQL Alerts v2 API schema, Apps lifecycle, Python notebook parameter passing (dbutils.widgets.get vs argparse), deployment error prevention, and pre-deployment validation.
 metadata:
-  author: databricks-sa
+  author: prashanth subrahmanyam
   version: "2.0"
   domain: infrastructure
+  role: shared
+  used_by_stages: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  last_verified: "2026-02-07"
+  volatility: medium
 ---
 
 # Databricks Asset Bundles (DABs)
@@ -27,9 +31,9 @@ Databricks Asset Bundles provide infrastructure-as-code for deploying Databricks
 
 ## Critical Rules (Quick Reference)
 
-### 🔴 MANDATORY: Serverless Environment Configuration
+### 🔴 MANDATORY: Serverless Environment Configuration (Environments V4)
 
-**EVERY JOB MUST INCLUDE THIS:**
+**EVERY JOB MUST INCLUDE THIS — NO EXCEPTIONS:**
 
 ```yaml
 resources:
@@ -37,11 +41,11 @@ resources:
     <job_name>:
       name: "[${bundle.target}] <Display Name>"
       
-      # ✅ MANDATORY: Define serverless environment at job level
+      # ✅ MANDATORY: Serverless environment with V4
       environments:
         - environment_key: "default"
           spec:
-            environment_version: "4"
+            environment_version: "4"  # 🔴 ALWAYS V4 - never omit or use older versions
       
       tasks:
         - task_key: <task_name>
@@ -52,7 +56,9 @@ resources:
 
 **Validation:** Before deploying ANY job YAML:
 - [ ] `environments:` block exists at job level
+- [ ] `environment_version: "4"` is set (NEVER omit, NEVER use older versions)
 - [ ] Every task has `environment_key: default`
+- [ ] NO `job_clusters:`, `existing_cluster_id:`, or `new_cluster:` defined (serverless only)
 
 ### 🔴 MANDATORY: Hierarchical Job Architecture
 
@@ -261,6 +267,7 @@ Before deploying any bundle:
 
 ### Jobs & Pipelines
 - [ ] Serverless environment configured (`environments:` block + `environment_key` in tasks)
+- [ ] **Environments Version 4:** `environment_version: "4"` in every `environments.spec` (MANDATORY)
 - [ ] Using `notebook_task` (NOT `python_task`)
 - [ ] Using `base_parameters` dictionary format (NOT CLI-style `parameters`)
 - [ ] Notebooks use `dbutils.widgets.get()` (NOT `argparse`)

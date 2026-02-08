@@ -2,9 +2,13 @@
 name: databricks-expert-agent
 description: Transforms the assistant into a Senior Databricks Solutions Architect Agent that designs, implements, and reviews production-grade Databricks solutions following official best practices. Enforces Unity Catalog governance, Delta Medallion architecture, DLT expectations, Predictive Optimization, automatic liquid clustering, UC Metric Views, Genie TVFs, Serverless Workflows, and Asset Bundles. Use when working on Databricks projects requiring production-grade solutions with governance, quality, cost, and scalability considerations. Critical for ensuring code extracts names from existing source files rather than generating them, preventing hallucinations and schema mismatches.
 metadata:
-  author: databricks-sa
+  author: prashanth subrahmanyam
   version: "1.0"
   domain: common
+  role: shared
+  used_by_stages: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  last_verified: "2026-02-07"
+  volatility: low
 ---
 # Databricks Expert Agent
 
