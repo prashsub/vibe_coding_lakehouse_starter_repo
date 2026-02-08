@@ -3,7 +3,7 @@ name: naming-tagging-standards
 description: Enforces enterprise naming conventions (snake_case, table prefixes, approved abbreviations), dual-purpose COMMENT formats for tables/columns/TVFs/metric views, and tagging standards (workflow tags, UC governed tags, serverless budget policies). Use when creating tables, columns, constraints, functions, jobs, pipelines, metric views, applying COMMENTs, applying tags, or reviewing code for standards compliance. Triggers on "naming", "comment", "COMMENT", "tag", "PII", "cost_center", "snake_case", "dim_", "fact_", "governed tag", "budget policy".
 metadata:
   author: prashanth subrahmanyam
-  version: "1.0"
+  version: "2.0"
   domain: common
   role: shared
   used_by_stages: [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -36,9 +36,78 @@ Enterprise-wide standards for Databricks asset naming, SQL comments, and cost/go
 | **CM-02** | Table COMMENT follows dual-purpose format | Critical |
 | **CM-03** | Column COMMENT required for all columns | Critical |
 | **CM-04** | TVF COMMENT follows v3.0 structured format | Critical |
+| **TG-00** | Check `context/tagging-config.yaml` before applying ANY tags; use smart defaults if absent | Critical |
 | **TG-01** | All workflows must have required tags (`team`, `cost_center`, `environment`) | Critical |
 | **TG-02** | Use Governed Tags for UC securables | Critical |
 | **TG-03** | Serverless resources must use approved budget policies | Critical |
+
+---
+
+## Tagging Configuration Resolution
+
+**Before applying ANY tags, the agent MUST follow this resolution order:**
+
+### Step 1: Check for Customer Config
+
+Look for `context/tagging-config.yaml` in the project root. If it exists, **use it as the source of truth** for all tag values.
+
+```yaml
+# context/tagging-config.yaml — Customer-supplied tagging standards
+# Copy from context/tagging-config.template.yaml and fill in values.
+
+workflow_tags:
+  team: "analytics-engineering"         # Required — owning team
+  cost_center: "CC-5678"               # Required — finance cost center
+  project: "retail-analytics"           # Recommended — project name
+  custom_tags:                          # Optional — additional key:value pairs
+    department: "merchandising"
+    initiative: "q1-modernization"
+
+governed_tags:
+  catalog:
+    cost_center: "CC-5678"
+    business_unit: "Retail"
+  schema:
+    data_owner: "retail-data-team@acme.com"
+  table_defaults:
+    data_classification: "internal"     # Default for all tables unless overridden
+
+pii_columns:                            # Column-level PII tagging
+  dim_customer:
+    - column: email
+      pii_type: email
+    - column: phone_number
+      pii_type: phone
+    - column: customer_name
+      pii_type: name
+
+budget_policy:
+  serverless_policy_name: "retail-serverless"  # Optional — named budget policy
+```
+
+### Step 2: Derive Smart Defaults (No Config Supplied)
+
+If `context/tagging-config.yaml` does **not** exist, derive values from available project context:
+
+| Tag | Default Derivation | Example |
+|-----|--------------------|---------|
+| `team` | Infer from catalog/schema naming or prompt user | `"data-engineering"` |
+| `cost_center` | Use placeholder `"UNSET-UPDATE-ME"` | Flags for manual update |
+| `environment` | Always `${bundle.target}` | `dev`, `staging`, `prod` |
+| `project` | Infer from catalog name or repo folder name | `"wanderbricks"` |
+| `data_owner` | Use placeholder `"UNSET-UPDATE-ME"` | Flags for manual update |
+| `data_classification` | Default `"internal"` | Safe default |
+| PII columns | Skip PII tagging (no guessing) | — |
+
+**Critical:** When using defaults, add a `# TODO: Update from context/tagging-config.yaml` comment beside each placeholder value in generated code, so the customer knows to review.
+
+### Step 3: Environment Tag (Always Automatic)
+
+The `environment` tag is **always** `${bundle.target}` — never hardcoded. This is non-negotiable regardless of config.
+
+### Template File
+
+A ready-to-fill template is available at `context/tagging-config.template.yaml`. Copy it to `context/tagging-config.yaml` and fill in customer values.
 
 ---
 
@@ -179,63 +248,99 @@ For complete comment examples, see [references/comment-templates.md](references/
 
 ## Part 3: Tagging Standards
 
+> **Config-driven:** All tag values below come from `context/tagging-config.yaml` when available. See [Tagging Configuration Resolution](#tagging-configuration-resolution) above.
+
 ### TG-01: Workflow Tags (Asset Bundles)
 
 All jobs and pipelines **must** include:
 
-| Tag | Required | Example |
-|-----|----------|---------|
-| `team` | Yes | `data-engineering` |
-| `cost_center` | Yes | `CC-1234` |
-| `environment` | Yes | `${bundle.target}` |
-| `project` | Recommended | `customer-360` |
-| `layer` | Recommended | `gold` |
-| `job_type` | Recommended | `merge`, `setup`, `pipeline` |
+| Tag | Required | Source |
+|-----|----------|--------|
+| `team` | Yes | `workflow_tags.team` from config, or `"UNSET-UPDATE-ME"` |
+| `cost_center` | Yes | `workflow_tags.cost_center` from config, or `"UNSET-UPDATE-ME"` |
+| `environment` | Yes | Always `${bundle.target}` (never hardcoded) |
+| `project` | Recommended | `workflow_tags.project` from config, or inferred from repo/catalog |
+| `layer` | Recommended | Derived from pipeline layer (`bronze`, `silver`, `gold`) |
+| `job_type` | Recommended | Derived from job purpose (`merge`, `setup`, `pipeline`) |
+
+**With customer config (`context/tagging-config.yaml` exists):**
 
 ```yaml
 resources:
   jobs:
     gold_merge_job:
       tags:
-        team: data-engineering
-        cost_center: CC-1234
-        environment: ${bundle.target}
-        project: customer-360
+        team: analytics-engineering          # From config: workflow_tags.team
+        cost_center: CC-5678                 # From config: workflow_tags.cost_center
+        environment: ${bundle.target}        # Always automatic
+        project: retail-analytics            # From config: workflow_tags.project
+        department: merchandising            # From config: workflow_tags.custom_tags
+        layer: gold
+        job_type: merge
+```
+
+**Without customer config (smart defaults):**
+
+```yaml
+resources:
+  jobs:
+    gold_merge_job:
+      tags:
+        team: data-engineering               # TODO: Update from context/tagging-config.yaml
+        cost_center: UNSET-UPDATE-ME         # TODO: Update from context/tagging-config.yaml
+        environment: ${bundle.target}        # Always automatic
+        project: wanderbricks                # Inferred from project context
         layer: gold
         job_type: merge
 ```
 
 ### TG-02: Unity Catalog Governed Tags
 
-| Tag | Apply To | Allowed Values |
-|-----|----------|----------------|
-| `cost_center` | Catalogs | Organization codes |
-| `business_unit` | Catalogs | Department names |
-| `data_owner` | Schemas | Email or team name |
-| `data_classification` | Tables | `public`, `internal`, `confidential`, `restricted` |
-| `pii` | Columns | `true`, `false` |
-| `pii_type` | Columns | `email`, `phone`, `ssn`, `name`, `address`, `dob`, `financial` |
+| Tag | Apply To | Source |
+|-----|----------|--------|
+| `cost_center` | Catalogs | `governed_tags.catalog.cost_center` from config |
+| `business_unit` | Catalogs | `governed_tags.catalog.business_unit` from config |
+| `data_owner` | Schemas | `governed_tags.schema.data_owner` from config |
+| `data_classification` | Tables | `governed_tags.table_defaults.data_classification` from config, or `"internal"` |
+| `pii` | Columns | `"true"` for columns listed in `pii_columns` config section |
+| `pii_type` | Columns | From `pii_columns.[table].[column].pii_type` in config |
+
+**With customer config:**
 
 ```sql
--- Catalog
-ALTER CATALOG sales_data SET TAGS ('cost_center' = 'CC-1234', 'business_unit' = 'Sales');
--- Schema
-ALTER SCHEMA sales_data.gold SET TAGS ('data_owner' = 'analytics-team@company.com');
--- Table
+-- Values from context/tagging-config.yaml
+ALTER CATALOG retail_data SET TAGS ('cost_center' = 'CC-5678', 'business_unit' = 'Retail');
+ALTER SCHEMA retail_data.gold SET TAGS ('data_owner' = 'retail-data-team@acme.com');
 ALTER TABLE gold.dim_customer SET TAGS ('data_classification' = 'confidential');
--- Column PII
 ALTER TABLE gold.dim_customer ALTER COLUMN email SET TAGS ('pii' = 'true', 'pii_type' = 'email');
+```
+
+**Without customer config:**
+
+```sql
+-- Smart defaults — PII tagging is SKIPPED (never guess PII)
+ALTER CATALOG prod_sales_catalog SET TAGS ('cost_center' = 'UNSET-UPDATE-ME');  -- TODO: Update
+ALTER SCHEMA prod_sales_catalog.gold SET TAGS ('data_owner' = 'UNSET-UPDATE-ME');  -- TODO: Update
+ALTER TABLE gold.dim_customer SET TAGS ('data_classification' = 'internal');  -- Safe default
+-- PII tagging skipped: supply context/tagging-config.yaml with pii_columns section
 ```
 
 ### TG-03: Serverless Budget Policies
 
-Serverless compute resources require budget policies with `team`, `cost_center`, and `environment` tags.
+Serverless compute resources require budget policies with `team`, `cost_center`, and `environment` tags. If `budget_policy.serverless_policy_name` is set in the config, reference it in Asset Bundles.
 
 For tag query patterns and serverless cost attribution, see [references/tagging-patterns.md](references/tagging-patterns.md).
 
 ---
 
 ## Validation Checklist
+
+### Tagging Config Resolution
+- [ ] Checked for `context/tagging-config.yaml` before applying any tags
+- [ ] If config exists: all tag values sourced from config (no hardcoded examples)
+- [ ] If config missing: placeholder `UNSET-UPDATE-ME` used with `# TODO` comments
+- [ ] `environment` tag is `${bundle.target}` (never hardcoded)
+- [ ] PII tagging only applied when explicitly declared in config (never guessed)
 
 ### Naming
 - [ ] All objects use `snake_case`
@@ -257,7 +362,7 @@ For tag query patterns and serverless cost attribution, see [references/tagging-
 - [ ] Catalogs tagged with `cost_center` and `business_unit`
 - [ ] Schemas tagged with `data_owner`
 - [ ] Confidential tables tagged with `data_classification`
-- [ ] PII columns tagged with `pii` and `pii_type`
+- [ ] PII columns tagged with `pii` and `pii_type` (only from config)
 
 ---
 

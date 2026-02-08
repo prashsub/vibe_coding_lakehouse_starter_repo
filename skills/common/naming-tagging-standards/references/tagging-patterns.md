@@ -2,36 +2,78 @@
 
 Detailed tagging standards for cost allocation, governance, and operational visibility.
 
+## Config Resolution Algorithm
+
+**Every tag application follows this algorithm:**
+
+```
+1. Check: Does context/tagging-config.yaml exist?
+   ├── YES → Read config, use customer values for all tags
+   └── NO  → Use smart defaults:
+             ├── team         → "data-engineering" + TODO comment
+             ├── cost_center  → "UNSET-UPDATE-ME" + TODO comment
+             ├── environment  → ${bundle.target} (always automatic)
+             ├── project      → Inferred from catalog/repo name
+             ├── data_classification → "internal" (safe default)
+             └── PII tags     → SKIP entirely (never guess)
+```
+
+**Critical rules:**
+- `environment` is **always** `${bundle.target}` — never from config, never hardcoded
+- PII columns are **never** guessed — only tagged when declared in `pii_columns` config section
+- When using defaults, **every** placeholder value gets a `# TODO: Update from context/tagging-config.yaml` comment
+
+---
+
 ## Workflow Tags (Asset Bundles)
 
 ### Required Tags
 
-| Tag | Required | Values | Description |
+| Tag | Required | Values | Config Path |
 |-----|----------|--------|-------------|
-| `team` | Yes | Team name | Owning team for cost allocation |
-| `cost_center` | Yes | CC-XXXX | Finance cost center code |
-| `environment` | Yes | `dev`, `staging`, `prod` | Deployment environment |
-| `project` | Recommended | Project name | Project or initiative |
-| `layer` | Recommended | `bronze`, `silver`, `gold` | Data layer |
-| `job_type` | Recommended | `setup`, `pipeline`, `merge`, `ml` | Workload category |
+| `team` | Yes | Team name | `workflow_tags.team` |
+| `cost_center` | Yes | CC-XXXX | `workflow_tags.cost_center` |
+| `environment` | Yes | `dev`, `staging`, `prod` | Always `${bundle.target}` |
+| `project` | Recommended | Project name | `workflow_tags.project` |
+| `layer` | Recommended | `bronze`, `silver`, `gold` | Derived from pipeline layer |
+| `job_type` | Recommended | `setup`, `pipeline`, `merge`, `ml` | Derived from job purpose |
 
-### Job Tags Example
+### Job Tags — With Customer Config
 
 ```yaml
+# Values sourced from context/tagging-config.yaml
 resources:
   jobs:
     gold_merge_job:
       name: "[${bundle.target}] Gold Merge Job"
       tags:
-        team: data-engineering
-        cost_center: CC-1234
-        environment: ${bundle.target}
-        project: customer-360
+        team: analytics-engineering        # From config: workflow_tags.team
+        cost_center: CC-5678               # From config: workflow_tags.cost_center
+        environment: ${bundle.target}      # Always automatic
+        project: retail-analytics          # From config: workflow_tags.project
+        department: merchandising          # From config: workflow_tags.custom_tags.department
         layer: gold
         job_type: merge
 ```
 
-### Pipeline Tags Example
+### Job Tags — Without Customer Config (Smart Defaults)
+
+```yaml
+# Smart defaults — customer should review TODO items
+resources:
+  jobs:
+    gold_merge_job:
+      name: "[${bundle.target}] Gold Merge Job"
+      tags:
+        team: data-engineering             # TODO: Update from context/tagging-config.yaml
+        cost_center: UNSET-UPDATE-ME       # TODO: Update from context/tagging-config.yaml
+        environment: ${bundle.target}      # Always automatic
+        project: wanderbricks              # Inferred from project context
+        layer: gold
+        job_type: merge
+```
+
+### Pipeline Tags — With Customer Config
 
 ```yaml
 resources:
@@ -39,10 +81,26 @@ resources:
     silver_pipeline:
       name: "[${bundle.target}] Silver Pipeline"
       tags:
-        team: data-engineering
-        cost_center: CC-1234
-        environment: ${bundle.target}
-        project: customer-360
+        team: analytics-engineering        # From config: workflow_tags.team
+        cost_center: CC-5678               # From config: workflow_tags.cost_center
+        environment: ${bundle.target}      # Always automatic
+        project: retail-analytics          # From config: workflow_tags.project
+        layer: silver
+        pipeline_type: streaming
+```
+
+### Pipeline Tags — Without Customer Config (Smart Defaults)
+
+```yaml
+resources:
+  pipelines:
+    silver_pipeline:
+      name: "[${bundle.target}] Silver Pipeline"
+      tags:
+        team: data-engineering             # TODO: Update from context/tagging-config.yaml
+        cost_center: UNSET-UPDATE-ME       # TODO: Update from context/tagging-config.yaml
+        environment: ${bundle.target}      # Always automatic
+        project: wanderbricks              # Inferred from project context
         layer: silver
         pipeline_type: streaming
 ```
@@ -53,37 +111,53 @@ resources:
 
 ### Required Tags by Level
 
-| Tag | Apply To | Allowed Values | Purpose |
-|-----|----------|----------------|---------|
-| `cost_center` | Catalogs | Organization codes | Financial allocation |
-| `business_unit` | Catalogs | Department names | Organizational grouping |
-| `data_owner` | Schemas | Email or team name | Accountability |
-| `data_classification` | Tables | `public`, `internal`, `confidential`, `restricted` | Security level |
-| `pii` | Columns | `true`, `false` | PII indicator |
-| `pii_type` | Columns | `email`, `phone`, `ssn`, `name`, `address`, `dob`, `financial` | PII categorization |
+| Tag | Apply To | Config Path | Default |
+|-----|----------|-------------|---------|
+| `cost_center` | Catalogs | `governed_tags.catalog.cost_center` | `"UNSET-UPDATE-ME"` |
+| `business_unit` | Catalogs | `governed_tags.catalog.business_unit` | Omitted |
+| `data_owner` | Schemas | `governed_tags.schema.data_owner` | `"UNSET-UPDATE-ME"` |
+| `data_classification` | Tables | `governed_tags.table_defaults.data_classification` | `"internal"` |
+| `pii` | Columns | `pii_columns.[table]` entries | Skipped |
+| `pii_type` | Columns | `pii_columns.[table].[column].pii_type` | Skipped |
 
-### Applying Tags
+### Applying Tags — With Customer Config
 
 ```sql
+-- Values from context/tagging-config.yaml
 -- Catalog-level
-ALTER CATALOG sales_data SET TAGS ('cost_center' = 'CC-1234');
-ALTER CATALOG sales_data SET TAGS ('business_unit' = 'Sales');
+ALTER CATALOG retail_data SET TAGS ('cost_center' = 'CC-5678');
+ALTER CATALOG retail_data SET TAGS ('business_unit' = 'Retail');
 
 -- Schema-level
-ALTER SCHEMA sales_data.gold SET TAGS ('data_owner' = 'analytics-team@company.com');
+ALTER SCHEMA retail_data.gold SET TAGS ('data_owner' = 'retail-data-team@acme.com');
 
--- Table-level
+-- Table-level (per-table override from config, or table_defaults)
 ALTER TABLE gold.dim_customer SET TAGS ('data_classification' = 'confidential');
+ALTER TABLE gold.fact_orders SET TAGS ('data_classification' = 'internal');
 
--- Column-level (PII)
+-- Column-level PII (only columns declared in pii_columns config section)
 ALTER TABLE gold.dim_customer
 ALTER COLUMN email SET TAGS ('pii' = 'true', 'pii_type' = 'email');
 
 ALTER TABLE gold.dim_customer
-ALTER COLUMN phone SET TAGS ('pii' = 'true', 'pii_type' = 'phone');
+ALTER COLUMN phone_number SET TAGS ('pii' = 'true', 'pii_type' = 'phone');
 
 ALTER TABLE gold.dim_customer
-ALTER COLUMN ssn SET TAGS ('pii' = 'true', 'pii_type' = 'ssn');
+ALTER COLUMN customer_name SET TAGS ('pii' = 'true', 'pii_type' = 'name');
+```
+
+### Applying Tags — Without Customer Config (Smart Defaults)
+
+```sql
+-- Smart defaults — PII tagging is SKIPPED entirely
+ALTER CATALOG prod_sales_catalog SET TAGS ('cost_center' = 'UNSET-UPDATE-ME');  -- TODO: Update from context/tagging-config.yaml
+-- business_unit omitted — no value available
+
+ALTER SCHEMA prod_sales_catalog.gold SET TAGS ('data_owner' = 'UNSET-UPDATE-ME');  -- TODO: Update from context/tagging-config.yaml
+
+ALTER TABLE gold.dim_customer SET TAGS ('data_classification' = 'internal');  -- Safe default
+
+-- PII tagging skipped: supply context/tagging-config.yaml with pii_columns section to enable
 ```
 
 ### Tag Inheritance

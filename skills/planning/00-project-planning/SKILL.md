@@ -30,11 +30,36 @@ metadata:
     - gold_layer_design/yaml/
     - gold_layer_design/erd_master.md
     - gold_layer_design/docs/BUSINESS_ONBOARDING_GUIDE.md
+  supported_modes:
+    - acceleration     # Full breadth (DEFAULT) — all domains, all artifacts, full rationalization
+    - workshop         # Learning & Enablement — minimal representative sampling with hard artifact caps
+  default_mode: acceleration
   last_verified: "2026-02-07"
   volatility: low
 ---
 
 # Project Plan Methodology for Databricks Solutions
+
+## Planning Mode
+
+**Default: Data Product Acceleration** — full breadth, all domains, all artifacts. This is the standard behavior described in this entire skill document below.
+
+**Workshop mode** is available for Learning & Enablement scenarios with hard artifact caps. It is NEVER activated unless the user includes the **exact phrase** `planning_mode: workshop` in their prompt.
+
+### Mode Detection Rules
+
+1. **Default is ALWAYS `acceleration`.** If the user does not explicitly declare workshop mode, use acceleration.
+2. **Workshop mode requires EXPLICIT opt-in.** The user must include one of these EXACT phrases:
+   - `planning_mode: workshop`
+   - `"workshop mode"`
+   - `"use workshop mode"`
+3. **Do NOT infer workshop mode** from words like "small", "simple", "demo", "limited", "quick", "basic", "training", or "few". These are NOT triggers. A user may want a narrow-scope acceleration plan — that's still acceleration mode with fewer use cases.
+4. **When in doubt, ask.** If the user's intent is ambiguous (e.g., "Create a plan for a workshop"), ask: *"Would you like full Data Product Acceleration mode (default) or Workshop mode with limited artifacts? To use workshop mode, include `planning_mode: workshop` in your request."*
+5. **Confirm mode at the start.** The first line of any plan output should state the active mode:
+   - `**Planning Mode:** Data Product Acceleration (default)`
+   - `**Planning Mode:** Workshop (explicit opt-in — artifact caps active)`
+6. **When workshop mode is activated,** read `references/workshop-mode-profile.md` for artifact caps, phase scope, and selection criteria. Do NOT read that reference otherwise.
+7. **Propagate mode to manifests.** Add `planning_mode: workshop` or `planning_mode: acceleration` to all generated manifest YAML files. Downstream orchestrators seeing `workshop` MUST NOT expand beyond the listed artifacts via self-discovery.
 
 ## Overview
 

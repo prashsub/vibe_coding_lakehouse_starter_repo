@@ -21,7 +21,7 @@ context/*.csv → Gold Design (1) → Bronze (2) → Silver (3) → Gold Impl (4
 | "Bronze", "test data", "Faker", "demo data" | 2 | `skills/bronze/00-bronze-layer-setup/SKILL.md` |
 | "Silver", "DLT", "expectations", "data quality" | 3 | `skills/silver/00-silver-layer-setup/SKILL.md` |
 | "Gold tables", "merge scripts", "Gold setup" | 4 | `skills/gold/01-gold-layer-setup/SKILL.md` |
-| "project plan", "architecture plan", "planning" | 5 | `skills/planning/00-project-planning/SKILL.md` |
+| "project plan", "architecture plan", "planning", "planning_mode: workshop" | 5 | `skills/planning/00-project-planning/SKILL.md` |
 | "metric view", "TVF", "Genie Space", "semantic layer" | 6 | `skills/semantic-layer/00-semantic-layer-setup/SKILL.md` |
 | "monitoring", "dashboard", "alert", "observability" | 7 | `skills/monitoring/00-observability-setup/SKILL.md` |
 | "MLflow", "ML model", "training", "inference" | 8 | `skills/ml/00-ml-pipeline-setup/SKILL.md` |

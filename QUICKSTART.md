@@ -117,11 +117,19 @@ Implement the Gold layer using @skills/gold/01-gold-layer-setup/SKILL.md
 
 Plan the semantic layer, observability, ML, and GenAI phases. This stage asks you interactive questions about which domains and addendums to include.
 
-**Prompt:**
+**Prompt (Data Product Acceleration — default):**
 
 ```
 Perform project planning using @skills/planning/00-project-planning/SKILL.md
 ```
+
+**Prompt (Workshop mode — for Learning & Enablement):**
+
+```
+Perform project planning using @skills/planning/00-project-planning/SKILL.md with planning_mode: workshop
+```
+
+> **Workshop mode** produces a minimal representative plan (3-5 TVFs, 1-2 Metric Views, 1 Genie Space) designed for hands-on workshops. It is only activated when `planning_mode: workshop` is explicitly included. See `skills/planning/00-project-planning/references/workshop-mode-profile.md` for details.
 
 **What it produces:**
 - Phase plan documents (TVFs, Metric Views, Monitoring, Dashboards, Genie Spaces, ML, Alerting)

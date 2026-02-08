@@ -163,7 +163,7 @@ domain-folder/
 | "Bronze setup", "Bronze tables", "test data", "demo data" | Bronze | `bronze/00-bronze-layer-setup` (stage 2) |
 | "Silver layer", "create Silver", "Bronze to Silver", "Silver pipeline" | Silver | `silver/00-silver-layer-setup` (stage 3) |
 | "implement Gold", "Gold tables", "Gold merge scripts" | Gold | `gold/01-gold-layer-setup` (stage 4) |
-| "project plan", "architecture planning" | Planning | `planning/00-project-planning` (stage 5) |
+| "project plan", "architecture planning", "planning_mode: workshop" | Planning | `planning/00-project-planning` (stage 5) |
 | "semantic layer", "build Genie", "Metric Views and TVFs" | Semantic | `semantic-layer/00-semantic-layer-setup` (stage 6) |
 | "observability", "monitoring setup", "dashboards and alerts" | Monitoring | `monitoring/00-observability-setup` (stage 7) |
 | "MLflow", "ML pipeline", "model training" | ML | `ml/00-ml-pipeline-setup` (stage 8) |
