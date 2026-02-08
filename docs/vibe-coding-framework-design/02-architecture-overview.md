@@ -138,10 +138,10 @@ sequenceDiagram
 | Category | Count | Components |
 |----------|-------|------------|
 | Orchestrator Skills | 9 | Gold Design, Bronze, Silver, Gold Impl, Planning, Semantic, Observability, ML, GenAI |
-| Worker Skills | 27 | Faker, DLT expectations, DQX, YAML setup, Merge patterns, Dedup, Schema validation, Grain validation, ERD patterns, Gold documentation, Metric Views, TVFs, Genie Spaces, Genie API, Genie Optimization, Lakehouse Monitoring, Dashboards, Alerts, Anomaly Detection, Responses Agent, Evaluation, Memory, Prompts, Multi-agent, Deployment, Production Monitoring |
+| Worker Skills | 28 | Faker, DLT expectations, DQX, YAML setup, Merge patterns, Dedup, Schema validation, Grain validation, ERD patterns, Gold documentation, Metric Views, TVFs, Genie Spaces, Genie API, Genie Optimization, Lakehouse Monitoring, Dashboards, Alerts, Anomaly Detection, Responses Agent, Evaluation, Memory, Prompts, Multi-agent, Deployment, Production Monitoring, MLflow GenAI Foundation |
 | Common Skills | 8 | Expert Agent, Asset Bundles, Autonomous Ops, Naming Standards, Python Imports, Table Properties, Schema Management, UC Constraints |
 | Admin/Utility Skills | 4 | Skill Creator, Documentation Org, Self-Improvement, Skill Freshness Audit |
-| Standalone Skills | 3 | Exploration Notebooks, Skill Navigator, MLflow GenAI Foundation |
+| Standalone Skills | 2 | Exploration Notebooks, Skill Navigator |
 | Entry Point | 1 | AGENTS.md (universal routing + common skills index) |
 
 ### Repository Structure

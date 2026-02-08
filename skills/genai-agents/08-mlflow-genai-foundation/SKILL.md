@@ -5,6 +5,10 @@ metadata:
   author: prashanth subrahmanyam
   last_verified: "2026-02-07"
   volatility: high
+  domain: genai-agents
+  role: worker
+  pipeline_stage: 9
+  pipeline_stage_name: genai-agents
 ---
 
 # MLflow GenAI Foundation Patterns
