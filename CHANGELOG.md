@@ -8,26 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.3.0] — 2026-02-07
 
-### .cursor Cleanup, Tagging Standards, Workshop Mode & Schema Update
+### Project Plan Methodology, Tagging Standards Overhaul & .cursor Cleanup
 
-Final cleanup of leftover `.cursor/` duplicates, enhanced tagging standards with a canonical YAML schema, new workshop mode for project planning, and an updated Wanderbricks schema CSV.
+New project plan methodology skill, comprehensive tagging standards rewrite with canonical YAML schema, workshop mode for live sessions, updated Wanderbricks schema, and final cleanup of all leftover `.cursor/` duplicates.
 
 ### Added
 
-- **Tagging config template** — `context/tagging-config.template.yaml` with 92-line canonical tagging schema for org-wide standardization
-- **Canonical tagging schema** — `skills/common/naming-tagging-standards/references/canonical-tagging-schema.yaml` (in progress)
-- **Workshop mode** — `skills/planning/00-project-planning/references/workshop-mode-profile.md` for facilitating live workshop sessions
+- **Project plan methodology skill** — `skills/planning/00-project-plan-methodology/SKILL.md` (565 lines) with full methodology for multi-phase Databricks project planning
+- **Workshop mode profile** — `skills/planning/00-project-plan-methodology/references/workshop-mode-profile.md` for facilitating live workshop sessions
+- **Canonical tagging schema** — `skills/common/naming-tagging-standards/references/canonical-tagging-schema.yaml` (125 lines) defining the authoritative tag taxonomy for org-wide standardization
 - **Rule-to-skill converter script** — `skills/admin/cursor-rule-to-skill/scripts/convert-rule-to-skill.py` restored
 
 ### Changed
 
+- **Naming & tagging standards skill** — major rewrite of SKILL.md (+280 lines) and `references/tagging-patterns.md` (+463 lines) with canonical tag taxonomy, governance enforcement patterns, budget policy tagging, and tag validation workflows
 - **Wanderbricks schema CSV** — `context/Wanderbricks_Schema.csv` updated with revised schema definitions (114 lines changed)
-- **Naming & tagging standards skill** — significantly expanded SKILL.md (+163 lines) and `references/tagging-patterns.md` (+140 lines) with canonical tag taxonomy, governance enforcement patterns, and budget policy tagging
-- **Project planning skill** — added workshop mode detection and quick-start profile references (+25 lines)
+- **Project planning skill** — added workshop mode detection and quick-start profile references
 - **QUICKSTART.md** — updated prompts and formatting
 
 ### Removed
 
+- **`context/tagging-config.template.yaml`** — replaced by canonical schema at `skills/common/naming-tagging-standards/references/canonical-tagging-schema.yaml`
 - **`.cursor/rules/common/skill-navigator.mdc`** — last remaining cursor rule; routing now handled entirely by `AGENTS.md`
 - **`.cursor/skills/gold/01-gold-layer-implementation/SKILL.md`** — duplicate of `skills/gold/01-gold-layer-setup/`
 - **`.cursor/skills/monitoring/anomaly-detection/`** — entire duplicate directory (SKILL.md, references, scripts, templates); canonical version at `skills/monitoring/04-anomaly-detection/`
