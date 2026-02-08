@@ -20,6 +20,10 @@ Repository renamed from "Vibe Coding Lakehouse Starter" to **Data Product Accele
 - **docs/framework-design/** — Renamed from `docs/vibe-coding-framework-design/`; all internal "Vibe Coding" references updated
 - **CHANGELOG.md** — Added "formerly" note for historical context
 
+### Removed
+
+- **`genai-agents/08-genie-space-optimization/SKILL.md`** — duplicate of `semantic-layer/05-genie-space-optimization`; consolidated to single location
+
 ---
 
 ## [1.1.0] — 2026-02-07
