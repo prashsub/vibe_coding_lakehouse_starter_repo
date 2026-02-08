@@ -2,7 +2,7 @@
 
 ## Overview
 
-Agent Skills are the primary knowledge mechanism in the Vibe Coding Framework. Each skill is a structured directory containing a `SKILL.md` file (the entry point), `references/` files (detailed patterns), `scripts/` (executable utilities), and `assets/templates/` (starter files). Skills follow the [AgentSkills.io specification](https://agentskills.io) and are designed for progressive disclosure — the AI assistant reads only what it needs, keeping context usage efficient.
+Agent Skills are the primary knowledge mechanism in the Data Product Accelerator. Each skill is a structured directory containing a `SKILL.md` file (the entry point), `references/` files (detailed patterns), `scripts/` (executable utilities), and `assets/templates/` (starter files). Skills follow the [AgentSkills.io specification](https://agentskills.io) and are designed for progressive disclosure — the AI assistant reads only what it needs, keeping context usage efficient.
 
 The skills system replaces the original 46-rule cursor architecture with a more scalable pattern: a single `AGENTS.md` entry point + 50 Agent Skills.
 

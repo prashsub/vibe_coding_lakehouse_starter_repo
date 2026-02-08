@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide covers the ongoing maintenance, evolution, and operational procedures for the Vibe Coding Framework. It covers skill freshness auditing, self-improvement workflows, framework updates, and day-to-day operational patterns.
+This guide covers the ongoing maintenance, evolution, and operational procedures for the Data Product Accelerator. It covers skill freshness auditing, self-improvement workflows, framework updates, and day-to-day operational patterns.
 
 ## Daily Operations
 

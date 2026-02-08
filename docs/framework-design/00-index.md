@@ -1,8 +1,8 @@
-# Vibe Coding Lakehouse Starter Framework — Design Documentation
+# Data Product Accelerator — Design Documentation
 
 ## Overview
 
-The Vibe Coding Lakehouse Starter Framework is an **AI-assisted development system** for building production-grade Databricks Lakehouse solutions. It uses a **skills-first architecture** where Agent Skills encode domain expertise, orchestration workflows, and production patterns — enabling an AI coding assistant to build complete Medallion Architecture implementations from a single schema CSV input.
+The Data Product Accelerator is an **AI-assisted development system** for building production-grade Databricks Lakehouse solutions. It uses a **skills-first architecture** where Agent Skills encode domain expertise, orchestration workflows, and production patterns — enabling an AI coding assistant to build complete Medallion Architecture implementations from a single schema CSV input.
 
 > **Core Principle:**
 > *Design-First, Extract-Don't-Generate* — Design the target Gold dimensional model from the customer's schema CSV, then build data layers to feed it, using scripted extraction from source files rather than AI-generated names.
@@ -32,7 +32,7 @@ The Vibe Coding Lakehouse Starter Framework is an **AI-assisted development syst
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                     VIBE CODING FRAMEWORK                            │
+│                     DATA PRODUCT ACCELERATOR                            │
 │                                                                      │
 │  ┌──────────────────────────────────────────────────────────────┐    │
 │  │              AGENTS.md (Universal Entry Point)                │    │

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Vibe Coding Framework follows a **Design-First** pipeline: design the target Gold dimensional model from the customer's source schema CSV, then build the data layers (Bronze → Silver) to feed it, then layer on semantic, observability, ML, and GenAI capabilities. This is the opposite of the traditional bottom-up approach (build Bronze first, figure out Gold later).
+The Data Product Accelerator follows a **Design-First** pipeline: design the target Gold dimensional model from the customer's source schema CSV, then build the data layers (Bronze → Silver) to feed it, then layer on semantic, observability, ML, and GenAI capabilities. This is the opposite of the traditional bottom-up approach (build Bronze first, figure out Gold later).
 
 The pipeline has 9 stages, each handled by a single orchestrator skill. One prompt per stage. One new Cursor Agent conversation per stage.
 

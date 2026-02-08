@@ -1,8 +1,24 @@
 # Changelog
 
-All notable changes to the Vibe Coding Lakehouse Starter Framework are documented in this file.
+All notable changes to the Data Product Accelerator (formerly Vibe Coding Lakehouse Starter Framework) are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+---
+
+## [1.2.0] — 2026-02-08
+
+### Renamed: Data Product Accelerator
+
+Repository renamed from "Vibe Coding Lakehouse Starter" to **Data Product Accelerator** to accurately reflect the framework's purpose: transforming a schema CSV into a fully governed, production-ready Databricks data product served by AI agents.
+
+### Changed
+
+- **Repository name** — `vibe_coding_lakehouse_starter_repo` → `data-product-accelerator`
+- **README.md** — New title, subtitle highlighting 50 Agent Skills and open SKILL.md format, updated repo URLs
+- **QUICKSTART.md** — Updated title to "Data Product Accelerator"
+- **docs/framework-design/** — Renamed from `docs/vibe-coding-framework-design/`; all internal "Vibe Coding" references updated
+- **CHANGELOG.md** — Added "formerly" note for historical context
 
 ---
 
@@ -59,7 +75,7 @@ Complete restructuring from a rules-heavy architecture (46 cursor rules) to a **
 - **Skill Navigator** — intelligent routing system with keyword-based task detection
 - **Common Skills Reference** — always-on index of 8 cross-cutting shared skills
 - **QUICKSTART.md** — one-prompt-per-stage guide for the 9-stage pipeline
-- **Framework design documentation** — 8 documents + 3 appendices in `docs/vibe-coding-framework-design/`
+- **Framework design documentation** — 8 documents + 3 appendices in `docs/framework-design/`
 - **CHANGELOG.md** — project changelog following Keep a Changelog format
 - **Naming and tagging standards** skill — enterprise naming conventions, dual-purpose comments, governed tags
 - **Autonomous operations** skill — self-healing deploy-poll-diagnose-fix-redeploy loop

@@ -1,8 +1,10 @@
-# Vibe Coding Lakehouse Starter Repository
+# Data Product Accelerator
 
-A comprehensive **AI-assisted development framework** for building production-grade Databricks Lakehouse solutions. This repository provides Agent Skills that encode domain expertise directly into your AI coding assistant, enabling rapid development of complete Medallion Architecture implementations — from a raw schema CSV to production GenAI agents.
+> 50 Agent Skills that teach your AI coding assistant to build fully governed Databricks data products — from a schema CSV to production AI agents.
+>
+> Built on the open [SKILL.md](https://agentskills.io) format — works with Cursor, Claude Code, Windsurf, Copilot, and Codex.
 
-> **"Vibe Coding"** — Leverage AI coding assistants to accelerate data platform development from weeks to hours.
+A comprehensive **skills-based framework** for building production-grade Databricks Lakehouse solutions. Drop a schema CSV, point your AI coding assistant at the skills, and go from raw tables to a fully governed data product with dimensional models, quality pipelines, semantic interfaces, observability, ML, and GenAI agents.
 
 ---
 
@@ -30,8 +32,8 @@ A comprehensive **AI-assisted development framework** for building production-gr
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/prashsub/vibe_coding_lakehouse_starter_repo.git
-cd vibe_coding_lakehouse_starter_repo
+git clone https://github.com/prashsub/data-product-accelerator.git
+cd data-product-accelerator
 ```
 
 2. **Place your schema CSV** in the `context/` directory
@@ -102,7 +104,7 @@ Design the target Gold dimensional model **first** (from the customer's schema C
 │   └── Wanderbricks_Schema.csv         # Customer schema input
 │
 └── docs/                               # Framework documentation
-    └── vibe-coding-framework-design/   #   Complete design documentation
+    └── framework-design/   #   Complete design documentation
 ```
 
 ---
@@ -170,7 +172,7 @@ After using this framework:
 |----------|---------|
 | [AGENTS.md](AGENTS.md) | Universal entry point for any AI coding assistant |
 | [QUICKSTART.md](QUICKSTART.md) | One-prompt-per-stage guide (start here) |
-| [Framework Design Docs](docs/vibe-coding-framework-design/00-index.md) | Complete architecture and design documentation |
+| [Framework Design Docs](docs/framework-design/00-index.md) | Complete architecture and design documentation |
 | [Skill Navigator](skills/skill-navigator/SKILL.md) | Master skill routing system |
 
 ---
@@ -230,10 +232,10 @@ This repository is intended for educational and development purposes. Please rev
 
 ```bash
 # Clone the repository
-git clone https://github.com/prashsub/vibe_coding_lakehouse_starter_repo.git
+git clone https://github.com/prashsub/data-product-accelerator.git
 
 # Open in your AI coding assistant
-cd vibe_coding_lakehouse_starter_repo
+cd data-product-accelerator
 
 # Follow the QUICKSTART guide
 # → QUICKSTART.md

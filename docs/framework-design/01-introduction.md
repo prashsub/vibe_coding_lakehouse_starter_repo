@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Vibe Coding Lakehouse Starter Framework exists to solve a fundamental challenge in data platform development: building production-grade Databricks Lakehouse solutions requires deep expertise across dozens of platform features — Unity Catalog governance, Delta Medallion Architecture, DLT expectations, Genie Spaces, Lakehouse Monitoring, MLflow, GenAI agents — and getting every pattern right takes weeks of learning and iteration.
+The Data Product Accelerator exists to solve a fundamental challenge in data platform development: building production-grade Databricks Lakehouse solutions requires deep expertise across dozens of platform features — Unity Catalog governance, Delta Medallion Architecture, DLT expectations, Genie Spaces, Lakehouse Monitoring, MLflow, GenAI agents — and getting every pattern right takes weeks of learning and iteration.
 
 This framework encodes that expertise as **Agent Skills** — structured knowledge packages that an AI coding assistant reads and follows — enabling a developer to go from a raw schema CSV to a production-ready data platform (with semantic layer, observability, ML pipelines, and GenAI agents) in 20-30 hours instead of 80-120.
 

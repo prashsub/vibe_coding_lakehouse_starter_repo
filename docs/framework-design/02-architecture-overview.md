@@ -2,7 +2,7 @@
 
 ## System Architecture
 
-The Vibe Coding Framework uses a **skills-first architecture** where domain expertise lives in Agent Skills using the open [SKILL.md format](https://agentskills.io). This is a deliberate evolution: the original framework embedded all patterns in 46+ IDE-specific rules, which created context-window pressure and IDE lock-in. The restructured framework uses a single `AGENTS.md` entry point that routes to 50 Agent Skills, each following a progressive disclosure pattern.
+The Data Product Accelerator uses a **skills-first architecture** where domain expertise lives in Agent Skills using the open [SKILL.md format](https://agentskills.io). This is a deliberate evolution: the original framework embedded all patterns in 46+ IDE-specific rules, which created context-window pressure and IDE lock-in. The restructured framework uses a single `AGENTS.md` entry point that routes to 50 Agent Skills, each following a progressive disclosure pattern.
 
 The architecture has three layers: a **routing layer** (`AGENTS.md` — universal entry point), a **knowledge layer** (50 Agent Skills), and a **generation layer** (the output code, configurations, and documentation that the AI assistant produces).
 

@@ -1,6 +1,6 @@
 # Appendix A — Code Examples
 
-Complete working code snippets for key patterns in the Vibe Coding Framework.
+Complete working code snippets for key patterns in the Data Product Accelerator.
 
 ---
 

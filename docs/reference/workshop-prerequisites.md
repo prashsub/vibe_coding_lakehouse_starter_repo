@@ -1,4 +1,4 @@
-# Vibe Coding Workshop — Prerequisites Guide
+# Data Product Accelerator — Prerequisites Guide
 
 > **Purpose:** This document outlines everything participants need to have in place **before** the workshop begins. Completing these steps ahead of time ensures you can focus on building, not troubleshooting setup issues during the session.
 >

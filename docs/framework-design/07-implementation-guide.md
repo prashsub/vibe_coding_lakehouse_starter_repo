@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide walks you through building a complete Databricks data platform from zero using the Vibe Coding Framework. Each phase maps to one or more pipeline stages and requires a single Cursor Agent conversation.
+This guide walks you through building a complete Databricks data platform from zero using the Data Product Accelerator. Each phase maps to one or more pipeline stages and requires a single Cursor Agent conversation.
 
 ## Prerequisites
 

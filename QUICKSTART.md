@@ -1,4 +1,4 @@
-# Quickstart: Build a Databricks Data Platform with Skills
+# Quickstart: Data Product Accelerator
 
 This guide walks you through building a complete Databricks data platform — from a raw schema CSV to production GenAI agents — using one prompt per stage.
 
