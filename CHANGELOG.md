@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.0] — 2026-02-07
+
+### Multi-IDE Support & Skills Relocation
+
+Skills moved from `.cursor/skills/` to the root `skills/` directory, making the framework **IDE-agnostic**. A new `AGENTS.md` entry point enables automatic discovery by Cursor, Claude Code, Windsurf, Copilot, Codex, and any agent that reads `AGENTS.md`.
+
+### Added
+
+- **`AGENTS.md`** — universal entry point for any AI coding assistant, combining skill navigator routing table, common skills index, role definition, and IDE compatibility matrix
+- **Anomaly detection references and scripts** — `references/alert-patterns.md`, `references/configuration-guide.md`, `references/results-schema.md`, `scripts/enable_anomaly_detection.py`, `scripts/query_results.py`, `assets/templates/alert-query-template.sql`
+- **Exploration skill enhancements** — expanded `analysis-workflows.md`, new `tips-and-troubleshooting.md`, new `requirements-template.md` asset
+- **Silver layer creation skill** — comprehensive `00-silver-layer-creation/SKILL.md` (510 lines) in `.cursor/skills/`
+- **Cursor rule** — `.cursor/rules/common/skill-navigator.mdc` for Cursor-specific routing
+
+### Changed
+
+- **Skills location** — moved from `.cursor/skills/` to root `skills/` directory for IDE-agnostic access
+- **All skill path references** — updated across QUICKSTART.md, README.md, docs/, and internal skill cross-references from `.cursor/skills/` to `skills/`
+- **Architecture overview** — updated `02-architecture-overview.md` with new paths and MLflow GenAI foundation patterns
+- **Cursor rules** — consolidated from 2 root-level rules (`skill-navigator.mdc`, `common-skills-reference.mdc`) to 1 rule at `.cursor/rules/common/skill-navigator.mdc`
+
+### Removed
+
+- **`.cursor/rules/skill-navigator.mdc`** — replaced by `AGENTS.md` (universal) + `.cursor/rules/common/skill-navigator.mdc` (Cursor-specific)
+- **`.cursor/rules/common-skills-reference.mdc`** — content merged into `AGENTS.md`
+- **`.cursor/skills/admin/cursor-rule-to-skill/`** — entire skill directory removed
+- **`.cursor/skills/admin/cursor-rules/`** — skill removed
+
+---
+
 ## [1.0.0] — 2026-02-07
 
 ### Architecture — Skills-First Migration

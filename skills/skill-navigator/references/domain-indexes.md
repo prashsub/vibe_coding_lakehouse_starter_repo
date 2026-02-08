@@ -259,7 +259,7 @@ See: [Gold Layer Index (Stages 1 & 4)](#gold-layer-index-stages-1--4) below for 
 
 ## GenAI Agents Index (Stage 9)
 
-**Skills in domain:** 9 skills (1 orchestrator, 7 workers, 1 cross-domain dependency)
+**Skills in domain:** 9 skills (1 orchestrator, 8 workers) + 1 cross-domain dependency
 
 ### Orchestrator
 
@@ -351,7 +351,7 @@ Each downstream orchestrator has a **Phase 0: Read Plan** that reads its manifes
 
 ## Admin Index
 
-**Skills in domain:** 5 utility skills
+**Skills in domain:** 4 utility skills
 
 | Skill | Path | ~Tokens |
 |---|---|---|

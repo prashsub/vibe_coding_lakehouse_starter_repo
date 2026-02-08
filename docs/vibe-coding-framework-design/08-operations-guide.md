@@ -10,7 +10,7 @@ This guide covers the ongoing maintenance, evolution, and operational procedures
 
 | Check | Frequency | How | Expected Result |
 |-------|-----------|-----|-----------------|
-| Skill count | Weekly | `find skills -name "SKILL.md" \| wc -l` | 51 skills present |
+| Skill count | Weekly | `find skills -name "SKILL.md" \| wc -l` | 50 skills present |
 | Entry point | Weekly | `test -f AGENTS.md && echo "OK"` | AGENTS.md present |
 | Broken references | Monthly | Grep for dead links in SKILL.md files | 0 broken links |
 | Skill freshness | Monthly | Run `skill-freshness-audit` skill | All skills within verification window |

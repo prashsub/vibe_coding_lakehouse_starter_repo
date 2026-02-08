@@ -81,7 +81,7 @@ For full agent behavior, read: `skills/common/databricks-expert-agent/SKILL.md`
 
 ## Skills Location
 
-All 51 Agent Skills are in `skills/` using the open [SKILL.md format](https://agentskills.io). Each skill directory contains:
+All 50 Agent Skills are in `skills/` using the open [SKILL.md format](https://agentskills.io). Each skill directory contains:
 
 ```
 skill-name/

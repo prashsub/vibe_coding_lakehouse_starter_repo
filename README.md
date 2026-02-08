@@ -10,7 +10,7 @@ A comprehensive **AI-assisted development framework** for building production-gr
 
 | Component | Description | Count |
 |-----------|-------------|-------|
-| **Agent Skills** | Structured knowledge packages for AI-assisted Databricks development | 51 skills across 12 domains |
+| **Agent Skills** | Structured knowledge packages for AI-assisted Databricks development | 50 skills across 12 domains |
 | **AGENTS.md** | Universal entry point with routing table and common skills index | 1 file |
 | **Context Files** | Customer schema CSV (the starting input for the pipeline) | 1 file |
 
@@ -51,7 +51,7 @@ Please design the Gold layer using @skills/gold/00-gold-layer-design/SKILL.md
 
 ## How It Works
 
-The framework uses a **skills-first architecture**: a single `AGENTS.md` entry point routes the AI assistant to 51 Agent Skills organized by domain. Each skill contains production-tested patterns, reference documentation, executable scripts, and starter templates. Skills use the open [SKILL.md format](https://agentskills.io) — portable across any AI coding assistant.
+The framework uses a **skills-first architecture**: a single `AGENTS.md` entry point routes the AI assistant to 50 Agent Skills organized by domain. Each skill contains production-tested patterns, reference documentation, executable scripts, and starter templates. Skills use the open [SKILL.md format](https://agentskills.io) — portable across any AI coding assistant.
 
 ### Design-First Pipeline (9 Stages)
 
@@ -84,12 +84,12 @@ Design the target Gold dimensional model **first** (from the customer's schema C
 ├── QUICKSTART.md                       # One-prompt-per-stage guide
 ├── README.md                           # This file
 │
-├── skills/                            # 51 Agent Skills (open SKILL.md format)
+├── skills/                            # 50 Agent Skills (open SKILL.md format)
 │   ├── admin/                          #   Skill creation, auditing, docs (4)
 │   ├── bronze/                         #   Bronze layer + Faker data (2)
 │   ├── common/                         #   Cross-cutting shared skills (8)
 │   ├── exploration/                    #   Ad-hoc notebooks (1)
-│   ├── genai-agents/                   #   GenAI agent patterns (10)
+│   ├── genai-agents/                   #   GenAI agent patterns (9)
 │   ├── gold/                           #   Gold design + implementation (9)
 │   ├── ml/                             #   MLflow pipelines (1)
 │   ├── monitoring/                     #   Monitors, dashboards, alerts (5)
@@ -121,7 +121,8 @@ Skills follow an **orchestrator/worker** pattern: orchestrators (prefixed `00-`)
 | **Semantic** | `00-semantic-layer-setup` | 5 | Metric Views, TVFs, Genie Spaces |
 | **Monitoring** | `00-observability-setup` | 4 | Monitors, dashboards, SQL alerts |
 | **ML** | `00-ml-pipeline-setup` | 0 | MLflow, Feature Store, inference |
-| **GenAI** | `00-genai-agents-setup` | 8+ | ResponsesAgent, evaluation, deployment |
+| **GenAI** | `00-genai-agents-setup` | 8 | ResponsesAgent, evaluation, deployment |
+| **Exploration** | `00-adhoc-exploration-notebooks` | 0 | Ad-hoc analysis notebooks |
 | **Common** | — | 8 | Asset Bundles, naming, constraints, imports |
 
 ---

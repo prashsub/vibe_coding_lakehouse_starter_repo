@@ -211,6 +211,7 @@ domain-folder/
 | "create skill", "new skill", "SKILL.md" | Admin | `admin/create-agent-skill` |
 | "improve skills" | Admin | `admin/self-improvement` |
 | "audit skills", "check freshness", "stale skills", "verify skills", "skill audit", "update check" | Admin | `admin/skill-freshness-audit` |
+| "documentation", "organize docs", "file structure", "root cleanup" | Admin | `admin/documentation-organization` |
 
 ---
 

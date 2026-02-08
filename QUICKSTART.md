@@ -2,6 +2,8 @@
 
 This guide walks you through building a complete Databricks data platform — from a raw schema CSV to production GenAI agents — using one prompt per stage.
 
+> **See also:** [AGENTS.md](AGENTS.md) (routing table for AI agents) | [README.md](README.md) (project overview) | [Skill Navigator](skills/skill-navigator/SKILL.md) (full routing system)
+
 ---
 
 ## Prerequisites
