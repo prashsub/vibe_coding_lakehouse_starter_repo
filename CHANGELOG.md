@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.3.1] — 2026-02-08
+
+### Development Documentation Consolidation
+
+Consolidated all development prompt files into a single comprehensive SQL-format documentation file for better organization and maintainability.
+
+### Added
+
+- **`docs/development/section_input_prompts_dml.sql`** — Comprehensive 3,758-line SQL documentation consolidating all skill conversion and improvement prompts
+
+### Removed
+
+- **`docs/development/05-naming-comment-standards.md`** — Consolidated into section_input_prompts_dml.sql
+- **`docs/development/06-tagging-standards.md`** — Consolidated into section_input_prompts_dml.sql
+- **`docs/development/comprehensive-agent-implementation-prompt.md`** — Consolidated into section_input_prompts_dml.sql
+- **`docs/development/convert-genai-agents-to-skills-prompt.md`** — Consolidated into section_input_prompts_dml.sql
+- **`docs/development/convert-gold-design-prompt-to-skill.md`** — Consolidated into section_input_prompts_dml.sql
+- **`docs/development/convert-gold-implementation-prompt-to-skill.md`** — Consolidated into section_input_prompts_dml.sql
+- **`docs/development/improve-genai-agents-from-databricks-skills.md`** — Consolidated into section_input_prompts_dml.sql
+- **`docs/development/merge-project-plan-prompt-into-skill.md`** — Consolidated into section_input_prompts_dml.sql
+
+---
+
 ## [1.3.0] — 2026-02-07
 
 ### Project Plan Methodology, Tagging Standards Overhaul & .cursor Cleanup
