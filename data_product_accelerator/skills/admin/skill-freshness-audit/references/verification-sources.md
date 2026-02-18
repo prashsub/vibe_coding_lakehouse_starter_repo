@@ -139,9 +139,11 @@ Maps every skill to the official documentation URLs used to verify its patterns 
 ### `monitoring/01-lakehouse-monitoring-comprehensive`
 | URL | Check For |
 |---|---|
-| https://docs.databricks.com/api/azure/workspace/dataquality/createmonitor | Monitor creation schema |
+| https://databricks-sdk-py.readthedocs.io/en/latest/workspace/dataquality/data_quality.html | DataQualityAPI method signatures: create_monitor(monitor), create_refresh(object_type, object_id, refresh), delete_monitor, get_monitor, list_refresh, cancel_refresh, update_monitor(object_type, object_id, monitor, update_mask) |
+| https://databricks-sdk-py.readthedocs.io/en/latest/dbdataclasses/dataquality.html | Monitor, DataProfilingConfig, DataProfilingCustomMetric, DataProfilingCustomMetricType, TimeSeriesConfig, SnapshotConfig, AggregationGranularity, RefreshState field names and enum values |
+| https://docs.databricks.com/api/azure/workspace/dataquality/createmonitor | REST API request/response schema |
 | https://learn.microsoft.com/en-us/azure/databricks/lakehouse-monitoring/ | Monitoring overview |
-| https://learn.microsoft.com/en-us/azure/databricks/lakehouse-monitoring/custom-metrics | Custom metric syntax |
+| https://learn.microsoft.com/en-us/azure/databricks/lakehouse-monitoring/custom-metrics | Custom metric syntax (AGGREGATE, DERIVED, DRIFT), output_data_type format |
 | https://learn.microsoft.com/en-us/azure/databricks/lakehouse-monitoring/create-monitor-api | API reference |
 
 ### `monitoring/02-databricks-aibi-dashboards`
@@ -157,8 +159,10 @@ Maps every skill to the official documentation URLs used to verify its patterns 
 ### `monitoring/04-anomaly-detection`
 | URL | Check For |
 |---|---|
-| https://learn.microsoft.com/en-us/azure/databricks/data-quality-monitoring/anomaly-detection/ | Anomaly detection API |
-| https://learn.microsoft.com/en-us/azure/databricks/data-quality-monitoring/anomaly-detection/results | Results schema |
+| https://databricks-sdk-py.readthedocs.io/en/latest/workspace/dataquality/data_quality.html | DataQualityAPI method signatures: create_monitor(monitor), delete_monitor(object_type, object_id), get_monitor, update_monitor(object_type, object_id, monitor, update_mask), list_monitor (unimplemented) |
+| https://databricks-sdk-py.readthedocs.io/en/latest/dbdataclasses/dataquality.html | Monitor, AnomalyDetectionConfig field names (excluded_table_full_names), object_type/object_id semantics |
+| https://learn.microsoft.com/en-us/azure/databricks/data-quality-monitoring/anomaly-detection/ | Anomaly detection overview, freshness/completeness concepts |
+| https://learn.microsoft.com/en-us/azure/databricks/data-quality-monitoring/anomaly-detection/results | system.data_quality_monitoring.table_results schema, nested struct fields |
 | https://learn.microsoft.com/en-us/azure/databricks/data-quality-monitoring/anomaly-detection/alerts | Alert integration |
 
 ---

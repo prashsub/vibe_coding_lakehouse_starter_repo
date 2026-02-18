@@ -60,9 +60,29 @@ These skills reference upstream for accuracy but their content is largely origin
 
 ---
 
+## Databricks SDK Lineage (reference)
+
+These skills reference the Databricks Python SDK (`databricks/databricks-sdk-py`) as their source of truth for API method signatures and dataclass definitions. They are original content but must stay in sync with SDK changes.
+
+**Upstream repo:** `databricks/databricks-sdk-py` (branch: `main`)
+**SDK Docs:** `https://databricks-sdk-py.readthedocs.io/en/latest/`
+
+| Our Skill | SDK Path(s) | Relationship | Docs URL for Audit |
+|---|---|---|---|
+| `monitoring/01-lakehouse-monitoring-comprehensive` | `databricks/sdk/service/dataquality.py` | reference | [API](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/dataquality/data_quality.html), [Dataclasses](https://databricks-sdk-py.readthedocs.io/en/latest/dbdataclasses/dataquality.html) |
+| `monitoring/04-anomaly-detection` | `databricks/sdk/service/dataquality.py` | reference | [API](https://databricks-sdk-py.readthedocs.io/en/latest/workspace/dataquality/data_quality.html), [Dataclasses](https://databricks-sdk-py.readthedocs.io/en/latest/dbdataclasses/dataquality.html) |
+
+**Key verification points for SDK lineage:**
+- `DataQualityAPI` method signatures (especially asymmetry: `create_monitor(monitor)` vs `update_monitor(object_type, object_id, monitor, update_mask)`)
+- Dataclass field names and types (`Monitor`, `DataProfilingConfig`, `AnomalyDetectionConfig`, etc.)
+- Enum values (`DataProfilingCustomMetricType`, `AggregationGranularity`, `RefreshState`)
+- Methods marked as `(Unimplemented)` in the SDK (`list_monitor`, `delete_refresh`, `update_refresh`)
+
+---
+
 ## No Upstream (Internal Methodology)
 
-These skills are internal methodology, conventions, or stable patterns with no AI-Dev-Kit lineage. They have `upstream_sources: []` in their frontmatter.
+These skills are internal methodology, conventions, or stable patterns with no external lineage. They have `upstream_sources: []` in their frontmatter.
 
 | Our Skill | Reason |
 |---|---|
@@ -87,9 +107,7 @@ These skills are internal methodology, conventions, or stable patterns with no A
 | `semantic-layer/01-metric-views-patterns` | Internal metric view patterns |
 | `semantic-layer/02-databricks-table-valued-functions` | Internal TVF patterns |
 | `monitoring/00-observability-setup` | Internal orchestrator |
-| `monitoring/01-lakehouse-monitoring-comprehensive` | Internal monitoring patterns |
 | `monitoring/03-sql-alerting-patterns` | Internal alerting patterns |
-| `monitoring/04-anomaly-detection` | Internal anomaly detection patterns |
 | `silver/02-dqx-patterns` | DQX library (databrickslabs, not ai-dev-kit) |
 | `bronze/00-bronze-layer-setup` | Internal setup patterns |
 | `common/databricks-expert-agent` | Philosophy/principles (not API-dependent) |
