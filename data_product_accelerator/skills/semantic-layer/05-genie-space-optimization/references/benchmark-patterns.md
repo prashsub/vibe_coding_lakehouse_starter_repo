@@ -248,14 +248,82 @@ security:
 
 ---
 
+## Benchmark Intake Validation
+
+Before writing or generating benchmarks, determine the intake path:
+
+### Decision Flow
+
+```
+User provides benchmark questions?
+│
+├── YES (10+ questions)
+│   → Validate each against live Genie Space
+│   → Report invalid (missing table, no data) with specific reason
+│   → Report needs-info (ambiguous terms) with clarification request
+│   → Proceed with valid set
+│
+├── YES (1-9 questions)
+│   → Validate each against live Genie Space
+│   → Report issues to user
+│   → Augment with synthetic to reach 10-15
+│   → Show augmentation report for review
+│
+└── NO (0 questions)
+    → Inspect Genie Space trusted assets
+    → Generate 10-15 synthetic benchmarks
+    → Show to user for review before proceeding
+```
+
+### Per-Question Validation
+
+For each user-submitted question, verify:
+
+| Check | Pass Criteria | Failure Action |
+|-------|--------------|----------------|
+| **Trusted asset match** | At least one MV/TVF/table in the space answers it | Tell user: "No trusted asset can answer this. Available: {list}" |
+| **SQL references** | All objects in SQL are trusted in the space | Tell user: "'{table}' isn't a trusted asset. Add it or rewrite." |
+| **MEASURE() columns** | Column names exist in MV schema | Tell user: "MEASURE({col}) invalid. Available: {list}" |
+| **Ambiguous terms** | Terms defined in Genie Instructions or question | Ask user: "What does '{term}' mean here?" |
+| **UC namespace** | SQL uses `${catalog}.${gold_schema}.{object}` | Tell user: "SQL must use full 3-part namespace" |
+
+### Synthetic Generation Strategy
+
+Generate from asset metadata in this priority:
+
+1. **Metric View measures** → aggregation questions (one per measure)
+2. **Metric View dimensions** → grouped aggregation questions
+3. **TVF signatures** → ranking/time-series/detail questions (one per TVF)
+4. **Tables** → list/detail questions (only to fill gaps)
+5. **Category fillers** → ensure 4+ categories covered
+
+### Augmentation Rules
+
+When augmenting partial user submissions:
+
+1. User questions always preserved (never replaced)
+2. Fill category gaps first (aggregation, ranking, time-series, comparison, list)
+3. Fill asset type gaps (if user only tests MVs, add TVF questions)
+4. Add synonym variations (2 per key user question)
+5. Add date variations ("this month" → "last 30 days" → "Q1 2026")
+6. Cap at 15 total
+
+See [Benchmark Intake Workflow](benchmark-intake-workflow.md) for full implementation details.
+
+---
+
 ## Validation Checklist
 
 Before running benchmarks:
 
+- [ ] User was prompted for benchmark questions before synthetic generation
+- [ ] User-submitted questions validated against live Genie Space trusted assets
+- [ ] Invalid questions reported to user with specific reasons (not silently dropped)
 - [ ] Every question has a unique `id` (domain_NNN format)
 - [ ] Every question has `expected_sql` that actually runs
 - [ ] Every question has `expected_asset` (MV, TVF, or TABLE)
 - [ ] Every question has a `category` tag
+- [ ] Every question has a `source` tag (user, synthetic, augmented)
 - [ ] At least 4 different categories covered
 - [ ] Synonym variations included (3+ for key queries)
 - [ ] Date range variations tested (this month, last 30 days, specific dates)

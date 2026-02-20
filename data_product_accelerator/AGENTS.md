@@ -15,7 +15,7 @@ This module (`data_product_accelerator/`) contains the framework — skills, doc
 repo-root/                           <-- workspace root / agent CWD
 ├── data_product_accelerator/        <-- framework (skills, docs, context)
 │   ├── AGENTS.md
-│   ├── skills/                      <-- 50 agent skills (read-only)
+│   ├── skills/                      <-- 55 agent skills (read-only)
 │   ├── context/                     <-- customer schema CSV (input)
 │   └── docs/                        <-- framework documentation
 │
@@ -109,7 +109,7 @@ For full agent behavior, read: `data_product_accelerator/skills/common/databrick
 
 ## Skills Location
 
-All 50 Agent Skills are in `data_product_accelerator/skills/` using the open [SKILL.md format](https://agentskills.io). Each skill directory contains:
+All 55 Agent Skills are in `data_product_accelerator/skills/` using the open [SKILL.md format](https://agentskills.io). Each skill directory contains:
 
 ```
 skill-name/
@@ -121,7 +121,8 @@ skill-name/
 
 Skills follow an **orchestrator/worker** pattern:
 - `00-` prefix = **Orchestrator** (manages end-to-end workflows for a pipeline stage)
-- `01-`, `02-`, ... = **Workers** (specific patterns, called by orchestrators or used standalone)
+- `01-` prefix or named directories = **Workers** (specific patterns, called by orchestrators or used standalone)
+- Gold workers are organized into `design-workers/` and `pipeline-workers/` subdirectories for clear separation
 
 ## IDE Compatibility
 

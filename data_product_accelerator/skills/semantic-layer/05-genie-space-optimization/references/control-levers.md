@@ -207,6 +207,8 @@ Update ML config in `src/ml/config/*.py`.
 
 **When to use:** Asset routing issues, ambiguous term definitions, or as a last resort after levers 1-5.
 
+> **For robust API operations**, see `genie-space-export-import-api` skill and its `import_genie_space.py` script, which handles JSON validation, error recovery, and field-level format requirements. The inline code below is a quick alternative for optimization-loop iterations.
+
 ### Direct Update (API)
 
 ```python
@@ -341,11 +343,55 @@ def sort_genie_config(config: dict) -> dict:
 
 ## Dual Persistence Summary
 
-| Lever | Direct Update Command | Repository Source File |
-|-------|----------------------|------------------------|
-| UC Tables | `ALTER TABLE ... SET TBLPROPERTIES` | `gold_layer_design/yaml/{domain}/*.yaml` |
-| Metric Views | `CREATE OR REPLACE VIEW ... WITH METRICS` | `src/semantic/metric_views/*.yaml` |
-| TVFs | `CREATE OR REPLACE FUNCTION` | `src/semantic/tvfs/*.sql` |
-| Monitoring | `ALTER TABLE ... SET TBLPROPERTIES` | `src/monitoring/*.py` |
-| ML Tables | `ALTER TABLE ... SET TBLPROPERTIES` | `src/ml/config/*.py` |
-| Genie Instructions | `PATCH /api/2.0/genie/spaces/{id}` | `src/genie/{domain}_genie_export.json` |
+| Lever | Direct Update Command | Repository Source File | Rebuilt by Genie Job? |
+|-------|----------------------|------------------------|-----------------------|
+| UC Tables | `ALTER TABLE ... SET TBLPROPERTIES` | `gold_layer_design/yaml/{domain}/*.yaml` | No |
+| Metric Views | `CREATE OR REPLACE VIEW ... WITH METRICS` | `src/semantic/metric_views/*.yaml` | No |
+| TVFs | `CREATE OR REPLACE FUNCTION` | `src/semantic/tvfs/*.sql` | No |
+| Monitoring | `ALTER TABLE ... SET TBLPROPERTIES` | `src/monitoring/*.py` | No |
+| ML Tables | `ALTER TABLE ... SET TBLPROPERTIES` | `src/ml/config/*.py` | No |
+| Genie Instructions | `PATCH /api/2.0/genie/spaces/{id}` | `src/genie/{domain}_genie_export.json` | **Yes** |
+
+**"Rebuilt by Genie Job?"** indicates whether `genie_spaces_deployment_job` will overwrite the direct API change from the bundle's JSON config. Lever 6 changes (Genie Instructions) are rebuilt by the job, so the `src/genie/*_genie_export.json` file MUST contain the updated instructions or they will be lost.
+
+---
+
+## Bundle Deployment After Optimization
+
+After the optimization loop completes, all changes must be deployed through the bundle to ensure the bundle is the **single source of truth**.
+
+### Three-Phase Deployment Model
+
+| Phase | When | What Happens |
+|-------|------|-------------|
+| **A** | During loop iterations | Direct API/SQL for fast testing (`ALTER TABLE`, `PATCH`, `CREATE OR REPLACE`) + update bundle repository files simultaneously |
+| **B** | End of loop | `databricks bundle deploy -t <target>` pushes all repository file changes |
+| **C** | End of loop | `databricks bundle run -t <target> genie_spaces_deployment_job` rebuilds Genie Spaces from bundle JSON, **overwriting any API patches** from Phase A |
+
+### Why the Deployment Job Matters
+
+API patches applied during Phase A are ephemeral. The `genie_spaces_deployment_job` reads `src/genie/*_genie_export.json` from the bundle and recreates the Genie Space via the Create/Update Space API. Any change made via direct API that was NOT also written to the bundle's JSON file will be lost. This is intentional — the bundle is the single source of truth.
+
+### Final Bundle Deploy + Job Trigger
+
+```bash
+# Phase B: Validate and deploy bundle
+databricks bundle validate -t <target>
+databricks bundle deploy -t <target>
+
+# Phase C: Trigger Genie Space deployment job
+databricks bundle run -t <target> genie_spaces_deployment_job
+```
+
+If any step fails, follow the `databricks-autonomous-operations` Section 5 playbook:
+1. Diagnose the error (check CLI output, match against error-solution matrix)
+2. Fix the source file
+3. Redeploy (max 3 attempts before escalation)
+
+### Post-Deploy Verification
+
+After the deployment job completes:
+1. Re-run the benchmark questions against the bundle-deployed Genie Space
+2. Compare results to the API-patched results from the optimization loop
+3. If results match — optimization is complete
+4. If discrepancy — a change was applied via API but NOT written to bundle files. Fix the missing file, repeat Phase B + C.

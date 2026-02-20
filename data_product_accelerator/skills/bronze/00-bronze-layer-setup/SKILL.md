@@ -123,6 +123,20 @@ databricks bundle run bronze_data_generator_job -t dev
 
 **Output:** Bronze Delta tables with Change Data Feed enabled, ready for Silver layer testing
 
+## Working Memory Management
+
+This orchestrator spans 6 steps. To maintain coherence without context pollution:
+
+**After each step, persist a brief summary note** capturing:
+- **Step 1 output:** Requirements filled — project name, entity list, data source approach, record counts
+- **Step 2 output:** Data source decision (Faker / existing / external), rationale
+- **Step 3 output:** DDL file path (`setup_tables.py`), count of tables defined, any schema deviations
+- **Step 4 output:** Generator file paths, Faker config decisions (providers, FK integrity strategy)
+- **Step 5 output:** Job YAML file paths, `databricks.yml` sync status
+- **Step 6 output:** Deployment results, row counts per table, CDF verification status
+
+**What to keep in working memory:** Only the current step's context, the table list from Step 1, and the previous step's summary note. Discard intermediate outputs (full DDL strings, generated DataFrames) — they are on disk and reproducible.
+
 ## Workflow
 
 ### Step 1: Gather Requirements (15 min)
@@ -299,6 +313,32 @@ TBLPROPERTIES (
 
 **Next stage:** After completing the Bronze layer, proceed to:
 - **`silver/00-silver-layer-setup`** — Set up Silver layer DLT pipelines with data quality rules
+
+---
+
+## Post-Completion: Skill Usage Summary (MANDATORY)
+
+**After completing all steps of this orchestrator, output a Skill Usage Summary reflecting what you ACTUALLY did — not a pre-written summary.**
+
+### What to Include
+
+1. Every skill `SKILL.md` or `references/` file you read (via the Read tool), in the order you read them
+2. Which step you were in when you read it
+3. Whether it was a **Worker**, **Common**, **Cross-domain**, or **Reference** file
+4. A one-line description of what you specifically used it for in this session
+
+### Format
+
+| # | Step | Skill / Reference Read | Type | What It Was Used For |
+|---|------|----------------------|------|---------------------|
+| 1 | Step N | `path/to/SKILL.md` | Worker / Common / Reference | One-line description |
+
+### Summary Footer
+
+End with:
+- **Totals:** X worker skills, Y common skills, Z reference files read across N steps
+- **Skipped:** List any skills from the dependency table above that you did NOT need to read, and why (e.g., "step not applicable", "user skipped", "no issues encountered")
+- **Unplanned:** List any skills you read that were NOT listed in the dependency table (e.g., for troubleshooting, edge cases, or user-requested detours)
 
 ---
 

@@ -16,7 +16,7 @@
 
 | Error Message | Root Cause | Solution |
 |---------------|------------|----------|
-| `DELTA_MULTIPLE_SOURCE_ROW_MATCHING_TARGET_ROW_IN_MERGE` | Duplicate business keys in Silver source | Add dedup-before-merge pattern (see `gold/05-gold-delta-merge-deduplication`) |
+| `DELTA_MULTIPLE_SOURCE_ROW_MATCHING_TARGET_ROW_IN_MERGE` | Duplicate business keys in Silver source | Add dedup-before-merge pattern (see `gold/pipeline-workers/03-deduplication`) |
 | `AnalysisException: Column 'X' does not exist` | Hardcoded column name doesn't match actual schema | Extract column names from Gold YAML — never hardcode |
 | `CONSTRAINT_ALREADY_EXISTS` | FK constraint applied twice | Use `IF NOT EXISTS` or check constraints before applying |
 | `TABLE_OR_VIEW_NOT_FOUND` | Table referenced before creation | Ensure table creation jobs run before merge/constraint jobs |
@@ -88,7 +88,7 @@ GROUP BY {pk_column} HAVING COUNT(*) > 1;
 ```
 
 **Solution:**
-1. Add dedup-before-merge pattern from `gold/05-gold-delta-merge-deduplication`
+1. Add dedup-before-merge pattern from `gold/pipeline-workers/03-deduplication`
 2. Verify merge condition uses the correct key columns
 3. Check Silver table for duplicates
 

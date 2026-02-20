@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.4.0] — 2026-02-20
+
+### Documentation Consistency & Skill Count Corrections
+
+Comprehensive audit and consistency pass across all navigation and documentation files. Corrected the skill count from 50 to 55 (Gold domain had 14 skills, not 9), fixed stale directory names in the skill navigator, and added missing routing entries.
+
+### Changed
+
+- **QUICKSTART.md** — Rewrote all 9 stage prompts and 5 validation checkpoint prompts to match the `section_input_prompts_dml.sql` pattern: skill reference → "This will involve the following steps:" → bold-action bullet points explaining each phase. Prompts are now self-documenting (users see what will happen) while also priming the LLM with the correct workflow. Added deployment checkpoints after Step 6 (Semantic Layer) and Step 7 (Observability). Added Databricks CLI to prerequisites.
+- **AGENTS.md** — Updated skill count from 50 to 55 across all references
+- **README.md** — Updated skill count from 50 to 55, fixed Gold domain count from 9 to 14, changed Gold (Impl) workers from "shared" to "5" in the domain table
+- **skill-navigator/SKILL.md** — Fixed `pipeline-workers/grain-validation` → `pipeline-workers/04-grain-validation` and `pipeline-workers/merge-schema-validation` → `pipeline-workers/05-schema-validation` in the directory map; added `design-workers/07-design-validation` to the worker routing table
+- **CHANGELOG.md v1.3.0** — Corrected stale path `00-project-plan-methodology` → `00-project-planning` (skill was never renamed; path was recorded incorrectly)
+- **docs/framework-design/** — Updated skill count from 50 to 55 in `00-index.md`, `01-introduction.md`, `02-architecture-overview.md`, `04-agent-skills-system.md`, `05-skill-domains.md`, and `08-operations-guide.md`
+
+### Skill Count Breakdown (55 total)
+
+| Domain | Count | Details |
+|--------|-------|---------|
+| admin | 4 | create-agent-skill, documentation-organization, self-improvement, skill-freshness-audit |
+| bronze | 2 | 1 orchestrator + 1 worker |
+| common | 8 | 8 shared cross-cutting skills |
+| exploration | 1 | 1 standalone |
+| genai-agents | 9 | 1 orchestrator + 8 workers |
+| gold | 14 | 2 orchestrators + 7 design-workers + 5 pipeline-workers |
+| ml | 1 | 1 orchestrator |
+| monitoring | 5 | 1 orchestrator + 4 workers |
+| planning | 1 | 1 orchestrator |
+| semantic-layer | 6 | 1 orchestrator + 5 workers |
+| silver | 3 | 1 orchestrator + 2 workers |
+| skill-navigator | 1 | Master routing system |
+
+---
+
 ## [1.3.1] — 2026-02-08
 
 ### Development Documentation Consolidation
@@ -37,8 +71,8 @@ New project plan methodology skill, comprehensive tagging standards rewrite with
 
 ### Added
 
-- **Project plan methodology skill** — `data_product_accelerator/skills/planning/00-project-plan-methodology/SKILL.md` (565 lines) with full methodology for multi-phase Databricks project planning
-- **Workshop mode profile** — `data_product_accelerator/skills/planning/00-project-plan-methodology/references/workshop-mode-profile.md` for facilitating live workshop sessions
+- **Project planning methodology enhancements** — `data_product_accelerator/skills/planning/00-project-planning/SKILL.md` updated with full methodology for multi-phase Databricks project planning
+- **Workshop mode profile** — `data_product_accelerator/skills/planning/00-project-planning/references/workshop-mode-profile.md` for facilitating live workshop sessions
 - **Canonical tagging schema** — `data_product_accelerator/skills/common/naming-tagging-standards/references/canonical-tagging-schema.yaml` (125 lines) defining the authoritative tag taxonomy for org-wide standardization
 - **Rule-to-skill converter script** — `data_product_accelerator/skills/admin/cursor-rule-to-skill/scripts/convert-rule-to-skill.py` restored
 

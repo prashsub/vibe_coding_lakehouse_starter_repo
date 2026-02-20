@@ -2,7 +2,7 @@
 
 ## Overview
 
-The framework's 50 Agent Skills are organized into 12 domain directories. Each domain corresponds to a layer of the Medallion Architecture, a platform capability, or an administrative function. This document provides the complete inventory of every skill in every domain.
+The framework's 55 Agent Skills are organized into 12 domain directories. Each domain corresponds to a layer of the Medallion Architecture, a platform capability, or an administrative function. This document provides the complete inventory of every skill in every domain.
 
 ## Domain Summary
 
@@ -31,13 +31,18 @@ Two orchestrators (Design and Implementation) share 7 worker skills.
 |-------|------|-------------|
 | `00-gold-layer-design` | Orchestrator | Schema CSV → ERDs, YAML schemas, documentation (stage 1) |
 | `01-gold-layer-setup` | Orchestrator | YAML → tables, MERGE scripts, FK constraints (stage 4) |
-| `02-yaml-driven-gold-setup` | Worker | Dynamic Gold table creation from YAML at runtime |
-| `03-gold-layer-documentation` | Worker | Naming conventions, column descriptions, dual-purpose comments |
-| `04-gold-layer-merge-patterns` | Worker | Silver-to-Gold MERGE operations, SCD Type 1/2, column mapping |
-| `05-gold-delta-merge-deduplication` | Worker | Dedup-before-merge to prevent duplicate key errors |
-| `06-fact-table-grain-validation` | Worker | Transaction vs aggregated vs snapshot grain inference |
-| `07-gold-layer-schema-validation` | Worker | DataFrame columns vs target table schema validation |
-| `08-mermaid-erd-patterns` | Worker | Mermaid ERD syntax, master/domain/summary diagrams |
+| `01-grain-definition` | Design Worker | Fact table grain types, PK-grain decision tree |
+| `02-dimension-patterns` | Design Worker | Role-playing, junk, degenerate dimensions, hierarchy flattening |
+| `03-fact-table-patterns` | Design Worker | Measure additivity, factless facts, accumulating snapshots |
+| `04-conformed-dimensions` | Design Worker | Enterprise bus matrix, conformed dims, drill-across |
+| `05-erd-diagrams` | Design Worker | Mermaid ERD syntax, master/domain/summary diagrams |
+| `06-table-documentation` | Design Worker | Naming conventions, column descriptions, dual-purpose comments |
+| `07-design-validation` | Design Worker | YAML↔ERD↔Lineage cross-validation |
+| `01-yaml-table-setup` | Pipeline Worker | Dynamic Gold table creation from YAML at runtime |
+| `02-merge-patterns` | Pipeline Worker | Silver-to-Gold MERGE operations, SCD Type 1/2, column mapping |
+| `03-deduplication` | Pipeline Worker | Dedup-before-merge to prevent duplicate key errors |
+| `04-grain-validation` | Pipeline Worker | Pre-merge grain validation for fact tables |
+| `05-schema-validation` | Pipeline Worker | DataFrame columns vs target table schema validation |
 
 ---
 

@@ -8,6 +8,14 @@
 #   - expected_sql: Working SQL that returns correct result
 #   - expected_asset: MV (Metric View), TVF (Table-Valued Function), or TABLE
 #   - category: aggregation, ranking, time-series, comparison, detail, list, threshold
+#   - source: user, synthetic, or augmented (tracks how the benchmark was obtained)
+#
+# Benchmark Intake Workflow:
+#   1. Always prompt user for benchmark questions FIRST
+#   2. If user provides 10+: validate each, report issues, proceed with valid set
+#   3. If user provides 1-9: validate, augment with synthetic to reach 10-15
+#   4. If user provides none: generate 10-15 synthetic from asset metadata
+#   See references/benchmark-intake-workflow.md for the full intake pipeline.
 #
 # Coverage Guidelines:
 #   - At least 10 questions per domain
@@ -36,6 +44,7 @@ cost:
       WHERE usage_date >= DATE_TRUNC('month', CURRENT_DATE())
     expected_asset: "MV"
     category: "aggregation"
+    source: "user"  # user | synthetic | augmented
 
   - id: "cost_002"
     question: "How much have we spent?"
@@ -44,6 +53,7 @@ cost:
       FROM ${catalog}.${gold_schema}.mv_cost_analytics
     expected_asset: "MV"
     category: "aggregation"
+    source: "augmented"  # synonym variation of cost_001
 
   - id: "cost_003"
     question: "What is our average daily cost?"
@@ -52,6 +62,7 @@ cost:
       FROM ${catalog}.${gold_schema}.mv_cost_analytics
     expected_asset: "MV"
     category: "aggregation"
+    source: "synthetic"  # generated from MV measure metadata
 
   # --- Ranking Queries (TVF) ---
   - id: "cost_010"

@@ -451,6 +451,7 @@ See `references/tvf-patterns.md` (Asset Bundle Deployment section) for job YAML 
 
 - **`assets/templates/tvf-template.sql`** — Starter SQL template for new TVFs with v3.0 comment format
 - **`assets/templates/tvf-requirements-template.md`** — Requirements gathering template (fill in before coding)
+- **`assets/templates/tvf-creation-job-template.yml`** — Standalone Asset Bundle job using `sql_task` for TVF deployment (for combined deployment, use the orchestrator's `semantic-layer-job-template.yml`)
 
 ## Scripts
 

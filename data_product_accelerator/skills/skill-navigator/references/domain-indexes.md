@@ -84,7 +84,7 @@ See: [Gold Layer Index (Stages 1 & 4)](#gold-layer-index-stages-1--4) below for 
 
 ## Gold Layer Index (Stages 1 & 4)
 
-**Skills in domain:** 9 skills (2 orchestrators, 7 workers)
+**Skills in domain:** 14 skills (2 orchestrators, 12 workers)
 
 ### Orchestrators
 
@@ -95,17 +95,27 @@ See: [Gold Layer Index (Stages 1 & 4)](#gold-layer-index-stages-1--4) below for 
 
 **Design-First workflow:** `00-gold-layer-design` (stage 1) → reads `context/*.csv` → creates YAML, ERDs, docs → Bronze (stage 2) → Silver (stage 3) → `01-gold-layer-setup` (stage 4) → creates tables, merge scripts, jobs
 
-### Workers
+### Design Workers (Stage 1 — called by `gold-layer-design`)
 
 | Skill | Path | ~Tokens | Standalone |
 |---|---|---|---|
-| `yaml-driven-gold-setup` | `gold/02-yaml-driven-gold-setup/SKILL.md` | ~1.8K | Yes |
-| `gold-layer-documentation` | `gold/03-gold-layer-documentation/SKILL.md` | ~1.1K | Yes |
-| `gold-layer-merge-patterns` | `gold/04-gold-layer-merge-patterns/SKILL.md` | ~1.3K | Yes |
-| `gold-delta-merge-deduplication` | `gold/05-gold-delta-merge-deduplication/SKILL.md` | ~1.4K | Yes |
-| `fact-table-grain-validation` | `gold/06-fact-table-grain-validation/SKILL.md` | ~1.2K | Yes |
-| `gold-layer-schema-validation` | `gold/07-gold-layer-schema-validation/SKILL.md` | ~1.1K | Yes |
-| `mermaid-erd-patterns` | `gold/08-mermaid-erd-patterns/SKILL.md` | ~1.2K | Yes |
+| `01-grain-definition` | `gold/design-workers/01-grain-definition/SKILL.md` | ~1.2K | Yes |
+| `02-dimension-patterns` | `gold/design-workers/02-dimension-patterns/SKILL.md` | ~1.2K | Yes |
+| `03-fact-table-patterns` | `gold/design-workers/03-fact-table-patterns/SKILL.md` | ~1.2K | Yes |
+| `04-conformed-dimensions` | `gold/design-workers/04-conformed-dimensions/SKILL.md` | ~1.1K | Yes |
+| `05-erd-diagrams` | `gold/design-workers/05-erd-diagrams/SKILL.md` | ~1.2K | Yes |
+| `06-table-documentation` | `gold/design-workers/06-table-documentation/SKILL.md` | ~1.1K | Yes |
+| `07-design-validation` | `gold/design-workers/07-design-validation/SKILL.md` | ~1.1K | Yes |
+
+### Pipeline Workers (Stage 4 — called by `gold-layer-setup`)
+
+| Skill | Path | ~Tokens | Standalone |
+|---|---|---|---|
+| `01-yaml-table-setup` | `gold/pipeline-workers/01-yaml-table-setup/SKILL.md` | ~1.8K | Yes |
+| `02-merge-patterns` | `gold/pipeline-workers/02-merge-patterns/SKILL.md` | ~1.3K | Yes |
+| `03-deduplication` | `gold/pipeline-workers/03-deduplication/SKILL.md` | ~1.4K | Yes |
+| `04-grain-validation` | `gold/pipeline-workers/04-grain-validation/SKILL.md` | ~1.2K | Yes |
+| `05-schema-validation` | `gold/pipeline-workers/05-schema-validation/SKILL.md` | ~1.1K | Yes |
 
 **Key Patterns:**
 1. Always deduplicate before MERGE to prevent duplicate key errors

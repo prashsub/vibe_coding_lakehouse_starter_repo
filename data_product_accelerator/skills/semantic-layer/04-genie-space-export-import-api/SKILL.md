@@ -19,7 +19,7 @@ metadata:
       paths:
         - "databricks-skills/databricks-genie/SKILL.md"
       relationship: "extended"
-      last_synced: "2026-02-09"
+      last_synced: "2026-02-19"
       sync_commit: "97a3637"
 ---
 
@@ -230,6 +230,13 @@ See [Troubleshooting Guide](references/troubleshooting.md) for detailed fix scri
 - **[API Reference](references/api-reference.md)**: Complete API endpoint documentation, request/response schemas, authentication details, Databricks CLI usage
 - **[Workflow Patterns](references/workflow-patterns.md)**: Detailed GenieSpaceExport schema (config, data_sources, instructions, benchmarks), ID generation, serialization patterns, variable substitution, asset inventory-driven generation, complete examples
 - **[Troubleshooting](references/troubleshooting.md)**: Common production errors with Python fix scripts, validation checklists, deployment checklist, error recovery patterns, field-level format requirements
+
+## Assets
+
+- **`assets/templates/genie-deployment-job-template.yml`** — Standalone Asset Bundle job using `notebook_task` for Genie Space deployment (for combined deployment, use the orchestrator's `semantic-layer-job-template.yml`)
+- **`assets/templates/deploy_genie_spaces.py`** — Databricks notebook template for Asset Bundle `notebook_task` deployment. Uses `dbutils.widgets.get()` for parameters. Copy to `src/{project}_semantic/deploy_genie_spaces.py` and customize.
+
+> **CLI vs Notebook:** `scripts/import_genie_space.py` is the CLI tool (uses `argparse`) for local/CI use. `assets/templates/deploy_genie_spaces.py` is the notebook template (uses `dbutils.widgets.get()`) for Asset Bundle `notebook_task` deployment.
 
 ## Scripts
 

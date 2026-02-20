@@ -1,14 +1,21 @@
 """
 Genie Space Optimization Script
 
-Complete optimization loop: load benchmarks → query Genie → evaluate → report.
+Complete optimization loop: discover spaces → load benchmarks → query Genie →
+evaluate → report → deploy bundle + trigger Genie Space job.
 
 Usage:
+    # Discover available Genie Spaces
+    python genie_optimizer.py --discover
+
+    # Run assessment
+    python genie_optimizer.py --space-id <ID> --benchmarks golden-queries.yaml
+
+    # Run assessment + deploy bundle + trigger Genie Space deployment job
+    python genie_optimizer.py --space-id <ID> --benchmarks golden-queries.yaml --deploy-target dev
+
     # From Databricks notebook
     %run ./genie_optimizer
-
-    # Or standalone with SDK configured
-    python genie_optimizer.py --space-id <ID> --benchmarks golden-queries.yaml
 
 Requirements:
     - databricks-sdk
@@ -30,6 +37,24 @@ try:
 except ImportError:
     print("WARNING: databricks-sdk not installed. Install with: pip install databricks-sdk")
     w = None
+
+
+# =============================================================================
+# Space Discovery
+# =============================================================================
+
+def discover_spaces() -> list:
+    """List available Genie Spaces via SDK.
+
+    Returns:
+        List of dicts with space_id and title.
+    """
+    if w is None:
+        print("ERROR: SDK not initialized. Cannot discover spaces.")
+        return []
+
+    spaces = list(w.genie.list_spaces())
+    return [{"id": s.space_id, "title": s.title} for s in spaces]
 
 
 # =============================================================================
@@ -373,20 +398,113 @@ Average: {repeatability['average_repeatability']:.0f}%
 
 
 # =============================================================================
+# Bundle Deployment (Phase B + C)
+# =============================================================================
+
+def deploy_bundle_and_run_genie_job(
+    target: str = "dev",
+    genie_job: str = "genie_spaces_deployment_job",
+) -> dict:
+    """Deploy bundle and trigger Genie Space deployment job.
+
+    Phase B: validate + deploy the bundle.
+    Phase C: run genie_spaces_deployment_job to rebuild Genie Spaces from
+    bundle JSON, overwriting any direct API patches from the optimization loop.
+
+    Args:
+        target: Databricks Asset Bundle target (dev, staging, prod).
+        genie_job: Name of the Genie Space deployment job in the bundle.
+
+    Returns:
+        dict with status, stdout/stderr for each phase.
+    """
+    import subprocess
+
+    # Phase B: Validate
+    print("\n--- Phase B: Bundle Validate + Deploy ---\n")
+    print(f"  Validating bundle (target={target})...")
+    validate = subprocess.run(
+        ["databricks", "bundle", "validate", "-t", target],
+        capture_output=True, text=True,
+    )
+    if validate.returncode != 0:
+        print(f"  VALIDATE FAILED:\n{validate.stderr}")
+        return {"status": "VALIDATE_FAILED", "error": validate.stderr}
+
+    print(f"  Deploying bundle (target={target})...")
+    deploy = subprocess.run(
+        ["databricks", "bundle", "deploy", "-t", target],
+        capture_output=True, text=True,
+    )
+    if deploy.returncode != 0:
+        print(f"  DEPLOY FAILED:\n{deploy.stderr}")
+        return {"status": "DEPLOY_FAILED", "error": deploy.stderr}
+
+    print("  Bundle deployed successfully.")
+
+    # Phase C: Trigger Genie Space deployment job
+    print(f"\n--- Phase C: Trigger {genie_job} ---\n")
+    print(f"  Running {genie_job} (target={target})...")
+    run = subprocess.run(
+        ["databricks", "bundle", "run", "-t", target, genie_job],
+        capture_output=True, text=True,
+    )
+    if run.returncode != 0:
+        print(f"  JOB FAILED:\n{run.stderr}")
+        return {
+            "status": "JOB_FAILED",
+            "deploy_stdout": deploy.stdout,
+            "error": run.stderr,
+        }
+
+    print("  Genie Space deployment job completed successfully.")
+    print("  Genie Space now reflects bundle state (API patches overwritten).")
+
+    return {
+        "status": "SUCCESS",
+        "deploy_stdout": deploy.stdout,
+        "run_stdout": run.stdout,
+        "error": None,
+    }
+
+
+# =============================================================================
 # CLI Entry Point
 # =============================================================================
 
 def main():
     parser = argparse.ArgumentParser(description="Genie Space Optimization")
-    parser.add_argument("--space-id", required=True, help="Genie Space ID")
-    parser.add_argument("--benchmarks", required=True, help="Path to golden queries YAML")
+    parser.add_argument("--space-id", help="Genie Space ID (omit to use --discover)")
+    parser.add_argument("--discover", action="store_true", help="List available Genie Spaces and exit")
+    parser.add_argument("--benchmarks", help="Path to golden queries YAML")
     parser.add_argument("--domain", default="unknown", help="Domain name")
     parser.add_argument("--no-repeatability", action="store_true", help="Skip repeatability tests")
     parser.add_argument("--iterations", type=int, default=3, help="Repeatability iterations")
     parser.add_argument("--sample", type=int, default=5, help="Repeatability sample size")
+    parser.add_argument("--max-iterations", type=int, default=3, help="Max optimization loop iterations")
     parser.add_argument("--output-dir", default="docs/genie_space_optimizer", help="Report output dir")
+    parser.add_argument("--deploy-target", default=None, help="Bundle target for post-optimization deploy (e.g., dev)")
+    parser.add_argument("--genie-job", default="genie_spaces_deployment_job", help="Genie Space deployment job name")
 
     args = parser.parse_args()
+
+    # Step 0: Discover spaces if requested
+    if args.discover:
+        print("Discovering Genie Spaces...\n")
+        spaces = discover_spaces()
+        if not spaces:
+            print("No Genie Spaces found (or SDK not initialized).")
+            return
+        print(f"Found {len(spaces)} Genie Space(s):\n")
+        for s in spaces:
+            print(f"  {s['id']}  {s['title']}")
+        print(f"\nUse --space-id <ID> to optimize a specific space.")
+        return
+
+    if not args.space_id:
+        parser.error("--space-id is required (or use --discover to list spaces)")
+    if not args.benchmarks:
+        parser.error("--benchmarks is required")
 
     # Load benchmarks
     with open(args.benchmarks) as f:
@@ -404,7 +522,7 @@ def main():
         print(f"ERROR: No benchmarks found for domain '{args.domain}'")
         return
 
-    # Run session
+    # Run assessment session
     session = run_optimization_session(
         space_id=args.space_id,
         benchmarks=benchmarks,
@@ -415,6 +533,27 @@ def main():
 
     # Generate report
     generate_report(session, args.domain, args.output_dir)
+
+    # Post-optimization: deploy bundle + trigger Genie Space job (Phase B + C)
+    if args.deploy_target:
+        print("\n" + "=" * 60)
+        print("POST-OPTIMIZATION: Bundle Deploy + Genie Space Job")
+        print("=" * 60)
+
+        result = deploy_bundle_and_run_genie_job(
+            target=args.deploy_target,
+            genie_job=args.genie_job,
+        )
+
+        if result["status"] == "SUCCESS":
+            print("\nBundle deployed and Genie Space deployment job completed.")
+            print("Genie Space now reflects bundle state.")
+            print("\nRun this script again (without --deploy-target) to perform")
+            print("a post-deploy re-assessment and confirm results match.")
+        else:
+            print(f"\nDeploy/job failed with status: {result['status']}")
+            print(f"Error: {result.get('error', 'unknown')}")
+            print("\nSee databricks-autonomous-operations skill for troubleshooting.")
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ context/*.csv
 |-------|-------|
 | **Orchestrator** | `gold/00-gold-layer-design` |
 | **Input** | `context/{ProjectName}_Schema.csv` |
-| **Workers Used** | `gold/08-mermaid-erd-patterns`, `gold/02-yaml-driven-gold-setup`, `gold/03-gold-layer-documentation`, `gold/06-fact-table-grain-validation`, `gold/07-gold-layer-schema-validation`, `gold/04-gold-layer-merge-patterns` |
+| **Workers Used** | `gold/design-workers/01-grain-definition`, `gold/design-workers/02-dimension-patterns`, `gold/design-workers/03-fact-table-patterns`, `gold/design-workers/04-conformed-dimensions`, `gold/design-workers/05-erd-diagrams`, `gold/design-workers/06-table-documentation`, `gold/design-workers/07-design-validation`, `gold/pipeline-workers/01-yaml-table-setup`, `gold/pipeline-workers/02-merge-patterns` |
 | **Duration** | 2-3 hours |
 
 **What it does:**
@@ -101,7 +101,7 @@ Set up the Silver layer using @data_product_accelerator/skills/silver/00-silver-
 |-------|-------|
 | **Orchestrator** | `gold/01-gold-layer-setup` |
 | **Input** | Gold YAML schemas (from stage 1) + Silver tables (from stage 3) |
-| **Workers Used** | `gold/02-yaml-driven-gold-setup`, `gold/04-gold-layer-merge-patterns`, `gold/05-gold-delta-merge-deduplication`, `gold/06-fact-table-grain-validation`, `gold/07-gold-layer-schema-validation`, `gold/03-gold-layer-documentation`, `gold/08-mermaid-erd-patterns` |
+| **Workers Used** | `gold/pipeline-workers/01-yaml-table-setup`, `gold/pipeline-workers/02-merge-patterns`, `gold/pipeline-workers/03-deduplication`, `gold/pipeline-workers/04-grain-validation`, `gold/pipeline-workers/05-schema-validation`, `gold/design-workers/06-table-documentation`, `gold/design-workers/05-erd-diagrams` |
 | **Duration** | 3-4 hours |
 
 **What it does:**

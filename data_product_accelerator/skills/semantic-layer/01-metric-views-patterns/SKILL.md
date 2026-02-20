@@ -13,7 +13,14 @@ metadata:
   standalone: true
   last_verified: "2026-02-07"
   volatility: high
-  upstream_sources: []  # Internal metric view patterns
+  upstream_sources:
+    - name: "ai-dev-kit"
+      repo: "databricks-solutions/ai-dev-kit"
+      paths:
+        - "databricks-skills/databricks-metric-views/SKILL.md"
+      relationship: "extended"
+      last_synced: "2026-02-19"
+      sync_commit: "latest"
 ---
 
 # Metric Views Patterns for Genie & AI/BI
@@ -48,6 +55,20 @@ Use this skill when:
 - [ ] Gold layer tables exist in Unity Catalog (use `gold-layer-design` + `gold-layer-setup` skills)
 - [ ] Gold layer YAML schemas exist in `gold_layer_design/yaml/` (for validation script)
 - [ ] Serverless SQL warehouse available (for metric view creation and querying)
+- [ ] Databricks Runtime 17.2+ (required for YAML version 1.1)
+
+## MCP Tools (from upstream databricks-metric-views)
+
+The `manage_metric_views` MCP tool supports all metric view operations:
+
+| Action | Description |
+|--------|-------------|
+| `create` | Create a metric view with dimensions and measures |
+| `alter` | Update a metric view's YAML definition |
+| `describe` | Get the full definition and metadata |
+| `query` | Query measures grouped by dimensions |
+| `drop` | Drop a metric view |
+| `grant` | Grant SELECT privileges to users/groups |
 
 ## Quick Start (2 hours)
 
@@ -463,6 +484,29 @@ databricks bundle run metric_views_job -t dev
 
 - **`assets/templates/metric-view-template.yaml`** — Starter template for new metric views
 - **`assets/templates/metric-views-job-template.yml`** — Asset Bundle job template for deployment
+
+## Materialization (Experimental)
+
+Metric views support optional materialization for pre-computed aggregations:
+
+```yaml
+materialization:
+  schedule: every 6 hours
+  mode: relaxed
+```
+
+Requires serverless compute enabled. Currently experimental — use for high-query-volume metric views where pre-computation reduces latency.
+
+## Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| `SELECT *` not supported | Must explicitly list dimensions and use `MEASURE()` for measures |
+| "Cannot resolve column" | Dimension/measure names with spaces need backtick quoting |
+| JOIN at query time fails | Joins must be in the YAML definition, not in the SELECT query |
+| `MEASURE()` required | All measure references must be wrapped: `MEASURE(\`name\`)` |
+| DBR version error | Requires Runtime 17.2+ for YAML v1.1, or 16.4+ for v0.1 |
+| Materialization not working | Requires serverless compute enabled; currently experimental |
 
 ## External References
 

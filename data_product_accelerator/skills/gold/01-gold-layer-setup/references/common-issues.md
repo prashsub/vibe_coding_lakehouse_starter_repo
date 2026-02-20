@@ -65,7 +65,7 @@ print(f"  Deduplicated: {original_count} → {dedupe_count} records")
 
 **Critical:** The deduplication key MUST match the MERGE condition key.
 
-**Skill Reference:** `gold-delta-merge-deduplication`
+**Skill Reference:** `pipeline-workers/03-deduplication`
 
 ---
 
@@ -91,7 +91,7 @@ updates_df = (
 validate_merge_schema(spark, updates_df, catalog, gold_schema, table_name)
 ```
 
-**Skill Reference:** `gold-layer-schema-validation`
+**Skill Reference:** `pipeline-workers/05-schema-validation`
 
 ---
 
@@ -118,7 +118,7 @@ total_count = df.count()
 assert distinct_count == total_count, "Grain validation failed!"
 ```
 
-**Skill Reference:** `fact-table-grain-validation`
+**Skill Reference:** `pipeline-workers/04-grain-validation`
 
 ---
 
@@ -149,7 +149,7 @@ df.agg(count("*"))                 # ✅ Uses imported function
 - `min` → use `min_value`
 - `max` → use `max_value`
 
-**Skill Reference:** `gold-layer-merge-patterns`
+**Skill Reference:** `pipeline-workers/02-merge-patterns`
 
 ---
 
@@ -196,6 +196,73 @@ tasks:
 
 ---
 
+---
+
+## Issue 9: Accumulating Snapshot Milestone Not Updating
+
+**Error:** Milestone column stays NULL after MERGE even though source has the value.
+
+**Root Cause:** MERGE UPDATE SET is overwriting the milestone unconditionally instead of only updating when target is NULL and source is non-NULL.
+
+**Fix:**
+```sql
+-- ✅ CORRECT: Only progress milestones forward
+WHEN MATCHED THEN UPDATE SET
+  ship_date = CASE 
+    WHEN target.ship_date IS NULL AND source.ship_date IS NOT NULL 
+    THEN source.ship_date 
+    ELSE target.ship_date 
+  END
+```
+
+```python
+# ✅ CORRECT: Conditional milestone update
+update_set[milestone] = (
+    f"CASE WHEN target.{milestone} IS NULL AND source.{milestone} IS NOT NULL "
+    f"THEN source.{milestone} ELSE target.{milestone} END"
+)
+```
+
+**Prevention:** Use the `accumulating-snapshot-merge.py` template which handles milestone progression correctly.
+
+---
+
+## Issue 10: Factless Fact Empty Aggregation
+
+**Error:** Factless fact merge produces 0 rows or incorrect COUNT because aggregation was applied to a factless fact.
+
+**Root Cause:** Standard fact merge pattern applies `.groupBy().agg()` but factless facts have no measures to aggregate — row existence IS the fact.
+
+**Fix:** Use INSERT-only MERGE with no aggregation:
+```python
+# ✅ CORRECT: Factless facts use INSERT-only MERGE
+(
+    delta_gold.alias("target")
+    .merge(source_df.alias("source"), merge_condition)
+    .whenNotMatchedInsert(values=insert_values)
+    .execute()
+)
+```
+
+**Prevention:** Check YAML `grain_type: factless` before applying standard aggregation. Use `factless-fact-merge.py` template.
+
+---
+
+## Issue 11: Silver Column Name Mismatch
+
+**Error:** `UNRESOLVED_COLUMN` when reading Silver table — column referenced in YAML lineage does not exist in Silver.
+
+**Root Cause:** Gold design assumed Silver column names based on Bronze naming conventions, but Silver DLT renamed the column.
+
+**Fix:**
+1. Run Phase 0 Silver contract validation (see `references/design-to-pipeline-bridge.md`)
+2. Update YAML lineage `silver_column` to match actual Silver table column name
+3. Regenerate `COLUMN_LINEAGE.csv` to reflect the correction
+
+**Prevention:** Always run Phase 0 before writing merge code. Use `introspect_silver_schema()` to discover actual Silver column names.
+
+---
+
 ## Quick Diagnosis Flowchart
 
 ```
@@ -203,8 +270,11 @@ Error during Gold layer?
 ├── FileNotFoundError → Check databricks.yml sync
 ├── ModuleNotFoundError → Check job environment dependencies
 ├── DELTA_MULTIPLE_SOURCE_ROW → Add deduplication before merge
-├── UNRESOLVED_COLUMN → Check column mapping (Silver → Gold)
+├── UNRESOLVED_COLUMN (Gold table) → Check column mapping (Silver → Gold)
+├── UNRESOLVED_COLUMN (Silver read) → Run Phase 0; fix YAML lineage silver_column
 ├── Grain validation failed → Check groupBy matches PK
+├── Milestone not updating → Use conditional UPDATE SET (accumulating snapshot)
+├── Factless fact empty → Remove aggregation, use INSERT-only MERGE
 ├── 'int' object not callable → Rename shadowed variable
 ├── FK constraint failed → Check depends_on in job YAML
 └── Schema mismatch → Cast DATE_TRUNC to DATE

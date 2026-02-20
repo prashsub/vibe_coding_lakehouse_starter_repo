@@ -1,6 +1,6 @@
 ---
 name: silver-layer-setup
-description: End-to-end orchestrator for creating Silver layer DLT pipelines with Delta table-based data quality rules, quarantine patterns, and monitoring views. Orchestrates mandatory dependencies on common skills (databricks-table-properties, databricks-python-imports, databricks-asset-bundles, schema-management-patterns, unity-catalog-constraints, databricks-expert-agent) and Silver-domain skills (dlt-expectations-patterns, dqx-patterns). Use when creating a Silver layer from scratch, setting up Bronze-to-Silver pipelines, or implementing Silver DLT with streaming ingestion and runtime-updateable DQ rules.
+description: End-to-end orchestrator for creating Silver layer pipelines using Spark Declarative Pipelines (SDP, formerly DLT) with Delta table-based data quality rules, quarantine patterns, and monitoring views. Orchestrates mandatory dependencies on common skills (databricks-table-properties, databricks-python-imports, databricks-asset-bundles, schema-management-patterns, unity-catalog-constraints, databricks-expert-agent) and Silver-domain skills (dlt-expectations-patterns, dqx-patterns). Use when creating a Silver layer from scratch, setting up Bronze-to-Silver pipelines, or implementing Silver SDP/DLT with streaming ingestion and runtime-updateable DQ rules.
 metadata:
   author: prashanth subrahmanyam
   version: "2.0"
@@ -29,23 +29,25 @@ metadata:
     - name: "ai-dev-kit"
       repo: "databricks-solutions/ai-dev-kit"
       paths:
-        - "databricks-skills/spark-declarative-pipelines/SKILL.md"
+        - "databricks-skills/databricks-spark-declarative-pipelines/SKILL.md"
       relationship: "extended"
-      last_synced: "2026-02-09"
+      last_synced: "2026-02-19"
       sync_commit: "97a3637"
 ---
 
 # Silver Layer Setup - Orchestrator Skill
 
-End-to-end workflow for creating production-grade Silver layer DLT pipelines with Delta table-based data quality rules, quarantine patterns, streaming ingestion, and monitoring views.
+End-to-end workflow for creating production-grade Silver layer pipelines using Spark Declarative Pipelines (SDP, formerly Delta Live Tables/DLT) with Delta table-based data quality rules, quarantine patterns, streaming ingestion, and monitoring views.
+
+> **Naming:** Databricks rebranded DLT to **Spark Declarative Pipelines (SDP)** / **Lakeflow Declarative Pipelines (LDP)**. The modern Python API is `from pyspark import pipelines as dp`. However, our DQ rules framework still uses `import dlt` (legacy API) because `@dlt.expect_all_or_drop()` decorators are not yet available in the `dp` API. When Databricks migrates expectations to `dp`, both this skill and `dlt-expectations-patterns` will be updated. New projects may use `databricks pipelines init` to scaffold an SDP Asset Bundle project.
 
 **Time Estimate:** 3-4 hours for initial setup, 1 hour per additional table
 
 **What You'll Create:**
 1. `dq_rules` Delta table - Centralized rules repository in Unity Catalog
 2. `dq_rules_loader.py` - Pure Python module to load rules at runtime
-3. `silver_*.py` - DLT notebooks with expectations loaded from Delta table
-4. `silver_dlt_pipeline.yml` - Serverless DLT pipeline configuration
+3. `silver_*.py` - SDP/DLT notebooks with expectations loaded from Delta table
+4. `silver_pipeline.yml` - Serverless SDP pipeline configuration
 5. DQ monitoring views - Per-table metrics and referential integrity checks
 
 ---
@@ -190,6 +192,25 @@ src/{project}_silver/
 **Critical Files:**
 - `dq_rules_loader.py` must be **pure Python** (NO `# Databricks notebook source` header)
 - Run `silver_dq_setup_job` BEFORE deploying DLT pipeline
+
+---
+
+## Working Memory Management
+
+This orchestrator spans 7 phases. To maintain coherence without context pollution:
+
+**After each phase, persist a brief summary note** capturing:
+- **Phase 1 output:** Schema names (catalog, silver_schema), table list, DQ rules strategy decision
+- **Phase 2 output:** DQ rules table path, count of rules defined, rule severity distribution
+- **Phase 3 output:** `dq_rules_loader.py` path, confirmation it is pure Python (no notebook header)
+- **Phase 4 output:** DLT notebook paths per table, expectation counts, SCD handling decisions
+- **Phase 5 output:** Monitoring view paths, metric definitions
+- **Phase 6 output:** Pipeline YAML path, job YAML path, `databricks.yml` sync status
+- **Phase 7 output:** Anomaly detection config, schema monitoring status
+
+**What to keep in working memory:** Only the current phase's context, the table list from Phase 1, and the previous phase's summary note. Discard intermediate outputs (full DDL strings, DQ rule DataFrames, raw DLT notebook contents) — they are on disk and reproducible.
+
+**Critical file note:** `dq_rules_loader.py` must be **pure Python** (NO `# Databricks notebook source` header). Carry this constraint through all phases.
 
 ---
 
@@ -504,6 +525,32 @@ Before considering the Silver layer complete, verify each item and confirm its s
 
 **Next stage:** After completing the Silver layer, proceed to:
 - **`gold/01-gold-layer-setup`** — Implement Gold layer tables, merge scripts, and FK constraints from the YAML designs created in stage 1
+
+---
+
+## Post-Completion: Skill Usage Summary (MANDATORY)
+
+**After completing all phases of this orchestrator, output a Skill Usage Summary reflecting what you ACTUALLY did — not a pre-written summary.**
+
+### What to Include
+
+1. Every skill `SKILL.md` or `references/` file you read (via the Read tool), in the order you read them
+2. Which phase you were in when you read it
+3. Whether it was a **Worker**, **Common**, **Cross-domain**, or **Reference** file
+4. A one-line description of what you specifically used it for in this session
+
+### Format
+
+| # | Phase | Skill / Reference Read | Type | What It Was Used For |
+|---|-------|----------------------|------|---------------------|
+| 1 | Phase N | `path/to/SKILL.md` | Worker / Common / Cross-domain / Reference | One-line description |
+
+### Summary Footer
+
+End with:
+- **Totals:** X worker skills, Y common skills, Z reference files read across N phases
+- **Skipped:** List any skills from the dependency table above that you did NOT need to read, and why (e.g., "phase not applicable", "user skipped", "no issues encountered")
+- **Unplanned:** List any skills you read that were NOT listed in the dependency table (e.g., for troubleshooting, edge cases, or user-requested detours)
 
 ---
 

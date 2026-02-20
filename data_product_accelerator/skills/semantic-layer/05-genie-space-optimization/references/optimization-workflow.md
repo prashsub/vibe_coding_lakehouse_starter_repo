@@ -6,6 +6,27 @@ Extended step-by-step workflow with decision trees, failure analysis, and advanc
 
 ## Pre-Optimization Setup
 
+### 0. Discover Genie Space ID
+
+If the Space ID is not known, discover it via the SDK or CLI:
+
+```python
+from databricks.sdk import WorkspaceClient
+
+w = WorkspaceClient()
+spaces = list(w.genie.list_spaces())
+for s in spaces:
+    print(f"  {s.space_id}  {s.title}")
+```
+
+Or via CLI:
+
+```bash
+databricks api get /api/2.0/genie/spaces --output json | jq '.spaces[] | {id: .space_id, title: .title}'
+```
+
+If multiple spaces exist, ask the user which one to optimize. See `genie-space-export-import-api` for full API details.
+
 ### 1. Identify Target Space
 
 Use the domain-to-Space-ID mapping for your project:
@@ -250,14 +271,97 @@ for q in failing_questions:
 print(f"\nImproved: {improved}/{len(failing_questions)}")
 ```
 
-### When to Stop
+### When to Stop Iterating
 
 | Condition | Action |
 |-----------|--------|
-| Accuracy ≥ 95% AND Repeatability ≥ 90% | Success - document results |
-| Accuracy ≥ 90% after 3 iterations | Acceptable - document remaining issues |
-| No improvement after 2 iterations | Root cause may be LLM limitation - document |
+| Accuracy >= 95% AND Repeatability >= 90% | Proceed to Phase 5 (deploy bundle) |
+| Accuracy >= 90% after 3 iterations | Acceptable — proceed to Phase 5, document remaining issues |
+| No improvement after 2 iterations | Root cause may be LLM limitation — proceed to Phase 5, document |
 | Repeatability < 50% on specific question | May need TVF redesign or question rewording |
+| Bundle deploy succeeds AND post-deploy assessment matches | Optimization complete |
+| Bundle deploy fails after 3 attempts | Escalate to user with deploy errors |
+
+---
+
+## Phase 5: Deploy Bundle and Trigger Genie Space Job
+
+After the optimization loop converges (or reaches max 3 iterations), finalize by deploying the bundle and rebuilding the Genie Space from bundle state. This ensures the bundle is the **single source of truth**.
+
+### Three-Phase Finalization
+
+```
+Phase B: databricks bundle validate -t <target>
+         databricks bundle deploy -t <target>
+
+Phase C: databricks bundle run -t <target> genie_spaces_deployment_job
+         (poll job for completion: 30s → 60s → 120s backoff)
+```
+
+### Why the Deployment Job Matters
+
+During the optimization loop (Phase A), changes were applied directly via API/SQL for fast iteration. The `genie_spaces_deployment_job` reads `src/genie/*_genie_export.json` from the bundle and recreates the Genie Space via the Create/Update Space API. This **overwrites any direct API patches** from Phase A, ensuring the live Genie Space matches the bundle — not leftover API patches.
+
+Any change made via direct API that was NOT also written to the bundle's JSON file will be lost. This is intentional.
+
+### Deploy with Self-Healing
+
+Follow `databricks-autonomous-operations` Section 5:
+
+```bash
+# Step 1: Validate
+databricks bundle validate -t <target>
+
+# Step 2: Deploy (if validate passes)
+databricks bundle deploy -t <target>
+
+# Step 3: Run Genie deployment job
+databricks bundle run -t <target> genie_spaces_deployment_job
+
+# Step 4: Poll for job completion
+databricks jobs get-run <RUN_ID> --output json | jq -r '.state.life_cycle_state'
+```
+
+If any step fails:
+1. Diagnose the error (check CLI output, match against `databricks-autonomous-operations` error-solution matrix)
+2. Fix the source file in the repository
+3. Redeploy (max 3 attempts before escalation to user)
+
+---
+
+## Phase 6: Post-Deploy Re-Assessment
+
+After the Genie Space deployment job completes, verify the bundle-deployed state matches the API-tested state.
+
+### Re-Assessment Protocol
+
+```python
+print("Phase 6: Post-deploy re-assessment...")
+print("Waiting 30s for Genie Space to stabilize...")
+time.sleep(30)
+
+post_deploy_results = []
+for q in benchmark_questions:
+    result = run_genie_query(SPACE_ID, q["question"])
+    evaluation = evaluate_accuracy(result, q)
+    post_deploy_results.append(evaluation)
+    status = "PASS" if evaluation["correct_asset"] else "FAIL"
+    print(f"  {status}: {q['question'][:55]}")
+    time.sleep(12)
+
+post_accuracy = sum(1 for r in post_deploy_results if r["correct_asset"]) / len(post_deploy_results) * 100
+print(f"\nPost-deploy accuracy: {post_accuracy:.0f}%")
+```
+
+### Handle Discrepancies
+
+| Situation | Cause | Fix |
+|-----------|-------|-----|
+| Post-deploy accuracy matches in-loop accuracy | Bundle files are correct | Optimization complete |
+| Post-deploy accuracy is LOWER | A change was API-patched but NOT written to bundle files | Find the missing change, update bundle file, redeploy (Phase B+C) |
+| Post-deploy accuracy is HIGHER | Unlikely but possible — bundle job may have resolved conflicts | Accept and document |
+
+If a discrepancy is found, the most common cause is a Lever 6 (Genie Instructions) change that was applied via `PATCH` API but the `src/genie/*_genie_export.json` file was not updated. Fix the JSON file and repeat Phase 5.
 
 ---
 

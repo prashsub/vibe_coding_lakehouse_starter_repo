@@ -13,11 +13,12 @@
 #   1. Fill in the template below during Planning (stage 5)
 #   2. Save as: plans/manifests/semantic-layer-manifest.yaml
 #   3. The semantic-layer orchestrator reads this at Phase 0
-#   4. If this file doesn't exist, the orchestrator falls back to self-discovery
+#   4. This manifest is REQUIRED — the orchestrator will STOP if it is missing
 # =============================================================================
 
-version: 1
+version: 2
 manifest_type: semantic-layer
+planning_mode: acceleration  # or "workshop" — downstream orchestrators must not expand beyond listed artifacts
 generated_from:
   gold_yaml_dir: gold_layer_design/yaml/
   plan_addendums:

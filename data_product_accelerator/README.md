@@ -1,6 +1,6 @@
 # Data Product Accelerator
 
-> 50 Agent Skills that teach your AI coding assistant to build fully governed Databricks data products — from a schema CSV to production AI agents.
+> 55 Agent Skills that teach your AI coding assistant to build fully governed Databricks data products — from a schema CSV to production AI agents.
 >
 > Built on the open [SKILL.md](https://agentskills.io) format — works with Cursor, Claude Code, Windsurf, Copilot, and Codex.
 
@@ -12,7 +12,7 @@ A comprehensive **skills-based framework** for building production-grade Databri
 
 | Component | Description | Count |
 |-----------|-------------|-------|
-| **Agent Skills** | Structured knowledge packages for AI-assisted Databricks development | 50 skills across 12 domains |
+| **Agent Skills** | Structured knowledge packages for AI-assisted Databricks development | 55 skills across 12 domains |
 | **AGENTS.md** | Universal entry point with routing table and common skills index | 1 file |
 | **Context Files** | Customer schema CSV (the starting input for the pipeline) | 1 file |
 
@@ -53,7 +53,7 @@ Please design the Gold layer using @data_product_accelerator/skills/gold/00-gold
 
 ## How It Works
 
-The framework uses a **skills-first architecture**: a single `AGENTS.md` entry point routes the AI assistant to 50 Agent Skills organized by domain. Each skill contains production-tested patterns, reference documentation, executable scripts, and starter templates. Skills use the open [SKILL.md format](https://agentskills.io) — portable across any AI coding assistant.
+The framework uses a **skills-first architecture**: a single `AGENTS.md` entry point routes the AI assistant to 55 Agent Skills organized by domain. Each skill contains production-tested patterns, reference documentation, executable scripts, and starter templates. Skills use the open [SKILL.md format](https://agentskills.io) — portable across any AI coding assistant.
 
 ### Design-First Pipeline (9 Stages)
 
@@ -90,13 +90,13 @@ repo-root/
 │   ├── QUICKSTART.md                   #   One-prompt-per-stage guide
 │   ├── README.md                       #   This file
 │   │
-│   ├── skills/                         #   50 Agent Skills (open SKILL.md format)
+│   ├── skills/                         #   55 Agent Skills (open SKILL.md format)
 │   │   ├── admin/                      #     Skill creation, auditing, docs (4)
 │   │   ├── bronze/                     #     Bronze layer + Faker data (2)
 │   │   ├── common/                     #     Cross-cutting shared skills (8)
 │   │   ├── exploration/                #     Ad-hoc notebooks (1)
 │   │   ├── genai-agents/               #     GenAI agent patterns (9)
-│   │   ├── gold/                       #     Gold design + implementation (9)
+│   │   ├── gold/                       #     Gold design + implementation (14)
 │   │   ├── ml/                         #     MLflow pipelines (1)
 │   │   ├── monitoring/                 #     Monitors, dashboards, alerts (5)
 │   │   ├── planning/                   #     Project planning (1)
@@ -130,7 +130,7 @@ Skills follow an **orchestrator/worker** pattern: orchestrators (prefixed `00-`)
 | **Gold (Design)** | `00-gold-layer-design` | 7 | ERDs, YAML schemas, dimensional modeling |
 | **Bronze** | `00-bronze-layer-setup` | 1 | Table DDLs, Faker data, source copy |
 | **Silver** | `00-silver-layer-setup` | 2 | DLT expectations, DQX diagnostics |
-| **Gold (Impl)** | `01-gold-layer-setup` | shared | MERGE scripts, FK constraints |
+| **Gold (Impl)** | `01-gold-layer-setup` | 5 | MERGE scripts, FK constraints |
 | **Planning** | `00-project-planning` | 0 | Phase plans, YAML manifest contracts |
 | **Semantic** | `00-semantic-layer-setup` | 5 | Metric Views, TVFs, Genie Spaces |
 | **Monitoring** | `00-observability-setup` | 4 | Monitors, dashboards, SQL alerts |
