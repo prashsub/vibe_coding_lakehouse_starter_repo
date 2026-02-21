@@ -9,7 +9,7 @@ description: >
   genie-space-export-import-api) and common skills
   (databricks-asset-bundles, databricks-expert-agent, databricks-python-imports).
   Use when building the semantic layer end-to-end, creating Metric Views and TVFs for Genie,
-  or setting up Genie Spaces. For Genie optimization, use genie-space-optimization directly.
+  or setting up Genie Spaces. For Genie optimization, use genie-optimization-orchestrator directly.
 license: Apache-2.0
 metadata:
   author: prashanth subrahmanyam
@@ -85,7 +85,7 @@ End-to-end workflow for building the Databricks semantic layer — Metric Views,
 | Only need TVFs? | Read `semantic-layer/02-databricks-table-valued-functions/SKILL.md` directly |
 | Only need Genie Space setup? | Read `semantic-layer/03-genie-space-patterns/SKILL.md` directly |
 | Need Genie API automation? | Read `semantic-layer/04-genie-space-export-import-api/SKILL.md` directly |
-| Need to optimize Genie accuracy? | Read `semantic-layer/05-genie-space-optimization/SKILL.md` directly |
+| Need to optimize Genie accuracy? | Read `semantic-layer/05-genie-optimization-orchestrator/SKILL.md` directly |
 
 ---
 
@@ -109,7 +109,7 @@ End-to-end workflow for building the Databricks semantic layer — Metric Views,
 | `semantic-layer/02-databricks-table-valued-functions` | **MUST read** at Phase 2 | STRING params, Genie compatibility, null safety |
 | `semantic-layer/03-genie-space-patterns` | **MUST read** at Phase 3 | 7-section deliverable, agent instructions, benchmark Qs |
 | `semantic-layer/04-genie-space-export-import-api` | **MUST read** at Phase 3 (JSON config) and Phase 6 (API deployment) | REST API JSON schema, programmatic deployment |
-| `semantic-layer/05-genie-space-optimization` | **External** — run separately after deployment | Benchmark testing, 6 control levers, optimization loop |
+| `semantic-layer/05-genie-optimization-orchestrator` | **External** — run separately after deployment | Benchmark testing, 6 control levers, optimization loop |
 
 ---
 
@@ -126,20 +126,43 @@ End-to-end workflow for building the Databricks semantic layer — Metric Views,
 
 ---
 
-## Working Memory Management
+## Working Memory Management & Progressive Disclosure
 
-This orchestrator spans 7 phases (0–6). To maintain coherence without context pollution:
+This orchestrator spans 7 phases (0–6). To maintain coherence without context pollution, follow these progressive disclosure principles from [AgentSkills.io](https://agentskills.io/specification) and [Anthropic's context engineering guidance](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents):
+
+### Just-in-Time Skill Loading (CRITICAL)
+
+**DO NOT read all worker skills at the start.** Read each skill ONLY when you enter its phase:
+- **Phase 1:** Read `01-metric-views-patterns/SKILL.md` → work → persist notes → **discard skill from working memory**
+- **Phase 2:** Read `02-databricks-table-valued-functions/SKILL.md` → work → persist notes → **discard**
+- **Phase 3:** Read `03-genie-space-patterns/SKILL.md` + `04-genie-space-export-import-api/SKILL.md` → work → persist notes → **discard**
+- **Phase 4-6:** Read `common/databricks-asset-bundles/SKILL.md` → work → done
+
+Each worker skill ends with a "**Notes to Carry Forward**" section that tells you exactly what to persist for downstream phases. Use those notes — not the full skill content — as your handoff.
+
+### Context Handoff Protocol
+
+At each phase boundary, your working memory should contain ONLY:
+1. **`gold_inventory` dict** (from Phase 0 — persists through all phases)
+2. **Previous phase's "Notes to Carry Forward"** (structured summary of outputs)
+3. **Current phase's worker skill** (read just-in-time)
+
+**Discard** after each phase: full YAML bodies, SQL source code, complete JSON configs — they are on disk and retrievable via file paths in the notes.
+
+### Phase Summary Notes
 
 **After each phase, persist a brief summary note** capturing:
-- **Phase 0 output:** Manifest loaded, planning_mode (acceleration/workshop), artifact counts (domains, MVs, TVFs, Genie Spaces), **`gold_inventory` dict with verified table/column names**
-- **Phase 1 output:** Metric View names and YAML paths, grain per view, measure counts
-- **Phase 2 output:** TVF names and SQL file paths, parameter signatures, domain assignments
-- **Phase 3 output:** Genie Space names, JSON config paths, asset counts per space, benchmark question counts
-- **Phase 4 output:** Job YAML path (`resources/semantic/semantic_layer_job.yml`), `databricks.yml` changes
-- **Phase 5 output:** Deployment status, job run ID, task statuses (MV/TVF/Genie)
-- **Phase 6 output:** API deployment status (if used), cross-environment promotion results
+- **Phase 0 output:** Manifest loaded, planning_mode, artifact counts, **`gold_inventory` dict**
+- **Phase 1 output:** Use "Metric Views Notes to Carry Forward" from `01-metric-views-patterns` (MV names, paths, grain, measure counts, composability notes)
+- **Phase 2 output:** Use "TVF Notes to Carry Forward" from `02-databricks-table-valued-functions` (TVF names, paths, parameter signatures, domain assignments)
+- **Phase 3 output:** Use "Genie Space Notes to Carry Forward" from `03-genie-space-patterns` (space names, JSON paths, asset counts, benchmark counts)
+- **Phase 4 output:** Job YAML path, `databricks.yml` changes
+- **Phase 5 output:** Deployment status, job run ID, task statuses
+- **Phase 6 output:** API deployment status, space IDs for idempotent re-deployment
 
-**What to keep in working memory:** Only the current phase's worker skill, the `gold_inventory` dict (from Phase 0), and the previous phase's summary note. Discard intermediate outputs (full SQL bodies, complete YAML contents) — they are on disk and reproducible.
+### Why This Matters
+
+Context is a finite resource with diminishing marginal returns. Each worker skill is 400-600 lines. Loading all 4 workers simultaneously (~2000 lines) would consume your attention budget on content irrelevant to the current phase. Progressive loading keeps each phase focused on the smallest set of high-signal tokens needed for that phase's work.
 
 ---
 
@@ -243,34 +266,37 @@ gold_inventory = {
 
 ### Phase 1: Metric Views (1-2 hours)
 
-**MANDATORY: Read each skill below using the Read tool BEFORE writing any code for this phase:**
+**Context setup:** Read the skills below just-in-time. After this phase, persist the "Metric Views Notes to Carry Forward" and discard the full skill content.
 
 | # | Skill Path | What It Provides |
 |---|------------|------------------|
 | 1 | `data_product_accelerator/skills/common/databricks-expert-agent/SKILL.md` | Extract-don't-generate principle |
 | 2 | `data_product_accelerator/skills/common/naming-tagging-standards/SKILL.md` | CM-02 dual-purpose COMMENT format for Metric Views |
 | 3 | `data_product_accelerator/skills/common/databricks-python-imports/SKILL.md` | sys.path setup for creation script in Asset Bundle |
-| 4 | `data_product_accelerator/skills/semantic-layer/01-metric-views-patterns/SKILL.md` | YAML syntax, validation, joins |
+| 4 | `data_product_accelerator/skills/semantic-layer/01-metric-views-patterns/SKILL.md` | YAML syntax, validation, joins, composability, format types |
 
 **Input:** For each domain in `manifest['domains']`, iterate over `domain['metric_views']`. Each entry defines `name`, `source_table`, `dimensions`, `measures`, and `business_questions`. Do NOT create Metric Views not listed in the manifest.
 
 **Steps:**
 1. Read `manifest['domains'][domain]['metric_views']` — this is your complete list of Metric Views per domain
 2. For each entry, use the manifest's `source_table`, `dimensions`, and `measures` — cross-reference every column against `gold_inventory` (Phase 0)
-3. **Validation gate:** For each YAML, verify every `dimensions[].column` and `measures[].column` exists in `gold_inventory[source_table]["columns"]`. Fail with explicit error listing unresolved references.
+3. **Validation gate:** For each YAML, apply ALL three validations:
+   - **Column existence:** Verify every `dimensions[].column` and `measures[].column` exists in `gold_inventory[source_table]["columns"]`. Fail with explicit error listing unresolved references.
+   - **Transitive join detection:** Inspect all join `on` clauses. If ANY join's `on` references a join alias instead of `source`, flag as transitive join error. Fix: restructure as nested joins (snowflake schema, DBR 17.1+) or use denormalized columns.
+   - **Format type validation:** Verify all measure `format.type` values are one of: `byte`, `currency`, `date`, `date_time`, `number`, `percentage`. Common mistakes: `percent` (use `percentage`), `decimal` (use `number`).
 4. Create `create_metric_views.py` with sys.path setup from `databricks-python-imports`
 5. Test each Metric View with sample queries
 6. Track completion: check off each manifest entry as its Metric View is confirmed created
 
 ### Phase 2: Table-Valued Functions (1-2 hours)
 
-**MANDATORY: Read each skill below using the Read tool BEFORE writing any code for this phase:**
+**Context setup:** Discard Phase 1 skill content. Keep only `gold_inventory` + Phase 1's "Metric Views Notes to Carry Forward". Read the skills below just-in-time.
 
 | # | Skill Path | What It Provides |
 |---|------------|------------------|
 | 1 | `data_product_accelerator/skills/common/databricks-expert-agent/SKILL.md` | Extract TVF names/columns from `gold_inventory` |
 | 2 | `data_product_accelerator/skills/common/naming-tagging-standards/SKILL.md` | CM-04 v3.0 structured TVF COMMENTs |
-| 3 | `data_product_accelerator/skills/semantic-layer/02-databricks-table-valued-functions/SKILL.md` | STRING params, null safety, Genie compat |
+| 3 | `data_product_accelerator/skills/semantic-layer/02-databricks-table-valued-functions/SKILL.md` | STRING params, null safety, Genie compat, notebook_task deployment |
 
 **Input:** For each domain in `manifest['domains']`, iterate over `domain['tvfs']`. Each entry defines `name`, `description`, `parameters` (all STRING), `gold_tables_used`, and `business_questions`. Do NOT create TVFs not listed in the manifest.
 
@@ -285,16 +311,18 @@ gold_inventory = {
 
 ### Phase 3: Genie Space Setup (1 hour)
 
-**MANDATORY: Read each skill below using the Read tool BEFORE writing any code for this phase:**
+**Context setup:** Discard Phase 2 skill content. Keep `gold_inventory` + Phase 1 notes (MV names/paths) + Phase 2's "TVF Notes to Carry Forward" (TVF names/paths). Read the skills below just-in-time. Phase 3 uses TWO worker skills — Genie Space Patterns (for design) and Export/Import API (for JSON config generation).
 
 | # | Skill Path | What It Provides |
 |---|------------|------------------|
 | 1 | `data_product_accelerator/skills/common/databricks-expert-agent/SKILL.md` | Extract asset references from `gold_inventory` |
 | 2 | `data_product_accelerator/skills/common/naming-tagging-standards/SKILL.md` | Table/column COMMENTs required by Genie |
-| 3 | `data_product_accelerator/skills/semantic-layer/03-genie-space-patterns/SKILL.md` | 7-section deliverable, agent instructions |
-| 4 | `data_product_accelerator/skills/semantic-layer/04-genie-space-export-import-api/SKILL.md` | JSON schema for API-compatible config file |
+| 3 | `data_product_accelerator/skills/semantic-layer/03-genie-space-patterns/SKILL.md` | 7-section deliverable, agent instructions, benchmark questions |
+| 4 | `data_product_accelerator/skills/semantic-layer/04-genie-space-export-import-api/SKILL.md` | JSON schema, array sorting, ID generation, idempotent deployment |
 
 **Input:** For each domain in `manifest['domains']`, iterate over `domain['genie_spaces']`. Each entry defines `name`, `warehouse`, `assets` (metric_views, tvfs, tables), `benchmark_questions_count`, and `benchmark_questions`. Do NOT create Genie Spaces not listed in the manifest.
+
+**Context from prior phases:** Use Phase 1's MV notes to assign metric views to spaces. Use Phase 2's TVF notes to assign TVFs. Use `gold_inventory` for Gold table assignments.
 
 **Steps:**
 1. Verify all Gold tables have column comments (Genie depends on these)
@@ -308,7 +336,7 @@ gold_inventory = {
 
 ### Phase 4: Asset Bundle Configuration (30 min)
 
-**MANDATORY: Read this skill using the Read tool BEFORE creating job YAML files:**
+**Context setup:** Discard Phase 3 skill content. Keep `gold_inventory` + Phase 3's "Genie Space Notes to Carry Forward" (space names, JSON paths, space IDs). Read just-in-time:
 
 | # | Skill Path | What It Provides |
 |---|------------|------------------|
@@ -324,16 +352,34 @@ gold_inventory = {
        - "src/semantic/genie_configs/**/*.json"
    ```
 3. Add resource reference to `databricks.yml`: `resources/semantic/semantic_layer_job.yml`
+4. **Ensure `warehouse_id` variable in `databricks.yml`:**
+   ```yaml
+   variables:
+     warehouse_id:
+       description: "SQL Warehouse ID for notebook_task execution"
+       default: ""
+   ```
+   The warehouse ID is required for notebook tasks that execute SQL. Retrieve it from the Databricks workspace SQL Warehouse settings page.
+5. **Add per-Genie-Space ID variables** for update-or-create pattern:
+   ```yaml
+   variables:
+     genie_space_id_<space_name>:
+       description: "Existing Genie Space ID for <space_name> (empty for initial creation)"
+       default: ""
+   ```
+   These variables enable idempotent deployments: if a space ID is provided, the deploy script PATCHes the existing space instead of creating a duplicate. After first deployment, record the space IDs and set them in variables.
 
 **Combined Job Structure (3 tasks with `depends_on` chains):**
 - `create_metric_views` — `notebook_task`, no deps
-- `create_table_valued_functions` — `sql_task`, depends_on: `create_metric_views`
+- `create_table_valued_functions` — `notebook_task`, depends_on: `create_metric_views`
 - `deploy_genie_spaces` — `notebook_task`, depends_on: `create_metric_views` + `create_table_valued_functions`
 
+**⚠️ All 3 tasks use `notebook_task`.** `sql_task.parameters` are SQL bind parameters (`:param`) — they cannot substitute identifiers in DDL like `${catalog}.${gold_schema}` in CREATE FUNCTION statements.
+
 **Critical Rules (from `databricks-asset-bundles`):**
-- `notebook_task` for Metric Views and Genie, `sql_task` for TVFs
-- `base_parameters` dict for `notebook_task`, `parameters` dict for `sql_task`
-- `warehouse_id` required for `sql_task`
+- `notebook_task` for Metric Views, TVFs, and Genie (all 3 tasks)
+- `base_parameters` dict for all `notebook_task` entries (variable substitution for catalog, schema, etc.)
+- `warehouse_id` required for tasks that execute SQL (pass via `base_parameters` to notebooks)
 - `environment_version: "4"` with PyYAML + requests dependencies
 - YAML/JSON sync is CRITICAL — without it, creation scripts cannot find configs
 
@@ -343,7 +389,7 @@ See `assets/templates/semantic-layer-job-template.yml` for the starter template.
 
 ### Phase 5: Deploy & Run (30 min)
 
-**MANDATORY: Read this skill using the Read tool BEFORE deploying:**
+**Context setup:** Keep Phase 4's job YAML path + all accumulated notes. Read just-in-time:
 
 | # | Skill Path | What It Provides |
 |---|------------|------------------|
@@ -365,11 +411,11 @@ Databricks enforces the `depends_on` chain: Metric Views are created first, then
 
 ### Phase 6: API Deployment (Recommended, 30 min)
 
-**Recommended for automated cross-environment promotion (dev → staging → prod):**
+**Context setup:** If Phase 3's "Genie API Notes to Carry Forward" are still available, use them. Otherwise re-read just-in-time:
 
 | # | Skill Path | What It Provides |
 |---|------------|------------------|
-| 1 | `data_product_accelerator/skills/semantic-layer/04-genie-space-export-import-api/SKILL.md` | REST API, JSON schema, CI/CD |
+| 1 | `data_product_accelerator/skills/semantic-layer/04-genie-space-export-import-api/SKILL.md` | REST API, JSON schema, idempotent deployment, array sorting |
 
 **Steps:**
 1. Export Genie Space config from dev as JSON (or use the Phase 3 JSON)
@@ -380,7 +426,7 @@ Databricks enforces the `depends_on` chain: Metric Views are created first, then
 
 ### Genie Space Optimization (Separate Step)
 
-> Genie Space optimization is performed **separately after deployment**. Use `semantic-layer/05-genie-space-optimization/SKILL.md` directly after the semantic layer deployment checkpoint has passed. This ensures the Genie Space is live and queryable before running benchmark tests.
+> Genie Space optimization is performed **separately after deployment**. Use `semantic-layer/05-genie-optimization-orchestrator/SKILL.md` directly after the semantic layer deployment checkpoint has passed. This ensures the Genie Space is live and queryable before running benchmark tests.
 
 ---
 
@@ -441,7 +487,7 @@ Databricks enforces the `depends_on` chain: Metric Views are created first, then
 | `databricks-table-valued-functions` | **Mandatory** — TVF patterns | `semantic-layer/02-databricks-table-valued-functions/SKILL.md` |
 | `genie-space-patterns` | **Mandatory** — Genie Space setup | `semantic-layer/03-genie-space-patterns/SKILL.md` |
 | `genie-space-export-import-api` | **Mandatory** — JSON config + API deployment | `semantic-layer/04-genie-space-export-import-api/SKILL.md` |
-| `genie-space-optimization` | **External** — Run separately after deployment | `semantic-layer/05-genie-space-optimization/SKILL.md` |
+| `genie-optimization-orchestrator` | **External** — Run separately after deployment | `semantic-layer/05-genie-optimization-orchestrator/SKILL.md` |
 | `databricks-expert-agent` | **Mandatory** — Extraction principle | `common/databricks-expert-agent/SKILL.md` |
 | `databricks-asset-bundles` | **Mandatory** — Deployment | `common/databricks-asset-bundles/SKILL.md` |
 | `databricks-python-imports` | **Mandatory** — Python patterns | `common/databricks-python-imports/SKILL.md` |
@@ -471,6 +517,13 @@ End with:
 - **Totals:** X worker skills, Y common skills, Z reference files read across N phases
 - **Skipped:** List any skills from the dependency table above that you did NOT need to read, and why (e.g., "phase not applicable", "user skipped", "no issues encountered")
 - **Unplanned:** List any skills you read that were NOT listed in the dependency table (e.g., for troubleshooting, edge cases, or user-requested detours)
+
+---
+
+## Version History
+
+- **v1.2.0** (Feb 2026) — Progressive disclosure protocol: just-in-time skill loading, context handoff between phases, explicit working memory management per AgentSkills.io and Anthropic context engineering best practices
+- **v1.1.0** (Feb 2026) — TVF task type corrected to notebook_task; warehouse_id and Genie Space ID variables added; validation gates enhanced with transitive join detection and format type validation
 
 ---
 

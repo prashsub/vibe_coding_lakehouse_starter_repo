@@ -130,7 +130,7 @@ GROUP BY {pk_column} HAVING COUNT(*) > 1;
 **Solution:**
 1. Verify table and column COMMENTs are descriptive and LLM-friendly
 2. Check Genie Space agent instructions (should be under 20 lines)
-3. Run the optimization loop from `semantic-layer/05-genie-space-optimization`
+3. Run the optimization loop from `semantic-layer/05-genie-optimization-orchestrator`
 
 ---
 

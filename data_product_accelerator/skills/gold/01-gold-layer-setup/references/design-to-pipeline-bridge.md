@@ -83,7 +83,7 @@ def validate_silver_contract(spark, catalog, silver_schema, meta):
     
     for gold_col, lineage in meta.get("lineage", {}).items():
         s_table = lineage.get("silver_table", "N/A")
-        s_col = lineage.get("silver_column", "N/A")
+        s_col = lineage.get("silver_column") or lineage.get("source_column", "N/A")
         transformation = lineage.get("transformation", "")
         
         # Skip generated/derived columns (no Silver source)
@@ -143,24 +143,28 @@ from pyspark.sql.functions import (
     coalesce, date_trunc
 )
 
+def _src_col(lin):
+    """Resolve source column name from lineage (silver_column or source_column)."""
+    return lin.get("silver_column") or lin.get("source_column", "")
+
 TRANSFORMATION_BUILDERS = {
     "DIRECT_COPY": lambda lin, gold_name, col_type:
-        col(lin["silver_column"]).alias(gold_name),
+        col(_src_col(lin)).alias(gold_name),
     
     "RENAME": lambda lin, gold_name, col_type:
-        col(lin["silver_column"]).alias(gold_name),
+        col(_src_col(lin)).alias(gold_name),
     
     "CAST": lambda lin, gold_name, col_type:
-        col(lin["silver_column"]).cast(col_type).alias(gold_name),
+        col(_src_col(lin)).cast(col_type).alias(gold_name),
     
     "GENERATED": lambda lin, gold_name, col_type:
         current_timestamp().alias(gold_name),
     
     "COALESCE": lambda lin, gold_name, col_type:
-        coalesce(col(lin["silver_column"]), lit(0)).alias(gold_name),
+        coalesce(col(_src_col(lin)), lit(0)).alias(gold_name),
     
     "DATE_TRUNC": lambda lin, gold_name, col_type:
-        date_trunc("day", col(lin["silver_column"])).cast("date").alias(gold_name),
+        date_trunc("day", col(_src_col(lin))).cast("date").alias(gold_name),
 }
 
 
@@ -274,7 +278,7 @@ def validate_type_compatibility(meta, silver_info):
     
     for gold_col, lineage in meta.get("lineage", {}).items():
         s_table = lineage.get("silver_table", "N/A")
-        s_col = lineage.get("silver_column", "N/A")
+        s_col = lineage.get("silver_column") or lineage.get("source_column", "N/A")
         
         if s_table == "N/A" or s_col == "N/A":
             continue
@@ -338,7 +342,7 @@ def generate_resolution_report(meta, column_defs, silver_info):
         gold_name = col_def["name"]
         lineage = col_def.get("lineage", {})
         s_table = lineage.get("silver_table", "N/A")
-        s_col = lineage.get("silver_column", "N/A")
+        s_col = lineage.get("silver_column") or lineage.get("source_column", "N/A")
         transformation = lineage.get("transformation", "N/A")
         
         if s_table == "N/A" or s_col == "N/A":
@@ -372,7 +376,9 @@ def generate_resolution_report(meta, column_defs, silver_info):
 
 ---
 
-## Phase 0 Workflow: Silver Contract Validation
+## Phase 0 Workflow: Upstream Contract Validation
+
+**Executable script:** `scripts/validate_upstream_contracts.py` — standalone Databricks notebook implementing this workflow. Use the script for execution; this section documents the full logic for reference.
 
 This workflow runs BEFORE Phase 1 (table creation) in the Gold Layer Setup orchestrator.
 

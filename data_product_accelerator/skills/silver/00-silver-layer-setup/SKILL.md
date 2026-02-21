@@ -78,7 +78,7 @@ End-to-end workflow for creating production-grade Silver layer pipelines using S
 | Rules loader | `common/databricks-python-imports` | Pure Python module patterns (NO notebook header) |
 | DLT notebooks | `common/databricks-table-properties` | Silver-layer TBLPROPERTIES (CDF, row tracking, auto-optimize) |
 | Pipeline config | `common/databricks-asset-bundles` | DLT pipeline YAML, job YAML, serverless config |
-| Troubleshooting | `common/databricks-autonomous-operations` | Deploy → Poll → Diagnose → Fix → Redeploy loop when jobs/pipelines fail |
+| Deployment (if user-triggered) | `common/databricks-autonomous-operations` | Deploy → Poll → Diagnose → Fix → Redeploy loop when jobs/pipelines fail |
 
 **NEVER do these without FIRST reading the corresponding skill:**
 - NEVER write `table_properties={...}` without reading `databricks-table-properties`
@@ -197,7 +197,7 @@ src/{project}_silver/
 
 ## Working Memory Management
 
-This orchestrator spans 7 phases. To maintain coherence without context pollution:
+This orchestrator spans 6 phases (deployment and Phase 7 are user-triggered). To maintain coherence without context pollution:
 
 **After each phase, persist a brief summary note** capturing:
 - **Phase 1 output:** Schema names (catalog, silver_schema), table list, DQ rules strategy decision
@@ -206,7 +206,7 @@ This orchestrator spans 7 phases. To maintain coherence without context pollutio
 - **Phase 4 output:** DLT notebook paths per table, expectation counts, SCD handling decisions
 - **Phase 5 output:** Monitoring view paths, metric definitions
 - **Phase 6 output:** Pipeline YAML path, job YAML path, `databricks.yml` sync status
-- **Phase 7 output:** Anomaly detection config, schema monitoring status
+- **Phase 7 output (if user-triggered):** Anomaly detection config, schema monitoring status
 
 **What to keep in working memory:** Only the current phase's context, the table list from Phase 1, and the previous phase's summary note. Discard intermediate outputs (full DDL strings, DQ rule DataFrames, raw DLT notebook contents) — they are on disk and reproducible.
 
@@ -245,8 +245,7 @@ This orchestrator spans 7 phases. To maintain coherence without context pollutio
 3. Apply TBLPROPERTIES from `databricks-table-properties`
 4. Apply PK constraint: `CONSTRAINT pk_dq_rules PRIMARY KEY (table_name, rule_name) NOT ENFORCED`
 5. Populate rules using the requirements from Phase 1
-6. Deploy and run: `databricks bundle run silver_dq_setup_job -t dev`
-7. Verify: `SELECT * FROM {catalog}.{silver_schema}.dq_rules`
+6. Verify file created: `setup_dq_rules_table.py` is ready for deployment (deployment is user-triggered)
 
 ---
 
@@ -315,7 +314,17 @@ This orchestrator spans 7 phases. To maintain coherence without context pollutio
 
 **See:** `references/pipeline-configuration.md` for Silver-specific examples
 
-**CRITICAL Deployment Order:**
+---
+
+### 🛑 STOP — Artifact Creation Complete
+
+**Phases 1–6 are complete.** All files (DQ rules table script, rules loader, DLT notebooks, monitoring views, pipeline/job YAMLs) have been created. **Do NOT proceed to deployment or Phase 7 unless the user explicitly requests it.**
+
+Report what was created and ask the user if they want to deploy and run.
+
+---
+
+**Deployment Order (USER-TRIGGERED ONLY — do not auto-execute):**
 ```bash
 # 1. Deploy everything
 databricks bundle deploy -t dev
@@ -332,7 +341,9 @@ databricks pipelines start-update --pipeline-name "[dev] Silver Layer Pipeline"
 
 ---
 
-### Phase 7: Enable Anomaly Detection on Silver Schema (5 min)
+### Phase 7: Enable Anomaly Detection on Silver Schema (5 min) — USER-TRIGGERED ONLY
+
+> **This phase is executed ONLY when the user explicitly requests it.** Do not auto-execute.
 
 **Pre-Condition - MUST read this skill first:**
 1. Read `monitoring/04-anomaly-detection/SKILL.md` — Schema-level freshness/completeness monitoring
@@ -475,7 +486,7 @@ Before considering the Silver layer complete, verify each item and confirm its s
 - [ ] `delta.enableRowTracking` = `true` on every Silver table (required for downstream MV incremental refresh)
 - [ ] Quarantine tables created for high-volume fact tables
 - [ ] DQ monitoring views created (including data freshness)
-- [ ] Deployment order correct: DQ setup job runs BEFORE DLT pipeline
+- [ ] (User-triggered) Deployment order documented: DQ setup job runs BEFORE DLT pipeline
 - [ ] `import dlt` used (NOT `from pyspark import pipelines as dp`)
 - [ ] `serverless: true` in pipeline YAML (NEVER classic clusters)
 - [ ] `photon: true` in pipeline YAML
@@ -484,8 +495,8 @@ Before considering the Silver layer complete, verify each item and confirm its s
 - [ ] Deduplication applied where Bronze may have duplicate records
 - [ ] `processed_timestamp` added to every Silver table
 - [ ] Event timestamps preserved from Bronze (not replaced by processing time)
-- [ ] Anomaly detection enabled on Silver schema (Phase 7)
-- [ ] Metadata tables (e.g., `dq_rules`) excluded from anomaly detection
+- [ ] (User-triggered) Anomaly detection enabled on Silver schema (Phase 7)
+- [ ] (User-triggered) Metadata tables (e.g., `dq_rules`) excluded from anomaly detection
 
 ---
 

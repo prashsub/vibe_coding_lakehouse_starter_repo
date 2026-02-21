@@ -68,7 +68,7 @@ def load_column_mappings_from_yaml(meta: dict) -> dict:
     """
     mappings = {}
     for gold_col, lineage in meta.get("lineage", {}).items():
-        source_col = lineage.get("source_column", "")
+        source_col = lineage.get("silver_column") or lineage.get("source_column", "")
         if source_col and source_col != gold_col:
             mappings[gold_col] = source_col
     return mappings

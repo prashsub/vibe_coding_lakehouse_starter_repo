@@ -89,7 +89,7 @@ This skill orchestrates the complete Gold layer implementation process, transfor
 | `schema-management-patterns` | Phase 1 | CREATE SCHEMA IF NOT EXISTS |
 | `databricks-python-imports` | Phase 2 | Pure Python modules, avoid sys.path issues |
 | `databricks-expert-agent` | All | Schema extraction over generation principle |
-| `databricks-autonomous-operations` | Phase 4+ | Deploy → Poll → Diagnose → Fix → Redeploy loop when jobs fail |
+| `databricks-autonomous-operations` | Phase 4+ (if user-triggered) | Deploy → Poll → Diagnose → Fix → Redeploy loop when jobs fail |
 
 ### 🔴 Non-Negotiable Defaults (Applied to EVERY Gold Table and Job)
 
@@ -127,20 +127,20 @@ See [Merge Script Patterns](references/merge-script-patterns.md) for the complet
 **Setup Scripts:**
 - [ ] `src/{project}_gold/setup_tables.py` — Generic YAML-driven table creation
 - [ ] `src/{project}_gold/add_fk_constraints.py` — FK constraint application
-- [ ] Verify: `databricks bundle run gold_setup_job -t dev`
+- [ ] (User-triggered) Verify: `databricks bundle run gold_setup_job -t dev`
 
 **Merge Scripts:**
 - [ ] `src/{project}_gold/merge_gold_tables.py` — Silver-to-Gold MERGE
 - [ ] Dimension merges (SCD Type 1 or 2) with deduplication
 - [ ] Fact merges with aggregation and grain validation
-- [ ] Verify: `databricks bundle run gold_merge_job -t dev`
+- [ ] (User-triggered) Verify: `databricks bundle run gold_merge_job -t dev`
 
 **Asset Bundle Jobs:**
 - [ ] `resources/gold/gold_setup_job.yml` — Setup + FK constraints (two tasks)
 - [ ] `resources/gold/gold_merge_job.yml` — Periodic merge with schedule
 - [ ] YAML files synced in `databricks.yml`
 
-### Fast Track
+### Deployment Commands (run when ready — NOT auto-executed by this skill)
 
 ```bash
 # 1. Deploy setup job (creates tables from YAML)
@@ -165,7 +165,7 @@ This orchestrator spans 5+ phases. To maintain coherence without context polluti
 - **Phase 1 output:** Table inventory dict, YAML base path, count of tables created, any FK failures
 - **Phase 2 output:** Merge function inventory (which tables use SCD1 vs SCD2, aggregated vs transaction), any column mapping issues
 - **Phase 3 output:** Job YAML file paths, databricks.yml sync status
-- **Phase 4 output:** Deployment results, validation failures to investigate
+- **Phase 4 output (if user-triggered):** Deployment results, validation failures to investigate
 
 **What to keep in working memory:** Only the current phase's worker skill, the table inventory dict, and the previous phase's summary note. Discard intermediate tool outputs (DDL strings, full DataFrames, raw validation SQL results) — they are reproducible from YAML.
 
@@ -175,27 +175,24 @@ This orchestrator spans 5+ phases. To maintain coherence without context polluti
 
 ## Step-by-Step Workflow
 
-### Phase 0: Silver Contract Validation (15 min)
+### Phase 0: Upstream Contract Validation (15 min)
 
-**MANDATORY: Read before proceeding to any implementation phase:**
+**MANDATORY: Execute before proceeding to any implementation phase.**
 
-1. `data_product_accelerator/skills/gold/01-gold-layer-setup/references/design-to-pipeline-bridge.md` — Silver schema introspection, contract validation, lineage-driven column builder, type compatibility, resolution reports
+**Reference:** `data_product_accelerator/skills/gold/01-gold-layer-setup/references/design-to-pipeline-bridge.md` — Full validation logic documentation
 
-**Purpose:** Validate that all Silver column names and types referenced in YAML lineage actually exist in the deployed Silver tables. This catches column name mismatches BEFORE any code is written, eliminating the most common source of iteration.
+**Purpose:** Validate that all source column names and types referenced in YAML lineage actually exist in the deployed upstream tables. This catches column name mismatches BEFORE any code is written, eliminating the most common source of iteration.
 
 **Steps:**
-1. Load ALL Gold YAML metadata using `build_inventory()` from `references/merge-script-patterns.md`
-2. Introspect ALL Silver table schemas using `introspect_silver_schema()` from the bridge reference
-3. Validate Silver contracts for every Gold table using `validate_silver_contract()`
-4. Validate type compatibility using `validate_type_compatibility()`
-5. Generate column resolution reports for ALL tables using `generate_resolution_report()`
+1. Execute `scripts/validate_upstream_contracts.py` with the project's `catalog` and `source_schema` widget parameters (or run `run_phase0_validation()` inline from the script)
+2. Capture and paste the full printed output — it produces a PASS/FAIL report per Gold table
+3. If ANY table shows FAILED, fix YAML lineage `silver_column` values in `gold_layer_design/yaml/` to match actual source columns, then re-run the script
 
-**Gate:** ALL contracts must PASS before proceeding to Phase 1. If any fail:
-1. Fix YAML lineage `silver_column` values in `gold_layer_design/yaml/` to match actual Silver names
-2. OR update Silver DLT pipeline to expose the expected columns
-3. Re-run Phase 0 validation until all contracts pass
+**Gate:** ALL contracts must show PASSED in the script output before proceeding to Phase 1.
 
-**Output:** Column resolution reports for all Gold tables, confirming Silver→Gold mappings are correct.
+**Backup guardrail:** The merge template (`scripts/merge_gold_tables_template.py`) also embeds `validate_upstream_contracts()` as a fail-fast check in `main()`. Even if Phase 0 is skipped, the merge job will abort with a clear error before any MERGE executes.
+
+**Output:** Column resolution reports for all Gold tables, confirming source→Gold mappings are correct.
 
 ---
 
@@ -271,16 +268,16 @@ These patterns extend Phase 1 based on design decisions from `design-workers/02-
 2. Load `COLUMN_LINEAGE.csv` using `load_column_mappings()` for Silver→Gold renames
 3. For each table: extract `table_name`, `pk_columns`, `business_key`, `scd_type`, `grain`, `columns`, `lineage`
 4. Build a table inventory dict keyed by table name — this drives ALL merge functions
-5. Verify Silver source tables exist: `spark.table(silver_table)` before coding any merge logic
+5. Verify source tables exist: `spark.table(source_table)` before coding any merge logic
 6. Use `build_column_expressions()` from `references/design-to-pipeline-bridge.md` for DIRECT_COPY/RENAME/CAST/GENERATED columns instead of writing `.withColumn()` calls manually — this automates ~70% of column mappings deterministically from YAML lineage
 
 **Step 1 — Create merge functions using extracted metadata:**
-1. Create `merge_gold_tables.py` with separate functions per table
+1. Create `merge_gold_tables.py` with separate functions per table (start from `scripts/merge_gold_tables_template.py` which includes embedded `validate_upstream_contracts()` and `validate_merge_schema()` guardrails)
 2. Implement dimension merges (SCD Type 1 or Type 2 — read `scd_type` from YAML)
 3. Implement fact merges (aggregation to match grain — read `grain` from YAML)
 4. Add deduplication before every MERGE (MANDATORY — use `business_key` from YAML)
-5. Add explicit column mapping (use `lineage.source_column` from YAML or `COLUMN_LINEAGE.csv`)
-6. Add schema validation before merge (compare DataFrame columns against YAML `columns[]`)
+5. Add explicit column mapping (use `lineage.silver_column` from YAML or `COLUMN_LINEAGE.csv`)
+6. Add schema validation before merge (`validate_merge_schema()` is already in the template — keep it)
 7. Add grain validation for fact tables (use `pk_columns` from YAML)
 8. Merge dimensions FIRST, then facts (dependency order from YAML `foreign_keys`)
 
@@ -363,7 +360,17 @@ See `assets/templates/gold-setup-job-template.yml` and `assets/templates/gold-me
 
 ---
 
-### Phase 4: Deployment and Testing (30 min)
+### 🛑 STOP — Artifact Creation Complete
+
+**Phases 0–3 are complete.** All scripts (`setup_tables.py`, `add_fk_constraints.py`, `merge_gold_tables.py`) and job YAMLs have been created. **Do NOT proceed to Phase 4 unless the user explicitly requests deployment.**
+
+Report what was created and ask the user if they want to deploy, run, and validate.
+
+---
+
+### Phase 4: Deployment and Testing (30 min) — USER-TRIGGERED ONLY
+
+> **This phase is executed ONLY when the user explicitly requests deployment.** Do not auto-execute.
 
 **Activities:**
 1. Deploy: `databricks bundle deploy -t dev`
@@ -378,7 +385,9 @@ See `references/validation-queries.md` for complete validation SQL.
 
 ---
 
-### Phase 4b: Enable Anomaly Detection on Gold Schema (5 min)
+### Phase 4b: Enable Anomaly Detection on Gold Schema (5 min) — USER-TRIGGERED ONLY
+
+> **This phase is executed ONLY when the user explicitly requests it.** Do not auto-execute.
 
 **MANDATORY: Read this skill using the Read tool:**
 
@@ -390,7 +399,9 @@ See `references/validation-queries.md` for complete validation SQL.
 
 ---
 
-### Phase 5: Post-Implementation Validation (30 min)
+### Phase 5: Post-Implementation Validation (30 min) — USER-TRIGGERED ONLY
+
+> **This phase is executed ONLY when the user explicitly requests validation.** Do not auto-execute.
 
 **MANDATORY: Read this skill using the Read tool to cross-reference created tables against ERD:**
 
@@ -452,9 +463,9 @@ See [Implementation Checklist](references/implementation-checklist.md) for compl
 | Phase 1b: Advanced setup | 15 min | Role-playing views, unknown member rows (if applicable) |
 | Phase 2: Merge scripts | 2 hours | Dimension + fact merges with validation |
 | Phase 3: Asset Bundle | 30 min | Job YAML files + databricks.yml sync |
-| Phase 4: Deployment | 30 min | Deploy, run, verify |
-| Phase 5: Validation | 30 min | Schema, grain, FK, SCD2 checks |
-| **Total** | **3.5-4.5 hours** | For 3-5 tables |
+| Phase 4: Deployment (user-triggered) | 30 min | Deploy, run, verify |
+| Phase 5: Validation (user-triggered) | 30 min | Schema, grain, FK, SCD2 checks |
+| **Total** | **2.5-3.5 hours** (artifact creation) + **1 hour** (if user-triggered deployment/validation) | For 3-5 tables |
 
 ## Next Steps After Implementation
 

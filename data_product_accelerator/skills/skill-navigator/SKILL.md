@@ -6,7 +6,7 @@ metadata:
   version: "3.0"
   domain: meta
   role: navigator
-  last_verified: "2026-02-07"
+  last_verified: "2026-02-21"
   volatility: low
   upstream_sources: []  # Internal routing
 ---
@@ -35,7 +35,7 @@ This framework uses a **Design-First** pipeline: design the target Gold model fr
 | 4 | Gold Implementation | `gold/01-gold-layer-setup` | Tables, merge scripts, FK constraints |
 | 5 | Planning | `planning/00-project-planning` | Plan semantic, observability, ML, GenAI phases |
 | 6 | Semantic Layer | `semantic-layer/00-semantic-layer-setup` | Metric Views, TVFs, Genie Spaces |
-| 6b | Genie Optimization | `semantic-layer/05-genie-space-optimization` (standalone) | Benchmark testing, accuracy/repeatability tuning |
+| 6b | Genie Optimization | `semantic-layer/05-genie-optimization-orchestrator` (standalone) | Benchmark testing, accuracy/repeatability tuning |
 | 7 | Observability | `monitoring/00-observability-setup` | Monitors, dashboards, alerts |
 | 8 | ML | `ml/00-ml-pipeline-setup` | ML experiments, models, inference |
 | 9 | GenAI Agents | `genai-agents/00-genai-agents-setup` | Agents, evaluation, deployment |
@@ -183,6 +183,7 @@ domain-folder/
 | "implement Gold", "Gold tables", "Gold merge scripts" | Gold | `gold/01-gold-layer-setup` (stage 4) |
 | "project plan", "architecture planning", "planning_mode: workshop" | Planning | `planning/00-project-planning` (stage 5) |
 | "semantic layer", "build Genie", "Metric Views and TVFs" | Semantic | `semantic-layer/00-semantic-layer-setup` (stage 6) |
+| "optimize Genie", "Genie accuracy", "benchmark", "judge evaluation", "control lever" | Semantic | `semantic-layer/05-genie-optimization-orchestrator` (stage 6b, standalone orchestrator) |
 | "observability", "monitoring setup", "dashboards and alerts" | Monitoring | `monitoring/00-observability-setup` (stage 7) |
 | "MLflow", "ML pipeline", "model training" | ML | `ml/00-ml-pipeline-setup` (stage 8) |
 | "GenAI agent", "build agent", "ResponsesAgent" | GenAI | `genai-agents/00-genai-agents-setup` (stage 9) |
@@ -209,7 +210,7 @@ domain-folder/
 | "TVF", "function" | Semantic | `semantic-layer/02-databricks-table-valued-functions` |
 | "Genie Space", "Genie setup" | Semantic | `semantic-layer/03-genie-space-patterns` |
 | "Genie API", "export/import" | Semantic | `semantic-layer/04-genie-space-export-import-api` |
-| "optimize Genie", "Genie accuracy", "benchmark" | Semantic | `semantic-layer/05-genie-space-optimization` (standalone — stage 6b, not called by orchestrator) |
+| "optimize Genie", "Genie accuracy", "benchmark" | Semantic | `semantic-layer/05-genie-optimization-orchestrator` (standalone — stage 6b, not called by orchestrator) |
 | "monitoring", "Lakehouse" | Monitor | `monitoring/01-lakehouse-monitoring-comprehensive` |
 | "dashboard", "AI/BI" | Monitor | `monitoring/02-databricks-aibi-dashboards` |
 | "alert", "SQL alert" | Monitor | `monitoring/03-sql-alerting-patterns` |
@@ -355,7 +356,8 @@ skills/
 │   ├── 02-databricks-table-valued-functions/SKILL.md            # Worker: TVFs for Genie [stage 6]
 │   ├── 03-genie-space-patterns/SKILL.md                         # Worker: Genie Space setup [stage 6]
 │   ├── 04-genie-space-export-import-api/SKILL.md                # Worker: Genie API [stage 6]
-│   └── 05-genie-space-optimization/SKILL.md                     # Standalone: Genie optimization [stage 6b — run after semantic deployment checkpoint]
+│   ├── 05-genie-optimization-orchestrator/SKILL.md              # Standalone: Genie optimization orchestrator [stage 6b]
+│   └── genie-optimization-workers/                              # 4 worker skills loaded on demand by orchestrator
 │
 ├── monitoring/
 │   ├── 00-observability-setup/SKILL.md                         # ORCHESTRATOR: Observability [stage 7]

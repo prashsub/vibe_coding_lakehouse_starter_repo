@@ -104,7 +104,7 @@ tasks:
 3. `generate_facts.py` - Faker-based fact data generator (with FK integrity)
 4. `bronze_setup_job.yml` + `bronze_data_generator_job.yml` - Asset Bundle jobs
 
-**Fast Track:**
+**Deployment Commands (run when ready — NOT auto-executed by this skill):**
 ```bash
 # 1. Deploy setup job
 databricks bundle deploy -t dev
@@ -125,7 +125,7 @@ databricks bundle run bronze_data_generator_job -t dev
 
 ## Working Memory Management
 
-This orchestrator spans 6 steps. To maintain coherence without context pollution:
+This orchestrator spans 5 steps (Step 6 is user-triggered). To maintain coherence without context pollution:
 
 **After each step, persist a brief summary note** capturing:
 - **Step 1 output:** Requirements filled — project name, entity list, data source approach, record counts
@@ -133,7 +133,7 @@ This orchestrator spans 6 steps. To maintain coherence without context pollution
 - **Step 3 output:** DDL file path (`setup_tables.py`), count of tables defined, any schema deviations
 - **Step 4 output:** Generator file paths, Faker config decisions (providers, FK integrity strategy)
 - **Step 5 output:** Job YAML file paths, `databricks.yml` sync status
-- **Step 6 output:** Deployment results, row counts per table, CDF verification status
+- **Step 6 output (if user-triggered):** Deployment results, row counts per table, CDF verification status
 
 **What to keep in working memory:** Only the current step's context, the table list from Step 1, and the previous step's summary note. Discard intermediate outputs (full DDL strings, generated DataFrames) — they are on disk and reproducible.
 
@@ -231,7 +231,19 @@ Use the job templates:
 - [assets/templates/bronze-setup-job.yaml](assets/templates/bronze-setup-job.yaml) - Table creation job
 - [assets/templates/bronze-data-generator-job.yaml](assets/templates/bronze-data-generator-job.yaml) - Data generation job
 
-### Step 6: Deploy & Validate (15 min)
+---
+
+### 🛑 STOP — Artifact Creation Complete
+
+**Steps 1–5 are complete.** All files (DDLs, generators, job YAMLs) have been created. **Do NOT proceed to Step 6 unless the user explicitly requests deployment.**
+
+Report what was created and ask the user if they want to deploy and run.
+
+---
+
+### Step 6: Deploy & Validate (15 min) — USER-TRIGGERED ONLY
+
+> **This step is executed ONLY when the user explicitly requests deployment.** Do not auto-execute.
 
 Run validation queries: [references/validation-queries.md](references/validation-queries.md)
 
@@ -283,7 +295,7 @@ TBLPROPERTIES (
 | Step 4 (Data) | `data_product_accelerator/skills/bronze/01-faker-data-generation/SKILL.md` | Faker corruption patterns, function signatures, provider examples |
 | Step 5 (Jobs) | `data_product_accelerator/skills/common/databricks-asset-bundles/SKILL.md` | Serverless job YAML, Environments V4, `notebook_task`, `base_parameters` |
 | Step 5 (Jobs) | `data_product_accelerator/skills/common/databricks-python-imports/SKILL.md` | Pure Python import patterns for notebook code sharing |
-| Troubleshooting | `data_product_accelerator/skills/common/databricks-autonomous-operations/SKILL.md` | Deploy → Poll → Diagnose → Fix → Redeploy loop when jobs fail |
+| Step 6 (if user-triggered) | `data_product_accelerator/skills/common/databricks-autonomous-operations/SKILL.md` | Deploy → Poll → Diagnose → Fix → Redeploy loop when jobs fail |
 
 **NEVER do these without FIRST reading the corresponding skill:**
 - NEVER write `TBLPROPERTIES` without reading `databricks-table-properties`

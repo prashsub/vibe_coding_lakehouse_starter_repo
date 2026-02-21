@@ -163,7 +163,7 @@ Perform project planning using @data_product_accelerator/skills/planning/00-proj
 |-------|-------|
 | **Orchestrator** | `semantic-layer/00-semantic-layer-setup` |
 | **Input** | Semantic layer manifest + Gold tables |
-| **Workers Used** | `semantic-layer/01-metric-views-patterns`, `02-databricks-table-valued-functions`, `03-genie-space-patterns`, `04-genie-space-export-import-api`, `05-genie-space-optimization` |
+| **Workers Used** | `semantic-layer/01-metric-views-patterns`, `02-databricks-table-valued-functions`, `03-genie-space-patterns`, `04-genie-space-export-import-api`. Genie optimization is standalone via `05-genie-optimization-orchestrator` (routes to 4 workers in `genie-optimization-workers/`) |
 | **Duration** | 3-5 hours |
 
 **What it does:**
@@ -255,7 +255,7 @@ Set up GenAI agents using @data_product_accelerator/skills/genai-agents/00-genai
 - **The skill does the thinking.** You don't need to specify details — the orchestrator reads its worker skills, common skills, and existing artifacts automatically.
 - **If something fails,** the `databricks-autonomous-operations` common skill kicks in (Deploy → Poll → Diagnose → Fix → Redeploy).
 - **Stages 6-9 are optional.** A functional data platform exists after stage 4.
-- **Stages 6-9 can run in any order** (they're independent of each other).
+- **Stages 6, 7, and 8 can run in parallel** (they consume different manifests from stage 5). Stage 9 depends on stage 6 (Genie Spaces for multi-agent orchestration). See [09-Parallel Execution Guide](09-parallel-execution-guide.md) for the full dependency analysis.
 
 ## References
 

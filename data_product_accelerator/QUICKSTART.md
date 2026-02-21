@@ -1,6 +1,6 @@
 # Quickstart: Data Product Accelerator
 
-This guide walks you through building a complete Databricks data platform — from a raw schema CSV to production GenAI agents — using one prompt per stage.
+This guide walks you through building a complete Databricks data platform — from a raw schema CSV to production GenAI agents — using one prompt per stage, plus an optional Stage 6b optimization loop.
 
 > **See also:** [AGENTS.md](AGENTS.md) (routing table for AI agents) | [README.md](README.md) (project overview) | [Skill Navigator](skills/skill-navigator/SKILL.md) (full routing system)
 
@@ -24,7 +24,7 @@ Drop the customer's schema CSV into the `data_product_accelerator/context/` dire
 ```
 data_product_accelerator/
 └── context/
-    └── Wanderbricks_Schema.csv    ← your file here
+    └── user_name_schema.csv       ← your file here
 ```
 
 Expected CSV columns: `table_catalog`, `table_schema`, `table_name`, `column_name`, `ordinal_position`, `full_data_type`, `is_nullable`, `comment`
@@ -40,7 +40,7 @@ Design the target dimensional model first — ERDs, YAML schemas, and documentat
 **Prompt:**
 
 ```
-I have a customer schema at @data_product_accelerator/context/Wanderbricks_Schema.csv.
+I have a customer schema at @data_product_accelerator/context/user_name_schema.csv.
 
 Please design the Gold layer using @data_product_accelerator/skills/gold/00-gold-layer-design/SKILL.md
 
@@ -74,7 +74,7 @@ Create Bronze tables and populate them with data. Three approaches available:
 **Approach A — Schema CSV + Faker (recommended for demos):**
 
 ```
-Set up the Bronze layer using @data_product_accelerator/skills/bronze/00-bronze-layer-setup/SKILL.md with Approach A — generate Faker data matching the source schema at @data_product_accelerator/context/Wanderbricks_Schema.csv.
+Set up the Bronze layer using @data_product_accelerator/skills/bronze/00-bronze-layer-setup/SKILL.md with Approach A — generate Faker data matching the source schema at @data_product_accelerator/context/user_name_schema.csv.
 
 This will involve the following steps:
 
@@ -217,6 +217,7 @@ Perform project planning using @data_product_accelerator/skills/planning/00-proj
 This will involve the following steps:
 
 - **Analyze Gold layer** — examine your completed Gold tables to identify natural business domains, key relationships, and analytical questions
+- **Reference business context** — if a PRD exists at @docs/design_prd.md, use it for business requirements, user personas, and workflows; if a Business Onboarding Guide exists at gold_layer_design/docs/BUSINESS_ONBOARDING_GUIDE.md, use it for domain context and role-based scenarios
 - **Generate use-case plans** — create structured plans organized as Phase 1 addendums (1.2 TVFs, 1.3 Metric Views, 1.4 Monitors, 1.5 Dashboards, 1.6 Genie Spaces, 1.7 Alerts, 1.1 ML Models)
 - **Produce YAML manifests** — generate 4 machine-readable manifest files (semantic-layer, observability, ML, GenAI agents) as contracts for downstream implementation stages
 - **Define deployment order** — establish build sequence: TVFs → Metric Views → Genie Spaces → Dashboards → Monitors → Alerts → Agents
@@ -230,12 +231,11 @@ Perform project planning using @data_product_accelerator/skills/planning/00-proj
 This will involve the following steps:
 
 - **Analyze Gold layer** — examine your completed Gold tables to identify natural business domains, key relationships, and analytical questions
+- **Reference business context** — if a PRD exists at @docs/design_prd.md, use it for business requirements, user personas, and workflows; if a Business Onboarding Guide exists at gold_layer_design/docs/BUSINESS_ONBOARDING_GUIDE.md, use it for domain context and role-based scenarios
 - **Generate use-case plans** — create structured plans organized as Phase 1 addendums (1.2 TVFs, 1.3 Metric Views, 1.4 Monitors, 1.5 Dashboards, 1.6 Genie Spaces, 1.7 Alerts, 1.1 ML Models)
 - **Produce YAML manifests** — generate 4 machine-readable manifest files (semantic-layer, observability, ML, GenAI agents) as contracts for downstream implementation stages
 - **Apply workshop mode caps** — enforce hard limits (3-5 TVFs, 1-2 Metric Views, 1 Genie Space) to keep the workshop focused on pattern variety over depth
 - **Define deployment order** — establish build sequence: TVFs → Metric Views → Genie Spaces → Dashboards → Monitors → Alerts → Agents
-
-If a PRD exists at @data_product_accelerator/docs/ui_design.md, reference it for business requirements, user personas, and workflows.
 ```
 
 > **Workshop mode** produces a minimal representative plan designed for hands-on workshops. It is only activated when `planning_mode: workshop` is explicitly included. See `data_product_accelerator/skills/planning/00-project-planning/references/workshop-mode-profile.md` for details.
@@ -306,32 +306,31 @@ This will involve the following steps:
 
 ---
 
-## Step 6b: Genie Space Optimization
+## Step 6b (Optional): Genie Space Optimization
 
-Optimize Genie Space accuracy and repeatability through benchmark testing and iterative control lever adjustments.
+Optimize Genie Space accuracy and repeatability through MLflow-driven benchmark evaluation and iterative control lever adjustments. The optimization orchestrator routes to 4 worker skills on demand: benchmark generation, evaluation (8 judges + arbiter), metadata optimization (GEPA/introspection), and change application.
 
 **Prompt:**
 
 ```
-Optimize the Genie Space using @data_product_accelerator/skills/semantic-layer/05-genie-space-optimization/SKILL.md
+Optimize the Genie Space using @data_product_accelerator/skills/semantic-layer/05-genie-optimization-orchestrator/SKILL.md
 
 This will involve the following optimization loop:
 
-- **Write benchmark questions** — generate domain-relevant questions with expected SQL answers, categorized by type (aggregation → Metric View, top-N/list → TVF, drill-down → TVF)
-- **Query Genie via Conversation API** — run each benchmark question against the live Genie Space, respecting the 12-second rate limit between queries
-- **Evaluate accuracy and repeatability** — compare generated SQL to expected SQL, measure accuracy (target ≥95%) and repeatability (target ≥90% across 3 runs per question)
-- **Diagnose failures** — identify root causes: wrong asset selected (TVF vs Metric View), wrong columns, missing routing context, or inconsistent SQL across runs
+- **Generate benchmarks** — create domain-relevant questions with expected SQL, validate ground truth via warehouse execution, sync to MLflow Evaluation Dataset
+- **Evaluate with 8 judges** — run each benchmark against the live Genie Space (12-second rate limit), score with 3-layer judge architecture: Layer 1 (syntax, schema, logic, semantics, completeness, routing), Layer 2 (result correctness via DataFrame comparison), Layer 3 (arbiter for disagreements with auto-correction)
+- **Introspect and optimize** — cluster failures by systemic root cause, generate metadata proposals mapped to 6 control levers with predicted impact, optionally use GEPA optimize_anything for metadata evolution
 - **Apply 6 control levers in priority order** — (1) UC table/column COMMENTs, (2) Metric View metadata, (3) TVF COMMENTs, (4) Monitoring tables, (5) ML tables, (6) Genie Instructions (~4000 char limit, last resort)
 - **Dual-persist every change** — apply fixes via BOTH API (immediate) AND repository files (persists across deployments)
-- **Re-test and iterate** — wait 30 seconds for propagation, re-run only failing questions, loop back until accuracy ≥95% and repeatability ≥90%
-- **Document results** — generate optimization report with before/after metrics, per-question results, and levers applied
+- **Re-evaluate and iterate** — run evaluation job again, compare iterations, loop until accuracy ≥95% or max 5 iterations with plateau detection
+- **Deploy and document** — bundle deploy optimized space, generate optimization report with before/after metrics logged to MLflow
 ```
 
 **What it produces:**
-- Benchmark question suite with expected SQL (YAML format)
-- Accuracy and repeatability scores
+- Benchmark question suite with validated ground truth SQL (YAML + MLflow dataset)
+- Per-judge accuracy scores and MLflow experiment runs
 - Optimized UC metadata, Metric Views, TVFs, and/or Genie Instructions
-- Optimization report with before/after metrics
+- Optimization report with before/after metrics and levers applied
 
 ---
 

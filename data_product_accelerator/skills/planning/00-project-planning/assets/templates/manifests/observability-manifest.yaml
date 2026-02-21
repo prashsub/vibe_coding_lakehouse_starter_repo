@@ -46,6 +46,8 @@ lakehouse_monitors:
     monitor_type: TimeSeries
     timestamp_column: "{timestamp_column}"
     domain: "{domain}"
+    use_case_refs:              # Links back to plans/use-case-catalog.md
+      - "UC-001"                # {Use case name}
     custom_metrics:
       - name: "{domain}_total_{metric}"
         type: AGGREGATE
@@ -105,6 +107,8 @@ dashboards:
   - name: "{Domain} Performance Dashboard"
     domain: "{domain}"
     description: "Operational dashboard for {domain} metrics and data quality"
+    use_case_refs:              # Links back to plans/use-case-catalog.md
+      - "UC-001"                # {Use case name}
     pages:
       - page_name: "Overview"
         widgets:
@@ -151,6 +155,8 @@ alerts:
     domain: "{domain}"
     severity: critical
     name: "{Domain} {Metric} Threshold Alert"
+    use_case_refs:              # Links back to plans/use-case-catalog.md
+      - "UC-001"                # {Use case name}
     type: threshold
     query: |
       SELECT COUNT(*) as alert_count

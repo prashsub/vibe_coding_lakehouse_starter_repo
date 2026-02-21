@@ -248,18 +248,18 @@ update_set[milestone] = (
 
 ---
 
-## Issue 11: Silver Column Name Mismatch
+## Issue 11: Source Column Name Mismatch
 
-**Error:** `UNRESOLVED_COLUMN` when reading Silver table — column referenced in YAML lineage does not exist in Silver.
+**Error:** `UNRESOLVED_COLUMN` when reading source table — column referenced in YAML lineage does not exist in the upstream table.
 
-**Root Cause:** Gold design assumed Silver column names based on Bronze naming conventions, but Silver DLT renamed the column.
+**Root Cause:** Gold design assumed source column names based on Bronze naming conventions, but the upstream layer renamed the column.
 
 **Fix:**
-1. Run Phase 0 Silver contract validation (see `references/design-to-pipeline-bridge.md`)
-2. Update YAML lineage `silver_column` to match actual Silver table column name
+1. Run `scripts/validate_upstream_contracts.py` to identify all mismatches at once
+2. Update YAML lineage `silver_column` to match actual source table column name
 3. Regenerate `COLUMN_LINEAGE.csv` to reflect the correction
 
-**Prevention:** Always run Phase 0 before writing merge code. Use `introspect_silver_schema()` to discover actual Silver column names.
+**Prevention:** Always run Phase 0 (`scripts/validate_upstream_contracts.py`) before writing merge code. The merge template also embeds `validate_upstream_contracts()` as a fail-fast check — it will abort with a clear report if any source column is missing.
 
 ---
 
@@ -271,7 +271,7 @@ Error during Gold layer?
 ├── ModuleNotFoundError → Check job environment dependencies
 ├── DELTA_MULTIPLE_SOURCE_ROW → Add deduplication before merge
 ├── UNRESOLVED_COLUMN (Gold table) → Check column mapping (Silver → Gold)
-├── UNRESOLVED_COLUMN (Silver read) → Run Phase 0; fix YAML lineage silver_column
+├── UNRESOLVED_COLUMN (source read) → Run scripts/validate_upstream_contracts.py; fix YAML lineage silver_column
 ├── Grain validation failed → Check groupBy matches PK
 ├── Milestone not updating → Use conditional UPDATE SET (accumulating snapshot)
 ├── Factless fact empty → Remove aggregation, use INSERT-only MERGE

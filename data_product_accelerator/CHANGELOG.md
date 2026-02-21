@@ -6,6 +6,92 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.0.2] — 2026-02-21
+
+### Framework Visual Docs + Naming Consistency Cleanup
+
+Updated framework visual guides to explicitly model optional Stage 6b as a standalone orchestrator phase, and cleaned stale skill naming references in related docs and monitoring metadata.
+
+### Changed
+
+- **`docs/framework-design/10-skill-navigation-visual-guide.md`** — Added optional Stage 6b routing language and updated the pipeline diagram to show Semantic → Genie Optimization (6b, optional) → Observability sequencing
+- **`docs/framework-design/10-skill-navigation-visual-guide.html`** — Updated visual model to include explicit Stage 6b node, separated Stage 6b worker group (4 workers), and refreshed step narration to reflect standalone orchestrator behavior
+- **`docs/framework-design/11-skill-hierarchy-tree.html`** — Added dedicated Stage 6b orchestrator branch with its 4 worker skills, updated semantic worker names to canonical paths, and expanded animation sequence to include Stage 6b traversal
+- **`skills/monitoring/04-anomaly-detection/SKILL.md`** — Corrected stale `called_by` and integration text references from `silver-layer-creation`/`gold-layer-implementation` to `silver-layer-setup`/`gold-layer-setup`
+- **`docs/framework-design/05-skill-domains.md`** — Removed stale legacy orchestrator names and clarified canonical Silver orchestrator naming
+
+---
+
+## [2.0.1] — 2026-02-21
+
+### Documentation Routing Consistency Pass
+
+Aligned stage sequencing and routing language across entry-point docs and the skill navigator so all references consistently include optional Stage 6b (Genie optimization) and current skill naming.
+
+### Changed
+
+- **`AGENTS.md`** — Added Stage 6b to the Design-First pipeline, added orchestrator routing row for `05-genie-optimization-orchestrator`, and added Genie optimization worker-routing keywords
+- **`README.md`** — Updated Quick Start wording and pipeline section title/content to include optional Stage 6b between Semantic and Observability
+- **`QUICKSTART.md`** — Clarified the guide includes an optional Stage 6b optimization loop and renamed Step 6b heading to explicitly mark it optional
+- **`skills/skill-navigator/SKILL.md`** — Updated `last_verified` metadata and added Stage 6b orchestrator route keywords in the orchestrator routing table
+- **`skills/skill-navigator/references/domain-indexes.md`** — Added Stage 6b to the pipeline overview and corrected stale cross-stage trigger names to `silver-layer-setup` and `gold-layer-setup`
+
+---
+
+## [2.0.0] — 2026-02-20
+
+### Genie Optimization Skill Decomposition (Introspective AI Architecture)
+
+Decomposed the monolithic `05-genie-space-optimization` skill (18 files, ~6,081 lines) into 1 orchestrator + 4 worker skills following agentskills.io specification, Anthropic context engineering, and long-running agent harness patterns. Each worker is independently testable and loaded on demand. Introduced MLflow-driven 3-layer judge architecture with 8 judges + arbiter, GEPA metadata optimization, and job-based evaluation.
+
+### Added
+
+- **`05-genie-optimization-orchestrator/`** — New orchestrator skill at `skills/semantic-layer/` that routes to 4 workers on demand. Manages session state in MLflow experiment tags. Optimization loop: generate benchmarks → evaluate → optimize → apply → re-evaluate, max 5 iterations with plateau detection.
+- **`genie-optimization-workers/01-genie-benchmark-generator/`** — Worker for three-path benchmark intake, ground truth SQL validation via warehouse execution with result hashing, and MLflow Evaluation Dataset sync.
+- **`genie-optimization-workers/02-genie-benchmark-evaluator/`** — Worker implementing 3-layer judge architecture: Layer 1 (6 quality judges), Layer 2 (result correctness via DataFrame comparison), Layer 3 (arbiter for disagreement resolution with benchmark auto-correction). Supports job-based and inline evaluation modes.
+- **`genie-optimization-workers/03-genie-metadata-optimizer/`** — Worker for GEPA optimize_anything (Tier 1), structured LLM introspection (Tier 2), failure clustering, metadata proposal generation with predicted impact, and optional SIMBA judge alignment (Tier 3).
+- **`genie-optimization-workers/04-genie-optimization-applier/`** — Worker for applying metadata changes via 6 control levers with dual persistence (API + repo files), sort_genie_config, and three-phase deployment with self-healing (max 3 retries).
+- **`assets/templates/run_genie_evaluation.py`** — Self-contained Databricks notebook for running evaluation as a job with MLflow logging.
+- **`assets/templates/genie-evaluation-job-template.yml`** — Databricks Asset Bundle job definition for evaluation notebook.
+
+### Changed
+
+- **Skill count** — 55 → 59 skills (1 monolithic skill replaced by 5 decomposed skills = +4 net)
+- **Semantic layer domain** — 6 → 10 skills (1 orchestrator + 4 original workers + 1 optimization orchestrator + 4 optimization workers)
+- **QUICKSTART.md** — Updated Step 6b prompt to reference `05-genie-optimization-orchestrator` with MLflow-driven evaluation workflow
+- **README.md** — Updated skill count to 59, semantic-layer workers to 9
+- **AGENTS.md** — Updated skill count, routing references
+- **skill-navigator/SKILL.md** — Updated directory map with `genie-optimization-workers/` subfolder, skill count to 59
+- **skill-navigator/references/domain-indexes.md** — Updated Semantic Layer index with optimization orchestrator and 4 workers
+- **docs/framework-design/** — Updated skill counts and references across 00-index, 01-introduction, 02-architecture, 03-pipeline, 04-agent-skills, 05-skill-domains, 08-operations-guide, 12-semantic-layer-walkthrough, appendices/B-troubleshooting
+
+### Removed
+
+- **`05-genie-space-optimization/`** — Monolithic skill eliminated after decomposition. All content migrated to the 5 new skills with no regression.
+- **`references/optimization-code-patterns.md`** (1,049 lines) — Split across all 4 worker reference files
+- **`references/optimization-workflow.md`** (238 lines) — Content merged into orchestrator and worker reference files
+- **`references/asset-routing.md`** (150 lines) — Content merged into evaluator judge-definitions.md
+- **`scripts/genie_optimizer.py`** (619 lines) — Split into orchestrator.py + 4 worker scripts
+
+### Skill Count Breakdown (59 total)
+
+| Domain | Count | Details |
+|--------|-------|---------|
+| admin | 4 | create-agent-skill, documentation-organization, self-improvement, skill-freshness-audit |
+| bronze | 2 | 1 orchestrator + 1 worker |
+| common | 8 | 8 shared cross-cutting skills |
+| exploration | 1 | 1 standalone |
+| genai-agents | 9 | 1 orchestrator + 8 workers |
+| gold | 14 | 2 orchestrators + 7 design-workers + 5 pipeline-workers |
+| ml | 1 | 1 orchestrator |
+| monitoring | 5 | 1 orchestrator + 4 workers |
+| planning | 1 | 1 orchestrator |
+| semantic-layer | 10 | 1 orchestrator + 4 workers + 1 optimization orchestrator + 4 optimization workers |
+| silver | 3 | 1 orchestrator + 2 workers |
+| skill-navigator | 1 | Master routing system |
+
+---
+
 ## [1.4.0] — 2026-02-20
 
 ### Documentation Consistency & Skill Count Corrections
@@ -34,7 +120,7 @@ Comprehensive audit and consistency pass across all navigation and documentation
 | ml | 1 | 1 orchestrator |
 | monitoring | 5 | 1 orchestrator + 4 workers |
 | planning | 1 | 1 orchestrator |
-| semantic-layer | 6 | 1 orchestrator + 5 workers |
+| semantic-layer | 10 | 1 orchestrator + 4 workers + 1 optimization orchestrator + 4 optimization workers |
 | silver | 3 | 1 orchestrator + 2 workers |
 | skill-navigator | 1 | Master routing system |
 

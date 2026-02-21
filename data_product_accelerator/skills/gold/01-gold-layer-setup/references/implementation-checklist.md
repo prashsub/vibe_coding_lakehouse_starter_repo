@@ -46,7 +46,7 @@ Complete validation checklists for Gold layer implementation. Use at the end of 
 - [ ] Deduplication key matches MERGE condition key (both from YAML)
 - [ ] Column mappings extracted from YAML lineage or `COLUMN_LINEAGE.csv` (not guessed)
 - [ ] No variable names shadow PySpark functions
-- [ ] Schema validation: DataFrame columns match YAML `columns[]` before merge
+- [ ] Schema validation: `validate_merge_schema()` called before every MERGE execute
 - [ ] Grain validation for fact tables using YAML `pk_columns`
 - [ ] Dimensions merged BEFORE facts (order from YAML `entity_type`)
 - [ ] SCD Type 2 includes `is_current` filter (determined by YAML `scd_type`)
@@ -63,13 +63,13 @@ Complete validation checklists for Gold layer implementation. Use at the end of 
 - [ ] Tags applied (environment, layer, job_type)
 - [ ] Anomaly detection enabled on Gold schema (Phase 4b)
 
-## Silver Contract Validation Checklist (Phase 0)
+## Upstream Contract Validation Checklist (Phase 0)
 
-- [ ] Phase 0 Silver contract validation run for ALL Gold tables
-- [ ] ALL Silver contracts PASS (zero column-not-found errors)
+- [ ] `scripts/validate_upstream_contracts.py` executed with project catalog and source schema
+- [ ] ALL contracts PASS (zero column-not-found errors)
 - [ ] Type compatibility validated (no implicit cast failures)
 - [ ] Column resolution reports generated for ALL tables
-- [ ] YAML lineage `silver_column` values match actual Silver table columns
+- [ ] YAML lineage `silver_column` values match actual source table columns
 
 ## Advanced Patterns Checklist (If Applicable)
 

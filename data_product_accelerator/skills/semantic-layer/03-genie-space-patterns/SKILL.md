@@ -385,6 +385,8 @@ Every question must include:
 - Expected SQL (tested and working)
 - Expected result description
 
+**⚠️ JSON field name:** In the API-compatible JSON export, benchmark SQL goes in `answer: [{format: "SQL", content: ["SELECT ..."]}]` — **NOT** in a field called `expected_sql`. The term "Expected SQL" here refers to the content, not the JSON field name. See `genie-space-export-import-api` for the exact `BenchmarkQuestion` schema.
+
 See [Configuration Guide](references/configuration-guide.md#section-g-benchmark-questions) for format.
 
 ### Step 5: Deploy and Test
@@ -572,6 +574,7 @@ Before submitting ANY Genie Space document:
 
 ## Version History
 
+- **v2.3** (Feb 2026) — JSON field name clarification for benchmark SQL (answer vs expected_sql)
 - **v2.2** (Feb 20, 2026) - Interactive benchmark question intake
   - Added Rule 12: Prompt user for benchmark questions before generating synthetic ones
   - Added three-path benchmark intake workflow (full, partial, none)
@@ -610,3 +613,18 @@ Before submitting ANY Genie Space document:
   - 7-section mandatory structure
   - Benchmark questions with SQL requirement
   - Extended instructions template
+
+## Genie Space Notes to Carry Forward
+
+After completing Genie Space configuration, carry these notes to the next worker:
+- **Genie Space names and JSON paths:** List of all configured spaces with their JSON config file paths
+- **Asset assignments per space:** Which Metric Views, TVFs, and Gold Tables are assigned to each space
+- **Benchmark question counts:** Number of benchmark questions per space (minimum 10 required)
+- **Warehouse assignment:** SQL Warehouse ID assigned to each space
+- **Space IDs (if deployed):** Genie Space IDs returned from API creation (needed for idempotent re-deployment)
+- **Template variables used:** Confirm `${catalog}` and `${gold_schema}` are used for portability
+
+## Next Step
+
+After Genie Space JSON configs are generated, proceed to:
+**`semantic-layer/04-genie-space-export-import-api/SKILL.md`** — If deploying via REST API (recommended for cross-environment promotion). Otherwise, proceed to Phase 4 (Asset Bundle Configuration) in the orchestrator.

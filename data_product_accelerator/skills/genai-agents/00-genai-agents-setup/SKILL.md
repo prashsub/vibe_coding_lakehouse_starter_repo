@@ -7,7 +7,7 @@ description: >
   (responses-agent-patterns, mlflow-genai-evaluation, lakebase-memory-patterns,
   prompt-registry-patterns, multi-agent-genie-orchestration, deployment-automation,
   production-monitoring, mlflow-genai-foundation) plus cross-domain dependency on
-  semantic-layer/genie-space-optimization.
+  semantic-layer/genie-optimization-orchestrator.
   Use when implementing AI agents on Databricks, creating multi-agent systems with
   Genie Spaces, setting up agent evaluation pipelines, deploying agents to Model Serving,
   or troubleshooting agent implementation errors.
@@ -30,7 +30,7 @@ metadata:
     - production-monitoring
     - mlflow-genai-foundation
   cross_domain_dependencies:
-    - semantic-layer/05-genie-space-optimization
+    - semantic-layer/05-genie-optimization-orchestrator
   common_dependencies:
     - databricks-asset-bundles
     - databricks-expert-agent
@@ -49,7 +49,7 @@ metadata:
     - deployment-automation
     - production-monitoring
     - mlflow-genai-foundation
-    - semantic-layer/genie-space-optimization
+    - semantic-layer/genie-optimization-orchestrator
   last_verified: "2026-02-07"
   volatility: high
   upstream_sources:
@@ -310,7 +310,7 @@ else:
 
 ### Phase 8: Genie Optimization
 
-**Load skill:** `@data_product_accelerator/skills/semantic-layer/05-genie-space-optimization/SKILL.md` (cross-domain)
+**Load skill:** `@data_product_accelerator/skills/semantic-layer/05-genie-optimization-orchestrator/SKILL.md` (cross-domain)
 
 **Goal:** Improve Genie Space accuracy and repeatability.
 
@@ -398,7 +398,7 @@ See `references/implementation-checklist.md` for the complete consolidated check
 ### Cross-Domain Dependencies
 | Skill | Domain | Purpose |
 |---|---|---|
-| `semantic-layer/05-genie-space-optimization` | Semantic Layer | Accuracy testing, control levers, dual persistence |
+| `semantic-layer/05-genie-optimization-orchestrator` | Semantic Layer | Accuracy testing, control levers, dual persistence |
 
 ### Upstream Agent Bricks (databricks-agent-bricks)
 

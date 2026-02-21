@@ -22,8 +22,8 @@ metadata:
     - schema setup
   called_by:
     - observability-setup
-    - silver-layer-creation
-    - gold-layer-implementation
+    - silver-layer-setup
+    - gold-layer-setup
   standalone: true
   last_verified: "2026-02-18"
   volatility: medium
@@ -207,7 +207,7 @@ For complete alert templates including custom email notifications, see `referenc
 
 ## Integration with Silver & Gold Layer Setup
 
-**This skill is automatically invoked by `silver-layer-creation` and `gold-layer-implementation` orchestrators.** Every new Silver or Gold schema should have anomaly detection enabled to provide baseline freshness/completeness monitoring from day one.
+**This skill is automatically invoked by `silver-layer-setup` and `gold-layer-setup` orchestrators.** Every new Silver or Gold schema should have anomaly detection enabled to provide baseline freshness/completeness monitoring from day one.
 
 ### Reusable Enable Function
 

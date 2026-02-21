@@ -22,6 +22,7 @@ metadata:
     - databricks-expert-agent
     - naming-tagging-standards
   emits:
+    - plans/use-case-catalog.md
     - plans/manifests/semantic-layer-manifest.yaml
     - plans/manifests/observability-manifest.yaml
     - plans/manifests/ml-manifest.yaml
@@ -182,19 +183,40 @@ List 5-10 key questions per domain that the solution must answer:
 4. {Question 4}
 5. {Question 5}
 
+#### Use Case Catalog
+
+After defining business questions and selecting addendums, consolidate into a **Use Case Catalog** — one entry per distinct analytical or operational problem the solution will address. Each use case ties business questions to the Gold tables and artifacts that solve them. Use `assets/templates/use-case-catalog-template.md` for the full format.
+
+| UC# | Use Case Name | Domain | Gold Tables | Artifact Types | Example Question |
+|-----|--------------|--------|-------------|---------------|-----------------|
+| UC-001 | {Descriptive Name} | {Domain} | `fact_*`, `dim_*` | TVF, MV, Dashboard | "{Natural language question}?" |
+| UC-002 | ... | ... | ... | ... | ... |
+
+**Use Case Catalog Rules:**
+- Every use case MUST include 3-5 business questions phrased in natural language
+- Every business question from the domain sections above MUST map to at least one use case
+- Every artifact in the addendum summaries MUST trace back to at least one use case question
+- Questions should be phrased as stakeholders would ask them (these become Genie benchmark candidates)
+- Group related questions into a single use case when they share the same Gold tables and grain
+
+See [Worked Example: Wanderbricks](references/worked-example-wanderbricks.md) for 3 fully worked-out use case cards.
+
+**Stakeholder Checkpoint:** After generating the use case catalog, pause and present the Use Case Summary table to the user for confirmation before proceeding to addendum generation. If the user requests changes, update the catalog and domain questions before continuing.
+
 ### Phase 2: Plan Document Generation
 
 Create plan documents using templates in the following order:
 
 1. **README** — `assets/templates/plans-readme-template.md` (plan index)
 2. **Prerequisites** — `assets/templates/prerequisites-template.md` (data layer summary)
-3. **Phase 1 Master** — `assets/templates/phase1-use-cases-template.md` (analytics artifacts)
-4. **Addendums** (selected in Phase 1):
+3. **Use Case Catalog** — `assets/templates/use-case-catalog-template.md` (consolidated use case definitions)
+4. **Phase 1 Master** — `assets/templates/phase1-use-cases-template.md` (analytics artifacts)
+5. **Addendums** (selected in Phase 1):
    - TVFs — `assets/templates/phase1-tvfs-template.md`
    - Alerting — `assets/templates/phase1-alerting-template.md`
    - Genie Spaces — `assets/templates/phase1-genie-spaces-template.md`
-5. **Phase 2** — `assets/templates/phase2-agent-framework-template.md` (AI agents)
-6. **Phase 3** — `assets/templates/phase3-frontend-template.md` (user interface)
+6. **Phase 2** — `assets/templates/phase2-agent-framework-template.md` (AI agents)
+7. **Phase 3** — `assets/templates/phase3-frontend-template.md` (user interface)
 
 ### Phase 3: Manifest Generation (Plan-as-Contract)
 
@@ -216,20 +238,23 @@ After creating plan documents, generate **machine-readable YAML manifests** that
    - `plans/manifests/observability-manifest.yaml` — Monitors, Dashboards, Alerts
    - `plans/manifests/ml-manifest.yaml` — Feature Tables, Models, Experiments
    - `plans/manifests/genai-agents-manifest.yaml` — Agents, Tools, Eval Datasets
-4. Validate all table/column references exist in Gold YAML
-5. Verify summary counts match actual artifact counts
-6. Commit manifests alongside plan documents
+4. For each artifact in a manifest, add `use_case_refs` listing the UC# it implements (from `plans/use-case-catalog.md`)
+5. Validate all table/column references exist in Gold YAML
+6. Verify summary counts match actual artifact counts
+7. Run `python scripts/validate_use_case_coverage.py plans/use-case-catalog.md` to verify coverage
+8. Commit manifests alongside plan documents
 
 **Key principle:** Every artifact in a manifest MUST trace back to (a) a Gold layer table and (b) a business question from the plan addendum.
 
 **Output Structure:**
 ```
 plans/
+├── use-case-catalog.md                    # Consolidated use case definitions
 ├── manifests/
-│   ├── semantic-layer-manifest.yaml    # → consumed by semantic-layer/00-*
-│   ├── observability-manifest.yaml     # → consumed by monitoring/00-*
-│   ├── ml-manifest.yaml                # → consumed by ml/00-*
-│   └── genai-agents-manifest.yaml      # → consumed by genai-agents/00-*
+│   ├── semantic-layer-manifest.yaml       # → consumed by semantic-layer/00-*
+│   ├── observability-manifest.yaml        # → consumed by monitoring/00-*
+│   ├── ml-manifest.yaml                   # → consumed by ml/00-*
+│   └── genai-agents-manifest.yaml         # → consumed by genai-agents/00-*
 ```
 
 **Downstream consumption:** Each downstream orchestrator (stages 6-9) has a **Phase 0: Read Plan** step that reads its manifest. If the manifest doesn't exist (e.g., user skipped Planning), the orchestrator falls back to self-discovery from Gold tables.
@@ -243,6 +268,7 @@ plans/
 ```
 plans/
 ├── README.md                              # Index and overview
+├── use-case-catalog.md                    # Consolidated use case definitions
 ├── prerequisites.md                       # Bronze/Silver/Gold summary (optional)
 ├── phase1-use-cases.md                    # Analytics artifacts (master)
 │   ├── phase1-addendum-1.1-ml-models.md
@@ -391,6 +417,7 @@ For detailed architecture, design patterns, "Why Genie Spaces" comparison, and t
 ### Plan Templates
 - **[Project Plan Template](assets/templates/project-plan-template.md)** — Generic phase template with SQL standards
 - **[Prerequisites Template](assets/templates/prerequisites-template.md)** — Data layer summary (Bronze/Silver/Gold)
+- **[Use Case Catalog Template](assets/templates/use-case-catalog-template.md)** — Consolidated use case definitions with business questions
 - **[Phase 1 Use Cases Template](assets/templates/phase1-use-cases-template.md)** — Master analytics artifacts
 - **[Phase 1 TVFs Template](assets/templates/phase1-tvfs-template.md)** — Table-Valued Functions addendum
 - **[Phase 1 Alerting Template](assets/templates/phase1-alerting-template.md)** — Alerting framework addendum
@@ -427,6 +454,13 @@ For detailed architecture, design patterns, "Why Genie Spaces" comparison, and t
 - [ ] Addendums link back to main phase
 - [ ] Related artifacts cross-reference each other
 - [ ] Dependencies are documented
+
+### Use Case Traceability
+- [ ] Use case catalog exists with one entry per distinct business problem
+- [ ] Every use case includes 3-5 business questions in natural language
+- [ ] Every business question from domain sections maps to at least one use case
+- [ ] Every artifact in addendum summaries traces back to at least one use case question
+- [ ] Use case catalog cross-references addendum documents
 
 ### Completeness
 - [ ] Domains derived from business questions (not forced to a fixed count)

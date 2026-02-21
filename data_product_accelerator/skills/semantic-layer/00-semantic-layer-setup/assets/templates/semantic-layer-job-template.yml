@@ -2,7 +2,7 @@
 #
 # Single job with 3 tasks and depends_on chains for platform-enforced execution ordering:
 #   1. create_metric_views (notebook_task) — no dependencies
-#   2. create_table_valued_functions (sql_task) — depends on metric views
+#   2. create_table_valued_functions (notebook_task) — depends on metric views
 #   3. deploy_genie_spaces (notebook_task) — depends on both MVs and TVFs
 #
 # Usage:
@@ -44,13 +44,14 @@ resources:
         - task_key: create_table_valued_functions
           depends_on:
             - task_key: create_metric_views
-          sql_task:
-            warehouse_id: ${var.warehouse_id}
-            file:
-              path: "../../src/${var.project_name}_semantic/table_valued_functions.sql"
-            parameters:
+          notebook_task:
+            notebook_path: "../../src/${var.project_name}_semantic/create_tvfs.py"
+            base_parameters:
               catalog: "${var.catalog}"
               gold_schema: "${var.gold_schema}"
+          environment_key: default
+          # ⚠️ sql_task CANNOT substitute ${catalog}/${gold_schema} in DDL identifiers.
+          # Use notebook_task with Python string substitution instead.
 
         # Task 3: Deploy Genie Spaces via REST API (depends on both MVs and TVFs)
         - task_key: deploy_genie_spaces
@@ -64,6 +65,9 @@ resources:
               gold_schema: "${var.gold_schema}"
               config_dir: "src/semantic/genie_configs"
               warehouse_id: "${var.warehouse_id}"
+              # Per-space IDs for idempotent update-or-create pattern
+              # Uncomment and populate after first deployment:
+              # genie_space_id_<space_name>: "${var.genie_space_id_<space_name>}"
           environment_key: default
 
       environments:

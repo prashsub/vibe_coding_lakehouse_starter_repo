@@ -383,10 +383,11 @@ The report summarizes: table inventory, entity classification, inferred relation
 4. Validate PRIMARY KEY definitions match grain type
 5. Validate FOREIGN KEY references point to valid tables/columns
 6. Run lineage validation script
+7. **Upstream cross-reference (conditional):** If upstream source tables already exist (check via `spark.catalog.tableExists()`), run `cross_reference_silver_at_design_time()` from `references/schema-intake-patterns.md` to validate YAML lineage `silver_column` values against actual source table schemas. Fix any mismatches found. If source tables do not exist yet, note that this validation will be enforced as a hard gate during Phase 0 of `01-gold-layer-setup`.
 
 **Outputs:**
 - Validation report (pass/fail for each category)
-- List of inconsistencies to fix
+- List of inconsistencies to fix (including any upstream column mismatches)
 - Completed design sign-off checklist
 
 ---
@@ -455,14 +456,6 @@ gold_layer_design/
 | Small | 1-8 | 3-4 hours |
 | Medium | 9-20 | 5-6 hours |
 | Large | 20+ | 6-10 hours |
-
-### Silver Schema Cross-Reference (Optional During Design, Mandatory During Implementation)
-
-If the Silver layer is already deployed, validate YAML lineage `silver_column` values against actual Silver tables. Use `cross_reference_silver_at_design_time()` from `references/schema-intake-patterns.md` — it introspects Silver table schemas and logs warnings for any column name mismatches. Warnings during design become hard errors in Phase 0 of `01-gold-layer-setup`.
-
-See `01-gold-layer-setup/references/design-to-pipeline-bridge.md` for the full validation workflow.
-
----
 
 ## Next Steps After Design
 
