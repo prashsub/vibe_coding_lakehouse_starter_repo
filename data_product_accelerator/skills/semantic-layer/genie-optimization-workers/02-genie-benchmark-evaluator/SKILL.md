@@ -9,7 +9,7 @@ description: >
   Supports job-based and inline evaluation modes.
 metadata:
   author: prashanth subrahmanyam
-  version: "3.0.0"
+  version: "3.6.0"
   domain: semantic-layer
   role: worker
   called_by:
@@ -131,7 +131,7 @@ Both are applied in `genie_predict_fn` before computing the `comparison` dict.
 | Completeness | 90% | LLM | `completeness_judge` |
 | Result Correctness | 85% | Code (executes SQL) | `result_correctness` |
 | Asset Routing | 95% | Code (prefix match) | `asset_routing_scorer` |
-| Repeatability | 90% | Code (hash) | `test_repeatability` |
+| Repeatability | 90% | Code (cross-iteration + Cell 9c final) | `repeatability_scorer` (post-eval, final only) |
 
 ## Evaluation Modes
 
@@ -175,6 +175,9 @@ Agent                          Databricks Job              MLflow
 6. **Judge prompts MUST be registered to the Prompt Registry** on iteration 1 via `register_judge_prompts()` and loaded by `@production` alias via `load_judge_prompts()` on every iteration. Inline prompt strings without registry integration leave the Prompts tab empty and block A/B testing of prompt changes.
 7. **`arbiter_scorer` MUST be the 8th entry in `all_scorers`** — it is a conditional `@scorer` that returns `value="skipped"` when results match and invokes the LLM only when they disagree. Without it, arbiter verdicts are invisible in MLflow.
 8. **SQL execution MUST live in `genie_predict_fn`, NOT in scorers** — the predict function runs once per row and stores comparison data in `outputs["comparison"]`. Both `result_correctness` and `arbiter_scorer` read this dict. No scorer calls `spark.sql()` directly.
+9. **`make_judge()` instructions MUST only use template variables from the allowlist: `{{ inputs }}`, `{{ outputs }}`, `{{ trace }}`, `{{ expectations }}`, `{{ conversation }}`** — custom variables like `{{question}}`, `{{genie_sql}}` raise `MlflowException: unsupported variables`. The Prompt Registry accepts any variable names, but `make_judge()` does not. Prompts MUST also contain at least one allowed variable (plain text is rejected with `MlflowException: must contain at least one variable`).
+10. **`predict_fn` signature MUST use keyword arguments matching the `inputs` dict keys, NOT `inputs: dict`** — `mlflow.genai.evaluate()` unpacks the `inputs` dict as keyword arguments: `predict_fn(**inputs_dict)`. Use `def genie_predict_fn(question: str, expected_sql: str = "", **kwargs)`. The `inputs: dict` signature causes `MlflowException: inputs column must be a dictionary`.
+11. **Repeatability check (Cell 9c) MUST only run in the final dedicated test (Phase 3b)** — the check re-queries Genie 2 extra times per question (~24s each). During the optimization loop, the orchestrator uses free cross-iteration SQL comparison instead. Cell 9c fires once after all levers complete, gated behind the `run_repeatability` job parameter.
 
 ## Critical Patterns
 
@@ -222,6 +225,9 @@ TVF-first design improves repeatability (100% in quality domain vs 67% in MV-hea
 | SQL execution inside scorers | Redundant `spark.sql()` calls, doubled latency | SQL execution lives in `genie_predict_fn`; scorers read `outputs["comparison"]` |
 | Missing `expected_sql` in eval_records `inputs` | `genie_predict_fn` cannot compute comparison | Add `"expected_sql": b.get("expected_sql", "")` to `inputs` dict |
 | Leaving `dataset_mode` as `"yaml"` when UC dataset exists | Datasets tab empty, Generator UC sync wasted | Default is now `"uc"` when `uc_schema` is set; falls back to `"yaml"` when UC unavailable |
+| Custom template variables in `make_judge()` (e.g., `{{question}}`, `{{genie_sql}}`) | `MlflowException: unsupported variables` — crashes before any benchmark runs | Use only `{{ inputs }}`, `{{ outputs }}`, `{{ expectations }}` in judge instructions |
+| Plain text instructions without any template variables in `make_judge()` | `MlflowException: must contain at least one variable` — exposed after stripping custom vars | Include at least one of `{{ inputs }}`, `{{ outputs }}`, `{{ expectations }}`; use `_sanitize_prompt_for_make_judge()` as safety net |
+| `predict_fn(inputs: dict)` signature | `MlflowException: inputs column must be a dictionary` — `mlflow.genai.evaluate()` unpacks inputs as kwargs | Use keyword args matching inputs keys: `def genie_predict_fn(question: str, expected_sql: str = "", **kwargs)` |
 
 ## Scripts
 
@@ -231,7 +237,7 @@ Standalone evaluation CLI with inline and job-based modes.
 
 ### [repeatability_tester.py](scripts/repeatability_tester.py)
 
-Tests SQL consistency across multiple runs (MD5 hash comparison).
+Standalone CLI for testing SQL consistency across multiple runs (MD5 hash comparison). The same logic is integrated into `run_genie_evaluation.py` Cell 9c as a post-evaluation step, gated by `run_repeatability=true`. The orchestrator enables this during full-scope evaluations; results are emitted as `evaluation/repeatability.json` artifact and `repeatability/mean` metric.
 
 ```bash
 python scripts/repeatability_tester.py --space-id <ID> --iterations 3
@@ -244,3 +250,10 @@ python scripts/repeatability_tester.py --space-id <ID> --iterations 3
 | [judge-definitions.md](references/judge-definitions.md) | All 8 judges, predict function, thresholds, LLM call helper |
 | [result-comparison.md](references/result-comparison.md) | DataFrame comparison (exact, approximate, structural) |
 | [arbiter-workflow.md](references/arbiter-workflow.md) | Arbiter invocation, verdict handling, benchmark auto-correction |
+
+## Version History
+
+- **v3.8.0** (Feb 22, 2026) — Repeatability v2. Cell 9c now only fires in the final dedicated test (Phase 3b), not on every full-scope evaluation. During the loop, the orchestrator uses free cross-iteration SQL comparison. Hard constraint #11 updated to reflect final-only gating. Added `detect_asset_type()` local definition in Cell 9c (fixes missing function bug). Repeatability scorer description updated.
+- **v3.7.0** (Feb 22, 2026) — Repeatability judge integration. Added Cell 9c post-evaluation repeatability check: re-queries Genie 2 extra times per question, computes per-question SQL consistency via MD5 hash comparison, classifies as IDENTICAL/MINOR_VARIANCE/SIGNIFICANT_VARIANCE/CRITICAL_VARIANCE. Gated behind `run_repeatability` widget parameter (default false). Emits `evaluation/repeatability.json` artifact and `repeatability/mean` metric to MLflow. Results include per-question breakdown with `dominant_asset` type for TVF-first optimization routing. Added hard constraint #11 (repeatability only during full scope). Updated `repeatability_tester.py` documentation to reference Cell 9c integration.
+- **v3.6.0** (Feb 22, 2026) — Phase 4 runtime error fixes. JUDGE_PROMPTS rewritten to use only `make_judge()` allowed template variables (`{{ inputs }}`, `{{ outputs }}`, `{{ expectations }}`), replacing custom variables (`{{question}}`, `{{genie_sql}}`, `{{expected_sql}}`) that raised `MlflowException`. Added `_sanitize_prompt_for_make_judge()` safety net helper. Fixed `genie_predict_fn` signature from `(inputs: dict)` to `(question: str, expected_sql: str = "", **kwargs)` to match `mlflow.genai.evaluate()` keyword-argument unpacking. Added hard constraints #9 (make_judge allowlist) and #10 (predict_fn kwargs). Added 3 new Common Mistakes entries for cascading evaluation errors.
+- **v3.0.0** (Feb 2026) — Initial structured evaluator with 8 scorers, MLflow GenAI integration, Prompt Registry lifecycle, arbiter as 8th scorer, SQL execution lifted into predict function.

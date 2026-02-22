@@ -129,6 +129,15 @@ When `use_patch_dsl=True`, the applier uses a declarative patch renderer:
 | Missing template variables | Hardcoded catalog/schema | Preserve `${catalog}`, `${gold_schema}` |
 | Passing full GET response to PATCH | `InvalidParameterValue: Cannot find field` | Strip non-exportable fields via `strip_non_exportable_fields()` before serializing |
 
+## Orchestrator Integration
+
+The orchestrator calls `apply_patch_set()` and `rollback()` directly (not via CLI) during the lever-aware loop:
+
+- **Levers 1-5:** After `generate_metadata_proposals()` returns proposals, the orchestrator calls `apply_patch_set(proposals, space_id, domain)` for programmatic execution with risk gating.
+- **Lever 6 (GEPA):** GEPA patches are passed directly to `apply_patch_set()` instead of being converted to synthetic proposal dicts.
+- **Rollback:** When regression is detected, the orchestrator calls `rollback(apply_log)` using the stored `apply_log` from the iteration result, alongside `rollback_to_model()` for LoggedModel-based restore.
+- **Backward compatibility:** The `use_patch_dsl` flag in session state (default `True`) controls whether the Patch DSL or `apply_proposal_batch()` is used. Set to `False` only for manual/agent-driven execution.
+
 ## Scripts
 
 ### [optimization_applier.py](scripts/optimization_applier.py)

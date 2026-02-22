@@ -9,7 +9,7 @@ description: >
   generation, or running automated evaluation sessions.
 metadata:
   author: prashanth subrahmanyam
-  version: "3.4.0"
+  version: "3.5.0"
   domain: semantic-layer
   role: orchestrator
   pipeline_stage: 6
@@ -138,6 +138,10 @@ The MLflow Versions tab becomes the central dashboard showing progression, param
     - At least one reference file loaded via a `Load:` directive
 13. **Dual persistence is verified, not assumed.** After applying any proposal, confirm BOTH the API command succeeded AND the repository file was modified. Run `git diff` on the repo file to verify. If the repo file was not updated, the proposal is NOT complete — stop and fix before proceeding to re-evaluation.
 14. **Proposals MUST be applied in lever priority order (1 → 6).** Re-evaluate after each lever group. Do not invoke GEPA (L2) for Lever 6 until Levers 1-5 are exhausted and scores are still below target. Lever 6 is a last resort with limited character budget (~4000 chars).
+15. **Optimization decisions MUST be based on per-row evaluation data**, not aggregate metrics. The evaluator emits `evaluation/failures.json` and `evaluation/arbiter_actions.json` as MLflow artifacts. Download and parse these before generating proposals. Use `cluster_failures()` with the per-row data, not synthesized fallback rows.
+16. **Arbiter verdicts MUST be triaged after every evaluation.** If `genie_correct >= 3`, load the Generator worker to update benchmark expected SQL. All `ground_truth_correct` verdicts are confirmed failures and must be passed to `cluster_failures()`.
+17. **LoggedModel MUST be created before every evaluation.** If `create_genie_model_version()` returns None (model creation failed), log a WARNING and continue — but note that config version tracking, promotion, and rollback are disabled. See `references/logged-model-lifecycle.md` for implementation details. Concrete implementations: `create_genie_model_version()` (~line 224), `promote_best_model()` (~line 302), `rollback_to_model()` (~line 335) in `orchestrator.py`.
+18. **Proposals MUST be applied via `apply_patch_set()` (Patch DSL)** for programmatic execution and rollback. Do NOT use `apply_proposal_batch()` which returns `pending_agent_execution` and requires manual intervention. The `use_patch_dsl` flag (default `True`) controls this in session state. Store `apply_log` in iteration results for precise rollback.
 
 ## Section 3: Routing Table (MANDATORY)
 
@@ -178,6 +182,12 @@ function optimize(space_id, domain):
         load Generator → create benchmarks (with splits) → sync to MLflow
         register_judge_prompts(session.experiment_name, domain)
 
+    # ─── Step 0b: Verify Space State ──────────────────────────
+    config = GET /api/2.0/genie/spaces/{space_id}?include_serialized_space=true
+    Log: tables={N}, metric_views={N}, tvfs={N}, instructions={present/absent}
+    If serialized_space is empty → space is genuinely unconfigured, deploy first
+    If serialized_space has assets → space is configured, proceed to evaluation
+
     # ─── Phase 1: Evaluate Baseline ─────────────────────────────
     snapshot = snapshot_genie_metadata(space_id, iteration=0, domain)
     model_id = create_genie_model_version(space_id, config, 0, domain)
@@ -190,17 +200,25 @@ function optimize(space_id, domain):
         → skip to Phase 4
 
     # ─── Phase 2: Per-Lever Optimization (priority order) ──────
+    # lever_audit tracks per-lever attempts for hard constraint #14 enforcement
+    lever_audit = {1..6: {attempted, proposals_generated, proposals_applied, skip_reason}}
+
     for lever in [1, 2, 3, 4, 5]:
         if all_thresholds_met(prev_scores):
             break  # Converged — no need for lower-priority levers
 
-        # 2a. Generate proposals for THIS lever only
-        load Optimizer → introspect(scores, target_lever=lever, use_asi=True) → proposals
+        lever_audit[lever].attempted = True
+
+        # 2a. Download per-row failures artifact (hard constraint #15)
+        #     Use evaluation/failures.json, not aggregate metrics
+        load Optimizer → introspect(failures_artifact, target_lever=lever, use_asi=True) → proposals
+        lever_audit[lever].proposals_generated = len(proposals)
         if not proposals:
+            lever_audit[lever].skip_reason = "no_proposals_generated"
             continue  # No issues mapped to this lever
 
-        # 2b. Apply proposals with dual persistence verification
-        load Applier → apply(proposals, dual_persist=True) → apply_log
+        # 2b. Apply proposals via apply_patch_set() (hard constraint #18)
+        load Applier → apply_patch_set(proposals, space_id, domain) → apply_log
         VERIFY: For each applied proposal (hard constraint #13):
           - API command executed successfully
           - Repository file updated (git diff shows change)
@@ -226,6 +244,10 @@ function optimize(space_id, domain):
         session.current_iteration += 1
 
     # ─── Phase 3: GEPA for Lever 6 (only if still below target) ─
+    # Lever exhaustion gate: warn if any levers 1-5 were not attempted (hard constraint #14)
+    for lv in [1, 2, 3, 4, 5]:
+        if not lever_audit[lv].attempted and not lever_audit[lv].skip_reason:
+            WARNING: "Lever {lv} never attempted before GEPA"
     if not all_thresholds_met(prev_scores):
         load Optimizer → run_gepa(scores, target_lever=6) → lever_6_candidate
         if lever_6_candidate:
@@ -283,7 +305,9 @@ See [optimization-progress.json template](assets/templates/optimization-progress
 | Result Correctness | 85% | Code | `result_correctness` |
 | Asset Routing | 95% | Code | `asset_routing_scorer` |
 | Arbiter (conditional) | n/a | LLM | `arbiter_scorer` |
-| Repeatability | 90% | Code | `test_repeatability` |
+| Repeatability | 90% | Code (cross-iteration + Cell 9c final) | `repeatability_scorer` |
+
+The **Pareto frontier** tracks 4 objectives: `correctness` (up), `repeatability` (up), `regressions` (down), `patch_cost` (down). **During the loop** (iteration 2+), repeatability is measured via cross-iteration SQL comparison (free -- no extra queries). **After all iterations**, a final dedicated Cell 9c re-query test measures true point-in-time repeatability. Non-repeatable questions are synthesized as `repeatability_issue` failures and routed to Lever 1 (structured metadata: tags, column comments) for TABLE/MV assets, or Lever 6 (instructions) for TVF assets.
 
 ## Scripts
 
@@ -353,9 +377,20 @@ End-to-end integration test notebook covering the full optimization loop across 
 | Skipping worker SKILL.md and analyzing inline | Inconsistent with prescribed workflow, missed reference patterns | Always read worker SKILL.md before proceeding (hard constraint #12) |
 | API-only update without repo file change | Lever 1-5 changes lost on next `databricks bundle deploy` | Verify BOTH API + repo file via `git diff` (hard constraint #13) |
 | Applying Lever 6 (GEPA) before Levers 1-5 | Optimization budget wasted on lowest-priority lever | Apply in lever order 1→6, re-evaluate after each lever (hard constraint #14) |
+| Optimizing from aggregate metrics only | Untargeted changes that may not fix root cause | Download per-row `evaluation/failures.json` artifact and use `cluster_failures()` (hard constraint #15) |
+| Ignoring arbiter verdicts | Stale benchmarks degrade measured accuracy | Check arbiter threshold, route corrections to Generator (hard constraint #16) |
+| GET space without `?include_serialized_space=true` | Space appears empty, unnecessary redeployment | Always include query parameter in `_fetch_space_config()` |
+| Skipping LoggedModel creation | No config snapshots, no rollback capability | Ensure `create_genie_model_version()` returns non-None `model_id` before evaluation (hard constraint #17) |
+| Using `apply_proposal_batch()` instead of `apply_patch_set()` | Changes not actually applied, agent must manually execute | Set `use_patch_dsl=True` and call `apply_patch_set()` for programmatic apply + rollback (hard constraint #18) |
+| Running Cell 9c re-query on every iteration | Wastes ~24s per question of API budget per iteration | Cell 9c only fires in the final dedicated test (Phase 3b); during the loop, cross-iteration SQL comparison provides free repeatability signal |
+| Routing all repeatability issues to TVFs (Lever 3) | Misses root cause when unstructured metadata creates ambiguous search space | Route TABLE/MV to Lever 1 (structured metadata: tags, column comments) first; TVF conversion is secondary |
 
 ## Version History
 
+- **v3.8.0** (Feb 22, 2026) - Repeatability v2: cross-iteration comparison and structured metadata routing. **Cross-iteration repeatability:** `_run_eval` no longer auto-enables `run_repeatability` on every full-scope eval; instead, from iteration 2+, `_compute_cross_iteration_repeatability()` compares per-question SQL hashes with the previous iteration (free, no extra queries). Only questions whose SQL changed AND were previously correct are flagged as concerning. Cell 9c re-query test fires once in Phase 3b (final dedicated test after all levers). **Structured metadata routing:** `_synthesize_repeatability_failures()` and `_synthesize_repeatability_failures_from_cross_iter()` now recommend structured metadata (business_definition, synonyms, join_keys, do_not_use_when, UC tags) for TABLE/MV assets instead of TVF conversion. Optimizer routing changed: TABLE/MV → Lever 1 (structured metadata), TVF → Lever 6 (instructions). Common mistakes updated.
+- **v3.7.0** (Feb 22, 2026) - Repeatability judge integration (Approach C: Combined). Evaluator: Cell 9c post-evaluation repeatability check added to `run_genie_evaluation.py` — re-queries each question 2 extra times, computes SQL consistency via MD5 hash, emits `evaluation/repeatability.json` artifact and `repeatability/mean` metric; gated behind `run_repeatability` widget/job parameter. Orchestrator: `init_progress()` now tracks `repeatability_pct`, `best_repeatability`, and `repeatability_target` (90%); `_run_eval` enables repeatability for full-scope evaluations; `run_evaluation_via_job()` downloads repeatability artifacts; `_update_pareto_frontier()` includes `repeatability` dimension; `_synthesize_repeatability_failures()` converts non-repeatable questions into synthetic failure rows with ASI metadata (`failure_type="repeatability_issue"`, `blame_set` pointing to dominant asset type) for the optimizer; version bumped to v3.7.0. Optimizer: `_map_to_lever()` now maps `repeatability_issue` to lever 3 (TVFs — TVF-first design constrains LLM output, reducing SQL variance); `_describe_fix()` generates asset-type-specific recommendations for repeatability clusters (MV→TVF conversion, TABLE→TVF wrapper, TVF→instruction clarification).
+- **v3.6.0** (Feb 22, 2026) - Phase 4 runtime error fixes across evaluator and export-import API skills. Evaluator: JUDGE_PROMPTS rewritten to use only `make_judge()` allowed template variables (`{{ inputs }}`, `{{ outputs }}`, `{{ expectations }}`); `_sanitize_prompt_for_make_judge()` safety net added; `genie_predict_fn` signature fixed to keyword-args pattern matching `mlflow.genai.evaluate()` unpacking behavior; hard constraints #9-10 and 3 new Common Mistakes added. Export-import API: Section 8 sort keys corrected from `table_name`/`function_name` to `identifier`/`id`; `sort_all_arrays()` replaced with canonical `sort_genie_config()`. MLflow GenAI Evaluation skill: `make_judge()` template variable constraints and `predict_fn` keyword argument contract documented.
+- **v3.5.0** (Feb 22, 2026) - Wire the producer-consumer data pipeline end-to-end (Phase 3 feedback, Gaps 16-21). **Gap 16 (P0):** Evaluator now emits `evaluation/eval_results.json`, `evaluation/failures.json`, and `evaluation/arbiter_actions.json` as MLflow artifacts with full per-row data including ASI metadata; orchestrator downloads these artifacts in `run_evaluation_via_job()` and passes rich data to `cluster_failures()`. **Gap 17 (P0):** `question_id` added to eval record inputs (fixes empty `failure_ids`); arbiter threshold check added after every evaluation — if `genie_correct >= 3`, sets `benchmark_correction_needed` flag and stores `corrected_questions` for Generator. **Gap 18 (P1):** LoggedModel lifecycle hardened — evaluator now prints WARNING when `model_id` is None; `references/logged-model-lifecycle.md` created with implementation pointers and data flow diagram; job template YAML commented. **Gap 19 (P1):** `lever_audit` dict added to session state tracking per-lever attempts, proposals generated/applied, and skip reasons; lever exhaustion gate before GEPA warns if any levers 1-5 were never attempted; per-lever proposal examples added to optimizer `feedback-to-metadata-mapping.md`. **Gap 20 (P1):** `_fetch_space_config()` now uses `?include_serialized_space=true` with asset count logging; Step 0b added to loop pseudocode; export-import API table fixed. **Gap 21 (P2):** Output JSON now includes `total_questions`, `rows`, and `arbiter_actions`. **Patch DSL wiring:** `apply_patch_set()` now called in lever loop (replacing `apply_proposal_batch()`), GEPA patches routed through Patch DSL, `rollback()` wired alongside `rollback_to_model()`, `use_patch_dsl` flag added to session state. **ASI-aware clustering:** `cluster_failures()` now prefers `failure_type`/`blame_set` from ASI metadata over keyword extraction; `_describe_fix()` uses `counterfactual_fix`; `_map_to_lever()` accepts ASI failure type. **Hard constraints #15-18** added. 5 new common mistakes.
 - **v3.4.0** (Feb 21, 2026) - Data contracts and score scales: Fix 5 issues from v3.3.0 rerun audit. **P0 fixes:** (1) Optimizer now receives full iteration result with row-level feedback instead of empty failure ID list — `cluster_failures()` gets row dicts with `feedback/*` and `rationale/*` columns, with fallback synthesis from failure IDs when rich data unavailable. (2) `_normalize_scores()` helper converts per-judge 0-1 scores to 0-100 at evaluation boundary so `all_thresholds_met()` compares like-for-like — applied in both `run_evaluation_via_job()` and `run_evaluation_iteration()`. (3) P0 gate now checks signal quality — warns if `eval_scope="p0"` returns zero total questions (gate inconclusive, not silent pass). **P1 fixes:** (4) Generator dataset contract wired into orchestrator — `sync_yaml_to_mlflow_dataset()` called at startup when `uc_schema` is set, `eval_dataset_name` stored in progress and passed through to evaluator (honors hard constraint #9). (5) `patched_objects` now Base64-encoded in job params to avoid comma-delimiter conflicts; evaluator template decodes `patched_objects_b64` with fallback to legacy `patched_objects` param.
 - **v3.3.0** (Feb 21, 2026) - Audit remediation: Enforce gates in code, not prose. **P0 fixes:** (1) Slice→P0 gate sequence now executed in `_run_lever_aware_loop()` between apply and full eval — slice gate fails if accuracy drops >5%, P0 gate fails on any P0 question failure, both trigger rollback. (2) Dual persistence failure upgraded from warning to hard stop (rollback + skip lever). (3) Lever-aware mode without `--job-mode` now downgrades to evaluate-only unless `--inline-routing-only` is explicitly set. **P1 fixes:** (4) `trigger_evaluation_job()` and `run_evaluation_via_job()` now pass `eval_scope`, `model_id`, and `patched_objects` through to `databricks bundle run --params`. (5) `_resolve_cli_profile()` reads `databricks.yml` to resolve workspace profile for `WorkspaceClient` initialization. (6) Job template `dataset_mode` default changed from `"yaml"` to `"uc"`. **P2 fixes:** (7) `_validate_experiment_path()` now pre-creates parent directory via `workspace.mkdirs`. (8) `worker_reads` audit trail added to session progress tracking.
 - **v3.2.0** (Feb 21, 2026) - Resolved 20 logical inconsistencies from walkthrough audit. `orchestrator.py` rewritten from evaluate-only to lever-aware loop (Phase 1: baseline, Phase 2: per-lever optimize/apply/verify/eval with regression rollback, Phase 3: GEPA lever 6, Phase 4: deploy + held-out). Worker import wiring via `_setup_worker_imports()` with `--worker-dir` CLI. Experiment path default now `/Users/<email>/genie-optimization/<domain>` (hard constraint #7). Rollback made unconditional (no longer gated on `USE_PATCH_DSL`). `rollback_to_model()` artifact path bug fixed. Prompt registration upgraded to `mlflow.genai.register_prompt()` with `@production` alias. Pareto frontier metric renamed from `patch_count` to `patch_cost` (risk-weighted). `_map_to_lever()` extended to levers 4-5 (Monitoring, ML tables). `_convert_patch_set_to_proposals()` uses `_patch_to_lever()` instead of hardcoded lever 6. `verify_repo_update()` detects Databricks runtime and skips git. `dataset_mode` default changed to `"uc"` in evaluator template. `add_benchmark_correction()` helper for arbiter tracking. `test_optimization_e2e.py` created. `--recommended` CLI flag for optimizer feature flags.

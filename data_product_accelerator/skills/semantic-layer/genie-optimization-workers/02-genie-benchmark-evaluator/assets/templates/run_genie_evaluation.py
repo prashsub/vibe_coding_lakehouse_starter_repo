@@ -260,6 +260,12 @@ try:
 except Exception:
     eval_dataset_name = None
 
+try:
+    run_repeatability = dbutils.widgets.get("run_repeatability")
+    run_repeatability = run_repeatability.strip().lower() in ("true", "1", "yes")
+except Exception:
+    run_repeatability = False
+
 RATE_LIMIT_SECONDS = 12
 MAX_GENIE_WAIT = 120
 LLM_ENDPOINT = "databricks-claude-sonnet-4-6"
@@ -346,6 +352,10 @@ print(f"Experiment URL:  {exp_url}")
 if model_id:
     mlflow.set_active_model(model_id=model_id)
     print(f"Active Model:    {model_id}")
+else:
+    print("WARNING: No model_id provided. Config version tracking DISABLED.")
+    print("  Pass model_id from orchestrator for full lifecycle tracking.")
+    print("  Without it: no config snapshots, no parent chain, no promote/rollback.")
 
 # COMMAND ----------
 
@@ -453,15 +463,18 @@ def run_genie_query(sid, question, max_wait=MAX_GENIE_WAIT):
 
 
 @mlflow.trace
-def genie_predict_fn(inputs: dict) -> dict:
+def genie_predict_fn(question: str, expected_sql: str = "", **kwargs) -> dict:
     """MLflow predict function: query Genie, execute both SQLs, return response + comparison.
+
+    mlflow.genai.evaluate() unpacks the inputs dict as keyword arguments, so
+    the signature must match the keys in eval_records["inputs"].  Additional
+    keys (question_id, space_id, catalog, gold_schema) are captured via
+    **kwargs; space_id/catalog/gold_schema are available from outer scope.
 
     SQL execution is lifted here so every scorer reads pre-computed results.
     Neither result_correctness nor arbiter_scorer calls spark.sql().
     Respects 12s rate limit between Genie API calls.
     """
-    question = inputs.get("question", "")
-    expected_sql = inputs.get("expected_sql", "")
     time.sleep(RATE_LIMIT_SECONDS)
     result = run_genie_query(space_id, question)
     genie_sql = sanitize_sql(result.get("sql") or "")
@@ -517,40 +530,80 @@ def genie_predict_fn(inputs: dict) -> dict:
 
 # COMMAND ----------
 
+MAKE_JUDGE_ALLOWED_VARS = {"inputs", "outputs", "trace", "expectations", "conversation"}
+
+
+def _sanitize_prompt_for_make_judge(prompt: str) -> str:
+    """Strip unsupported template vars and ensure at least one allowed var exists.
+
+    make_judge() only permits: {{ inputs }}, {{ outputs }}, {{ trace }},
+    {{ expectations }}, {{ conversation }}.  Custom vars raise MlflowException;
+    zero vars also raises MlflowException.  This helper is a safety net for
+    prompts loaded from the Prompt Registry (which accepts any variable names).
+    """
+    import re
+    all_vars = set(re.findall(r'\{\{\s*(\w+)\s*\}\}', prompt))
+    custom_vars = all_vars - MAKE_JUDGE_ALLOWED_VARS
+    cleaned = prompt
+    for v in custom_vars:
+        cleaned = re.sub(r'\{\{\s*' + v + r'\s*\}\}', '', cleaned)
+    remaining = set(re.findall(r'\{\{\s*(\w+)\s*\}\}', cleaned))
+    if not remaining & MAKE_JUDGE_ALLOWED_VARS:
+        cleaned += (
+            "\n\nUser question: {{ inputs }}\n"
+            "Generated output: {{ outputs }}\n"
+            "Expected result: {{ expectations }}"
+        )
+    return cleaned
+
+
 JUDGE_PROMPTS = {
     "schema_accuracy": (
         "You are a SQL schema expert evaluating SQL for a Databricks Genie Space.\n"
         "Determine if the GENERATED SQL references the correct tables, columns, and joins.\n\n"
-        "Question: {{question}}\nExpected SQL: {{expected_sql}}\nGenerated SQL: {{genie_sql}}\n\n"
-        'Respond with JSON: {"score": "yes" or "no", "rationale": "explanation"}'
+        "User question: {{ inputs }}\n"
+        "Generated SQL: {{ outputs }}\n"
+        "Expected SQL: {{ expectations }}\n\n"
+        "Respond with yes if the generated SQL references the correct tables, columns, "
+        "and joins for the question, or no if it does not."
     ),
     "logical_accuracy": (
         "You are a SQL logic expert evaluating SQL for a Databricks Genie Space.\n"
         "Determine if the GENERATED SQL applies correct aggregations, filters, GROUP BY, "
         "ORDER BY, and WHERE clauses for the business question.\n\n"
-        "Question: {{question}}\nExpected SQL: {{expected_sql}}\nGenerated SQL: {{genie_sql}}\n\n"
-        'Respond with JSON: {"score": "yes" or "no", "rationale": "explanation"}'
+        "User question: {{ inputs }}\n"
+        "Generated SQL: {{ outputs }}\n"
+        "Expected SQL: {{ expectations }}\n\n"
+        "Respond with yes if the generated SQL applies the correct logic "
+        "for the question, or no if it does not."
     ),
     "semantic_equivalence": (
         "You are a SQL semantics expert evaluating SQL for a Databricks Genie Space.\n"
         "Determine if the two SQL queries measure the SAME business metric and would "
         "answer the same question, even if written differently.\n\n"
-        "Question: {{question}}\nExpected SQL: {{expected_sql}}\nGenerated SQL: {{genie_sql}}\n\n"
-        'Respond with JSON: {"score": "yes" or "no", "rationale": "explanation"}'
+        "User question: {{ inputs }}\n"
+        "Generated SQL: {{ outputs }}\n"
+        "Expected SQL: {{ expectations }}\n\n"
+        "Respond with yes if the two queries are semantically equivalent "
+        "for the question, or no if they are not."
     ),
     "completeness": (
         "You are a SQL completeness expert evaluating SQL for a Databricks Genie Space.\n"
         "Determine if the GENERATED SQL fully answers the user's question without "
         "missing dimensions, measures, or filters.\n\n"
-        "Question: {{question}}\nExpected SQL: {{expected_sql}}\nGenerated SQL: {{genie_sql}}\n\n"
-        'Respond with JSON: {"score": "yes" or "no", "rationale": "explanation"}'
+        "User question: {{ inputs }}\n"
+        "Generated SQL: {{ outputs }}\n"
+        "Expected SQL: {{ expectations }}\n\n"
+        "Respond with yes if the generated SQL fully answers the question, "
+        "or no if it is missing dimensions, measures, or filters."
     ),
     "arbiter": (
         "You are a senior SQL arbiter for a Databricks Genie Space evaluation.\n"
         "Two SQL queries attempted to answer the same business question but produced different results.\n"
         "Analyze both queries and determine which is correct.\n\n"
-        "Question: {{question}}\nGround Truth SQL: {{gt_sql}}\nGenie SQL: {{genie_sql}}\n"
-        "Result comparison: {{comparison}}\n\n"
+        "User question and expected SQL: {{ inputs }}\n"
+        "Genie response and comparison: {{ outputs }}\n"
+        "Expected result: {{ expectations }}\n\n"
         "Return one of: genie_correct, ground_truth_correct, both_correct, neither_correct\n"
         'Respond with JSON: {"verdict": "...", "rationale": "explanation"}'
     ),
@@ -918,6 +971,7 @@ if not eval_dataset_uc_name and dataset_mode == "yaml":
     for b in benchmarks:
         eval_records.append({
             "inputs": {
+                "question_id": b.get("id", ""),
                 "question": b["question"],
                 "space_id": space_id,
                 "catalog": catalog,
@@ -1064,5 +1118,230 @@ output = {
     "dataset_mode": dataset_mode,
     "uc_schema": uc_schema or None,
 }
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Cell 9b: Emit Structured Artifacts for Orchestrator Consumption
+
+# COMMAND ----------
+
+rows_for_output = []
+failures_artifact = []
+arbiter_actions_artifact = []
+
+if hasattr(eval_result, "tables") and "eval_results" in eval_result.tables:
+    results_df = eval_result.tables["eval_results"]
+    import tempfile as _tmpmod
+    import os as _osmod
+
+    for _, row in results_df.iterrows():
+        row_dict = {}
+        for col in results_df.columns:
+            val = row[col]
+            if hasattr(val, "item"):
+                val = val.item()
+            row_dict[col] = val
+        rows_for_output.append(row_dict)
+
+        rc = row.get("result_correctness/value", row.get("result_correctness", ""))
+        is_failure = str(rc).lower() in ("no", "false", "0", "0.0")
+        if is_failure:
+            failures_artifact.append(row_dict)
+
+        av = str(row.get("arbiter/value", row.get("arbiter", "skipped")))
+        if av in ("genie_correct", "ground_truth_correct", "both_correct", "neither_correct"):
+            arbiter_actions_artifact.append({
+                "question_id": row.get("inputs/question_id", ""),
+                "question": row.get("inputs/question", ""),
+                "verdict": av,
+                "expected_sql": row.get("inputs/expected_sql", ""),
+                "generated_sql": row.get("outputs/generated_sql", row.get("outputs", "")),
+                "rationale": str(row.get("arbiter/rationale", row.get("rationale/arbiter", ""))),
+            })
+
+    artifact_dir = _tmpmod.mkdtemp(prefix="genie_eval_artifacts_")
+
+    eval_results_path = _osmod.path.join(artifact_dir, "eval_results.json")
+    with open(eval_results_path, "w") as f:
+        json.dump(rows_for_output, f, indent=2, default=str)
+
+    failures_path = _osmod.path.join(artifact_dir, "failures.json")
+    with open(failures_path, "w") as f:
+        json.dump(failures_artifact, f, indent=2, default=str)
+
+    arbiter_path = _osmod.path.join(artifact_dir, "arbiter_actions.json")
+    with open(arbiter_path, "w") as f:
+        json.dump(arbiter_actions_artifact, f, indent=2, default=str)
+
+    with mlflow.start_run(run_id=run.info.run_id):
+        mlflow.log_artifact(eval_results_path, artifact_path="evaluation")
+        mlflow.log_artifact(failures_path, artifact_path="evaluation")
+        mlflow.log_artifact(arbiter_path, artifact_path="evaluation")
+
+    print(f"\nArtifacts logged to evaluation/:")
+    print(f"  eval_results.json: {len(rows_for_output)} rows")
+    print(f"  failures.json: {len(failures_artifact)} failures")
+    print(f"  arbiter_actions.json: {len(arbiter_actions_artifact)} actions")
+
+    import shutil as _shmod
+    _shmod.rmtree(artifact_dir, ignore_errors=True)
+else:
+    print("WARNING: eval_result.tables['eval_results'] not available. No artifacts emitted.")
+
+output["total_questions"] = len(benchmarks)
+output["rows"] = rows_for_output
+output["arbiter_actions"] = arbiter_actions_artifact
+output["artifact_paths"] = {
+    "eval_results": "evaluation/eval_results.json",
+    "failures": "evaluation/failures.json",
+    "arbiter_actions": "evaluation/arbiter_actions.json",
+}
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Cell 9c: Repeatability Check
+# MAGIC
+# MAGIC Optional post-evaluation step that re-queries Genie for each benchmark question
+# MAGIC to measure SQL generation consistency. Gated behind the `run_repeatability`
+# MAGIC widget parameter. Each question is re-queried 2 additional times; the original
+# MAGIC SQL from predict_fn is included in the hash comparison (3 total samples).
+
+# COMMAND ----------
+
+REPEATABILITY_EXTRA_QUERIES = 2
+REPEATABILITY_CLASSIFICATIONS = {
+    100: "IDENTICAL",
+    70: "MINOR_VARIANCE",
+    50: "SIGNIFICANT_VARIANCE",
+    0: "CRITICAL_VARIANCE",
+}
+
+def _classify_repeatability(pct: float) -> str:
+    for threshold in sorted(REPEATABILITY_CLASSIFICATIONS.keys(), reverse=True):
+        if pct >= threshold:
+            return REPEATABILITY_CLASSIFICATIONS[threshold]
+    return "CRITICAL_VARIANCE"
+
+def detect_asset_type(sql: str) -> str:
+    if not sql:
+        return "NONE"
+    sql_lower = sql.lower()
+    if "mv_" in sql_lower or "measure(" in sql_lower:
+        return "MV"
+    elif "get_" in sql_lower:
+        return "TVF"
+    return "TABLE"
+
+if run_repeatability:
+    print("\n" + "=" * 60)
+    print("Cell 9c: Repeatability Check")
+    print(f"  Re-querying each question {REPEATABILITY_EXTRA_QUERIES} extra times")
+    est_secs = len(rows_for_output) * REPEATABILITY_EXTRA_QUERIES * (RATE_LIMIT_SECONDS + 15)
+    print(f"  Estimated time: ~{est_secs}s ({est_secs / 60:.1f} min)")
+    print("=" * 60)
+
+    from collections import Counter as _RepCounter
+
+    repeatability_results = []
+    for idx, row_data in enumerate(rows_for_output):
+        question = row_data.get("inputs/question", "")
+        original_sql = row_data.get("outputs/response", "")
+        question_id = row_data.get("inputs/question_id", "")
+        if not question:
+            continue
+
+        original_hash = (
+            hashlib.md5(original_sql.lower().encode()).hexdigest()[:8]
+            if original_sql else "NONE"
+        )
+        hashes = [original_hash]
+        sqls = [original_sql or ""]
+
+        print(f"  [{idx + 1}/{len(rows_for_output)}] {question[:50]}...", end=" ", flush=True)
+        for retry_i in range(REPEATABILITY_EXTRA_QUERIES):
+            time.sleep(RATE_LIMIT_SECONDS)
+            retry_result = run_genie_query(space_id, question)
+            retry_sql = retry_result.get("sql", "") or ""
+            retry_hash = (
+                hashlib.md5(retry_sql.lower().encode()).hexdigest()[:8]
+                if retry_sql else "NONE"
+            )
+            hashes.append(retry_hash)
+            sqls.append(retry_sql)
+
+        hash_counts = _RepCounter(hashes)
+        most_common_count = hash_counts.most_common(1)[0][1]
+        pct = (most_common_count / len(hashes)) * 100
+        asset_type = detect_asset_type(original_sql) if original_sql else "NONE"
+        classification = _classify_repeatability(pct)
+
+        print(f"{classification} ({pct:.0f}%, {len(set(hashes))} variants, asset={asset_type})")
+
+        repeatability_results.append({
+            "question_id": question_id,
+            "question": question,
+            "repeatability_pct": pct,
+            "classification": classification,
+            "unique_variants": len(set(hashes)),
+            "dominant_asset": asset_type,
+            "hashes": hashes,
+        })
+
+    avg_repeatability = (
+        sum(r["repeatability_pct"] for r in repeatability_results)
+        / len(repeatability_results)
+        if repeatability_results else 0
+    )
+
+    critical_count = sum(1 for r in repeatability_results if r["classification"] == "CRITICAL_VARIANCE")
+    significant_count = sum(1 for r in repeatability_results if r["classification"] == "SIGNIFICANT_VARIANCE")
+    identical_count = sum(1 for r in repeatability_results if r["classification"] == "IDENTICAL")
+
+    print(f"\n  Repeatability Summary:")
+    print(f"    Average:      {avg_repeatability:.0f}%")
+    print(f"    Identical:    {identical_count}")
+    print(f"    Critical:     {critical_count}")
+    print(f"    Significant:  {significant_count}")
+
+    import tempfile as _rep_tmpmod
+    import os as _rep_osmod
+
+    rep_artifact_dir = _rep_tmpmod.mkdtemp(prefix="genie_repeatability_")
+    rep_path = _rep_osmod.path.join(rep_artifact_dir, "repeatability.json")
+    with open(rep_path, "w") as f:
+        json.dump({
+            "average_repeatability_pct": avg_repeatability,
+            "total_questions": len(repeatability_results),
+            "identical": identical_count,
+            "critical_variance": critical_count,
+            "significant_variance": significant_count,
+            "results": repeatability_results,
+        }, f, indent=2, default=str)
+
+    with mlflow.start_run(run_id=run.info.run_id):
+        mlflow.log_metric("repeatability/mean", avg_repeatability / 100)
+        mlflow.log_metric("repeatability/identical_count", identical_count)
+        mlflow.log_metric("repeatability/critical_count", critical_count)
+        mlflow.log_artifact(rep_path, artifact_path="evaluation")
+
+    import shutil as _rep_shmod
+    _rep_shmod.rmtree(rep_artifact_dir, ignore_errors=True)
+
+    print(f"  Logged repeatability/mean={avg_repeatability / 100:.3f} to MLflow run {run.info.run_id}")
+
+    output["repeatability_pct"] = avg_repeatability
+    output["repeatability_details"] = repeatability_results
+    output["artifact_paths"]["repeatability"] = "evaluation/repeatability.json"
+else:
+    print("\nRepeatability check: SKIPPED (run_repeatability=false)")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Cell 10: Exit
+
+# COMMAND ----------
 
 dbutils.notebook.exit(json.dumps(output, default=str))

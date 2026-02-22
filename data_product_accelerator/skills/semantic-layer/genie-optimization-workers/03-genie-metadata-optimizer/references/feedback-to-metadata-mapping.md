@@ -328,3 +328,106 @@ if regressions:
     print(f"  REGRESSION: {regressions}")
     # Revert last change, try alternative
 ```
+
+---
+
+## Per-Lever Proposal Examples
+
+Concrete examples of what proposals should look like for each lever. The orchestrator
+iterates levers 1-5 in priority order; each lever targets a specific metadata surface.
+
+### Lever 1: UC Table & Column Metadata
+
+```python
+{
+    "proposal_id": "L1_001",
+    "cluster_id": "wrong_aggregation_booking_analytics",
+    "lever": 1,
+    "change_description": "Add column comment to booking_analytics_metrics.total_bookings clarifying it counts confirmed bookings only (excludes cancellations)",
+    "patch_type": "add_column_description",
+    "target_object": "catalog.schema.booking_analytics_metrics",
+    "target_column": "total_bookings",
+    "dual_persistence": {
+        "api": "ALTER TABLE catalog.schema.booking_analytics_metrics ALTER COLUMN total_bookings COMMENT '...'",
+        "repo": "src/semantic/table_comments/booking_analytics_metrics.yml"
+    },
+    "risk_level": "low",
+    "estimated_impact": 3
+}
+```
+
+### Lever 2: Metric View Metadata
+
+```python
+{
+    "proposal_id": "L2_001",
+    "cluster_id": "missing_metric_revenue_per_night",
+    "lever": 2,
+    "change_description": "Add 'revenue_per_night' measure to wanderbricks_metrics metric view with formula total_revenue/total_nights",
+    "patch_type": "add_mv_measure",
+    "target_object": "wanderbricks_metrics",
+    "dual_persistence": {
+        "api": "CREATE OR REPLACE VIEW ... WITH METRICS LANGUAGE YAML ...",
+        "repo": "src/semantic/metric_views/wanderbricks_metrics.yml"
+    },
+    "risk_level": "medium",
+    "estimated_impact": 5
+}
+```
+
+### Lever 3: TVF Parameter Metadata
+
+```python
+{
+    "proposal_id": "L3_001",
+    "cluster_id": "wrong_date_filter_tvf_params",
+    "lever": 3,
+    "change_description": "Update TVF get_booking_stats parameter comment for date_from to specify 'ISO 8601 format, defaults to 30 days ago if omitted'",
+    "patch_type": "add_tvf_parameter",
+    "target_object": "get_booking_stats",
+    "dual_persistence": {
+        "api": "ALTER FUNCTION catalog.schema.get_booking_stats ...",
+        "repo": "src/semantic/tvfs/get_booking_stats.sql"
+    },
+    "risk_level": "low",
+    "estimated_impact": 2
+}
+```
+
+### Lever 4: Monitoring Table Integration
+
+```python
+{
+    "proposal_id": "L4_001",
+    "cluster_id": "missing_anomaly_context",
+    "lever": 4,
+    "change_description": "Add monitoring_alerts table as trusted asset for anomaly detection queries",
+    "patch_type": "add_table",
+    "target_object": "catalog.schema.monitoring_alerts",
+    "dual_persistence": {
+        "api": "PATCH /api/2.0/genie/spaces/{space_id} (add data_asset)",
+        "repo": "src/semantic/genie_configs/trusted_assets.yml"
+    },
+    "risk_level": "medium",
+    "estimated_impact": 4
+}
+```
+
+### Lever 5: ML Table Integration
+
+```python
+{
+    "proposal_id": "L5_001",
+    "cluster_id": "missing_prediction_context",
+    "lever": 5,
+    "change_description": "Add ml_booking_predictions table as trusted asset for forecast queries",
+    "patch_type": "add_table",
+    "target_object": "catalog.schema.ml_booking_predictions",
+    "dual_persistence": {
+        "api": "PATCH /api/2.0/genie/spaces/{space_id} (add data_asset)",
+        "repo": "src/semantic/genie_configs/trusted_assets.yml"
+    },
+    "risk_level": "medium",
+    "estimated_impact": 3
+}
+```

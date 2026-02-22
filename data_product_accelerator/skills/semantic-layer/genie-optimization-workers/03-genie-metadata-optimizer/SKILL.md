@@ -35,7 +35,7 @@ Analyzes evaluation failures and generates metadata change proposals using GEPA 
 
 | Input | Type | Description |
 |-------|------|-------------|
-| `eval_results` | dict | Evaluation results from the Evaluator worker |
+| `eval_results` | dict | Evaluation results with per-row `rows` list containing `feedback/*`, `rationale/*`, and `metadata/*` columns. **MUST include per-row data from the evaluator's `evaluation/failures.json` artifact, not just aggregate metrics.** When ASI metadata fields (`metadata/failure_type`, `metadata/blame_set`, `metadata/counterfactual_fix`) are present in rows, `cluster_failures()` uses them for higher-precision clustering instead of keyword extraction. |
 | `judge_feedback` | list | Judge rationales per question |
 | `metadata_snapshot` | dict | Current Genie metadata snapshot (for GEPA or introspection) |
 | `space_id` | str | Genie Space ID |
@@ -43,6 +43,10 @@ Analyzes evaluation failures and generates metadata change proposals using GEPA 
 | `use_patch_dsl` | bool | Enable Patch DSL validation and conflict checking (default: False) |
 | `use_gepa` | bool | Enable GEPA evaluation of candidate patch sets (default: False) |
 | `target_lever` | int or None | When provided, filter proposals to this lever only (1-6). Used by the orchestrator for per-lever optimization (default: None = all levers) |
+
+### Hard Constraint
+
+Optimizer MUST consume the evaluator's per-row failures artifact (with ASI metadata), not aggregate metrics. When ASI fields (`failure_type`, `blame_set`, `counterfactual_fix`) are present, use them for clustering instead of keyword extraction from rationale text.
 
 ### Outputs (to Orchestrator)
 
@@ -121,7 +125,11 @@ Judge `rationale` fields are the primary learning signal. GEPA receives rational
 | Wrong column | 1 (UC Columns) | `ALTER COLUMN ... COMMENT` |
 | Wrong aggregation | 2 (Metric Views) | `CREATE OR REPLACE VIEW` |
 | Wrong filter | 3 (TVFs) | `CREATE OR REPLACE FUNCTION` |
+| Repeatability issue (TABLE/MV) | 1 (UC Tables/Columns) | `ALTER TABLE SET TBLPROPERTIES`, `ALTER COLUMN COMMENT` |
+| Repeatability issue (TVF) | 6 (Instructions) | `PATCH /api/2.0/genie/spaces/{id}` |
 | Wrong asset routing | 6 (Instructions) | `PATCH /api/2.0/genie/spaces/{id}` |
+
+**Repeatability → Lever routing rationale:** Repeatability issues often stem from unstructured metadata creating an ambiguous search space for the LLM. Structured metadata (Lever 1) -- `business_definition`, `synonyms[]`, `grain`, `join_keys[]`, `do_not_use_when[]`, `preferred_questions[]` in column comments, plus UC tags like `preferred_for_genie=true`, `deprecated_for_genie=true`, `domain=<value>` -- narrows the search space and reduces SQL variance. Structured metadata can be added as **tags** (via `TBLPROPERTIES`/`ALTER TABLE SET TAGS`) or within **descriptions/column comments** depending on the situation. When the asset is already a TVF (output is already constrained by function signature), the optimizer falls back to Lever 6 (instructions for deterministic parameter selection). TVF conversion remains a secondary recommendation for TABLE/MV assets when structured metadata alone is insufficient.
 
 ## Common Mistakes
 
@@ -170,3 +178,10 @@ DABs job definition for deploying GEPA optimization as a Databricks job. Include
 | [prompt-registry-patterns.md](references/prompt-registry-patterns.md) | Prompt lifecycle, GEPA judge optimization, rollback, tag conventions |
 | [run_gepa_optimization.py](assets/templates/run_gepa_optimization.py) | GEPA notebook template (all helpers inlined, self-contained) |
 | [gepa-optimization-job-template.yml](assets/templates/gepa-optimization-job-template.yml) | DABs job definition for GEPA optimization |
+
+## Version History
+
+- **v3.8.0** (Feb 22, 2026) - Repeatability v2: structured metadata routing. Changed `_map_to_lever()` for `repeatability_issue`: TABLE/MV now routes to Lever 1 (structured metadata -- tags, column comments with business_definition, synonyms, grain, join_keys, do_not_use_when) instead of Lever 3 (TVFs); TVF routes to Lever 6 (instructions). Added `blame_set` parameter to `_map_to_lever()` for context-aware routing. Rewrote `_REPEATABILITY_FIX_BY_ASSET` with structured metadata recommendations. Fixed `_describe_fix()` bug reading `dominant_asset` instead of `asi_blame_set`. Updated `generate_metadata_proposals()` and `_dual_persist_paths()` to pass `blame_set` through.
+- **v3.7.0** (Feb 22, 2026) - Repeatability judge integration. Added `repeatability_issue` to `_map_to_lever()` mapping (lever 3, TVFs). Enhanced `_describe_fix()` with asset-type-specific recommendations for repeatability clusters: MV-routed questions recommend TVF conversion, TABLE-routed recommend TVF wrappers, TVF-routed recommend deterministic parameter instructions. Updated Root Cause to Lever Mapping table in SKILL.md.
+- **v3.5.0** (Feb 22, 2026) - ASI-aware clustering (Phase 3). `cluster_failures()` now prefers `failure_type`/`blame_set` from ASI metadata over keyword extraction; `_describe_fix()` uses `counterfactual_fix`; `_map_to_lever()` accepts optional `asi_failure_type` parameter for precise routing.
+- **v3.0.0** (Feb 2026) - Initial optimizer with introspection, GEPA L2, Patch DSL, blast radius tracking.

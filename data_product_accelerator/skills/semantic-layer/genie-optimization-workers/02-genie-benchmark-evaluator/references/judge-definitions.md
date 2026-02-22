@@ -49,16 +49,18 @@ import time
 import hashlib
 
 @mlflow.trace
-def genie_predict_fn(inputs: dict) -> dict:
+def genie_predict_fn(question: str, expected_sql: str = "", **kwargs) -> dict:
     """MLflow predict function: query Genie, execute both SQLs, return response + comparison.
+
+    mlflow.genai.evaluate() unpacks the inputs dict as keyword arguments, so
+    the signature must match the keys in eval_records["inputs"].  Additional
+    keys (question_id, space_id, catalog, gold_schema) are captured via
+    **kwargs; space_id/catalog/gold_schema are available from outer scope.
 
     SQL execution is lifted here so every scorer reads pre-computed results.
     Neither result_correctness nor arbiter_scorer calls spark.sql().
     Respects 12s rate limit between Genie API calls.
     """
-    space_id = inputs["space_id"]
-    question = inputs["question"]
-    expected_sql = inputs.get("expected_sql", "")
 
     time.sleep(12)
     result = run_genie_query(space_id, question)
@@ -812,43 +814,70 @@ TVF vs Metric View decision matrix for the `asset_routing_scorer`:
 
 Default prompt templates for each LLM judge. These are registered to the MLflow Prompt Registry and loaded by alias at evaluation time.
 
-**IMPORTANT:** All templates use `{{double_brace}}` syntax (`{{variable}}`), NOT Python `{single_brace}` format strings. The MLflow Prompt Registry requires this for its `.format()` method. Using `{single_brace}` will cause `KeyError` when calling `prompt_obj.format(...)`.
+**IMPORTANT:** All templates use `{{double_brace}}` syntax. However, `make_judge()` and the MLflow Prompt Registry have **different** validation rules for template variables:
+
+| System | Allowed Variable Names | Validation |
+|--------|----------------------|------------|
+| MLflow Prompt Registry (`register_prompt()`) | Any `{{ variable }}` | No validation — any name accepted |
+| MLflow `make_judge(instructions=...)` | Only `{{ inputs }}`, `{{ outputs }}`, `{{ trace }}`, `{{ expectations }}`, `{{ conversation }}` | Strict — raises `MlflowException` on unknown variables |
+
+Since judge prompts pass through both systems (registered first, then loaded into `make_judge()`), they MUST use only the 5 allowed variables.
+
+### Template Variable Rules for `make_judge()`
+
+1. `make_judge()` instructions MUST contain **at least one** of: `{{ inputs }}`, `{{ outputs }}`, `{{ trace }}`, `{{ expectations }}`, `{{ conversation }}`
+2. `make_judge()` instructions MUST NOT contain any other `{{ variable }}` names — custom variables like `{{question}}`, `{{genie_sql}}` raise `MlflowException`
+3. Plain text without any template variables is also rejected
+4. Use `_sanitize_prompt_for_make_judge()` as a safety net when loading prompts from the Prompt Registry
 
 ```python
 JUDGE_PROMPTS = {
     "schema_accuracy": (
         "You are a SQL schema expert evaluating SQL for a Databricks Genie Space.\n"
         "Determine if the GENERATED SQL references the correct tables, columns, and joins.\n\n"
-        "Question: {{question}}\nExpected SQL: {{expected_sql}}\nGenerated SQL: {{genie_sql}}\n\n"
-        'Respond with JSON: {"score": "yes" or "no", "rationale": "explanation"}'
+        "User question: {{ inputs }}\n"
+        "Generated SQL: {{ outputs }}\n"
+        "Expected SQL: {{ expectations }}\n\n"
+        "Respond with yes if the generated SQL references the correct tables, columns, "
+        "and joins for the question, or no if it does not."
     ),
     "logical_accuracy": (
         "You are a SQL logic expert evaluating SQL for a Databricks Genie Space.\n"
         "Determine if the GENERATED SQL applies correct aggregations, filters, GROUP BY, "
         "ORDER BY, and WHERE clauses for the business question.\n\n"
-        "Question: {{question}}\nExpected SQL: {{expected_sql}}\nGenerated SQL: {{genie_sql}}\n\n"
-        'Respond with JSON: {"score": "yes" or "no", "rationale": "explanation"}'
+        "User question: {{ inputs }}\n"
+        "Generated SQL: {{ outputs }}\n"
+        "Expected SQL: {{ expectations }}\n\n"
+        "Respond with yes if the generated SQL applies the correct logic "
+        "for the question, or no if it does not."
     ),
     "semantic_equivalence": (
         "You are a SQL semantics expert evaluating SQL for a Databricks Genie Space.\n"
         "Determine if the two SQL queries measure the SAME business metric and would "
         "answer the same question, even if written differently.\n\n"
-        "Question: {{question}}\nExpected SQL: {{expected_sql}}\nGenerated SQL: {{genie_sql}}\n\n"
-        'Respond with JSON: {"score": "yes" or "no", "rationale": "explanation"}'
+        "User question: {{ inputs }}\n"
+        "Generated SQL: {{ outputs }}\n"
+        "Expected SQL: {{ expectations }}\n\n"
+        "Respond with yes if the two queries are semantically equivalent "
+        "for the question, or no if they are not."
     ),
     "completeness": (
         "You are a SQL completeness expert evaluating SQL for a Databricks Genie Space.\n"
         "Determine if the GENERATED SQL fully answers the user's question without "
         "missing dimensions, measures, or filters.\n\n"
-        "Question: {{question}}\nExpected SQL: {{expected_sql}}\nGenerated SQL: {{genie_sql}}\n\n"
-        'Respond with JSON: {"score": "yes" or "no", "rationale": "explanation"}'
+        "User question: {{ inputs }}\n"
+        "Generated SQL: {{ outputs }}\n"
+        "Expected SQL: {{ expectations }}\n\n"
+        "Respond with yes if the generated SQL fully answers the question, "
+        "or no if it is missing dimensions, measures, or filters."
     ),
     "arbiter": (
         "You are a senior SQL arbiter for a Databricks Genie Space evaluation.\n"
         "Two SQL queries attempted to answer the same business question but produced different results.\n"
         "Analyze both queries and determine which is correct.\n\n"
-        "Question: {{question}}\nGround Truth SQL: {{gt_sql}}\nGenie SQL: {{genie_sql}}\n"
-        "Result comparison: {{comparison}}\n\n"
+        "User question and expected SQL: {{ inputs }}\n"
+        "Genie response and comparison: {{ outputs }}\n"
+        "Expected result: {{ expectations }}\n\n"
         "Return one of: genie_correct, ground_truth_correct, both_correct, neither_correct\n"
         'Respond with JSON: {"verdict": "...", "rationale": "explanation"}'
     ),
@@ -956,3 +985,57 @@ load_prompt(@production) always gets the best version
 1. **LLM makes column choices** — Different GROUP BY columns across runs
 2. **MEASURE() syntax variations** — LLM constructs different measure expressions
 3. **Dimension selection** — LLM picks different dimensions for grouping
+
+---
+
+## Repeatability Measurement
+
+Repeatability is measured via two complementary mechanisms:
+
+### Cross-Iteration Repeatability (Orchestrator, iteration 2+)
+
+From iteration 2 onwards, the orchestrator compares per-question SQL hashes between the current and previous iteration using `_compute_cross_iteration_repeatability()`. This is **free** -- no extra Genie queries needed since evaluations already produce SQL outputs.
+
+**Algorithm:**
+1. Build `{question_id: MD5(sql.lower())}` maps for both iterations
+2. For each question present in both, check if hashes match
+3. Flag questions where SQL changed AND were previously correct as concerning
+4. Questions that changed from incorrect are treated as expected optimization effects
+
+**Optimizer Integration (cross-iteration):**
+Concerning instabilities are synthesized as failures by `_synthesize_repeatability_failures_from_cross_iter()` with:
+- `failure_type: "repeatability_issue"`
+- `blame_set`: dominant asset type (MV/TVF/TABLE)
+- `counterfactual_fix`: structured-metadata-first recommendation
+
+### Cell 9c Re-Query Test (Evaluator, final only)
+
+Cell 9c runs as a **post-evaluation step** in `run_genie_evaluation.py` during the final dedicated test (Phase 3b), not during the optimization loop. It re-queries Genie 2 extra times per question.
+
+**Gating:** Only runs when `run_repeatability=true` widget parameter is set. The orchestrator enables this only for the final evaluation after all levers complete.
+
+**Algorithm:**
+1. For each benchmark question, take the original SQL from `predict_fn` output
+2. Re-query Genie 2 more times (with `RATE_LIMIT_SECONDS` between calls)
+3. MD5-hash all 3 SQL variants (lowercased)
+4. Compute repeatability as `most_common_hash_count / total_hashes * 100`
+
+**Classification Thresholds:**
+
+| Repeatability % | Classification | Action |
+|----------------|---------------|--------|
+| 100% | IDENTICAL | No action needed |
+| 70-99% | MINOR_VARIANCE | Monitor; may improve with structured metadata |
+| 50-69% | SIGNIFICANT_VARIANCE | Feed to optimizer as `repeatability_issue` |
+| 0-49% | CRITICAL_VARIANCE | Feed to optimizer as `repeatability_issue` (critical severity) |
+
+**Outputs:**
+- MLflow metric: `repeatability/mean` (0-1 scale)
+- MLflow artifact: `evaluation/repeatability.json` (per-question breakdown)
+- Job output dict: `repeatability_pct` (0-100 scale), `repeatability_details` (list)
+
+### Lever Routing for Repeatability Issues
+
+Non-repeatable questions are routed based on asset type (not always to TVFs):
+- **TABLE/MV** -> Lever 1 (structured metadata): Add `business_definition`, `synonyms[]`, `grain`, `join_keys[]`, `do_not_use_when[]`, `preferred_questions[]` in column comments. Add UC tags: `preferred_for_genie=true`, `deprecated_for_genie=true`, `domain=<value>`. Structured metadata can be added as tags (TBLPROPERTIES) or within descriptions/column comments depending on the situation.
+- **TVF** -> Lever 6 (instructions): TVF already constrains output via function signature; add instruction for deterministic parameter selection.

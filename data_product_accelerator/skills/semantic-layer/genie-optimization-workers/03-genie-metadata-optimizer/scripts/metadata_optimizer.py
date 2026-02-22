@@ -814,8 +814,23 @@ def _extract_pattern(rationale: str) -> str:
     return "other"
 
 
-def _map_to_lever(root_cause: str) -> int:
-    """Map root cause to control lever ID (1-6)."""
+def _map_to_lever(root_cause: str, asi_failure_type: str = None, blame_set: str = None) -> int:
+    """Map root cause to control lever ID (1-6).
+
+    When ASI failure_type is provided, it takes precedence over the
+    keyword-derived root_cause since it comes directly from the evaluator's
+    FAILURE_TAXONOMY and is more precise.
+
+    For repeatability_issue, routing depends on blame_set (asset type):
+      - TABLE/MV/None -> Lever 1 (structured metadata: tags, column comments)
+      - TVF -> Lever 6 (instructions for deterministic parameter selection)
+    """
+    ft = asi_failure_type or root_cause
+    if ft == "repeatability_issue":
+        if blame_set == "TVF":
+            return 6
+        return 1
+
     mapping = {
         "wrong_table": 1,
         "wrong_column": 1,
@@ -831,6 +846,8 @@ def _map_to_lever(root_cause: str) -> int:
         "wrong_asset_routing": 6,
         "other": 6,
     }
+    if asi_failure_type and asi_failure_type in mapping:
+        return mapping[asi_failure_type]
     return mapping.get(root_cause, 6)
 
 
@@ -884,7 +901,7 @@ def cluster_failures(eval_results: dict, metadata_snapshot: dict) -> list:
     except ImportError:
         rows_iter = table if isinstance(table, list) else []
 
-    # Collect failures from judge feedback columns
+    # Collect failures from judge feedback columns, enriching with ASI metadata when present
     for row in rows_iter:
         if not isinstance(row, dict):
             continue
@@ -892,29 +909,57 @@ def cluster_failures(eval_results: dict, metadata_snapshot: dict) -> list:
         for col_name, val in list(row_dict.items()):
             if col_name.startswith("feedback/") and "no" in str(val).lower():
                 judge = col_name.replace("feedback/", "")
-                rationale_col = f"rationale/{judge}" if f"rationale/{judge}" in row_dict else f"rationale/{judge}"
+                rationale_col = f"rationale/{judge}"
                 rationale = row_dict.get(rationale_col, row_dict.get("rationale", ""))
-                question_id = row_dict.get("inputs/question", row_dict.get("question", "unknown"))
+                question_id = (
+                    row_dict.get("inputs/question_id")
+                    or row_dict.get("inputs/question")
+                    or row_dict.get("question_id")
+                    or row_dict.get("question", "unknown")
+                )
+
+                asi_failure_type = row_dict.get(f"metadata/{judge}/failure_type", row_dict.get("metadata/failure_type"))
+                asi_blame_set = row_dict.get(f"metadata/{judge}/blame_set", row_dict.get("metadata/blame_set"))
+                asi_counterfactual = row_dict.get(f"metadata/{judge}/counterfactual_fix", row_dict.get("metadata/counterfactual_fix"))
+
                 failures.append({
                     "question_id": question_id,
                     "judge": judge,
                     "rationale": rationale,
+                    "asi_failure_type": asi_failure_type,
+                    "asi_blame_set": asi_blame_set,
+                    "asi_counterfactual_fix": asi_counterfactual,
                 })
 
     pattern_groups = defaultdict(list)
     for f in failures:
-        key = (f["judge"], _extract_pattern(f["rationale"]))
+        if f.get("asi_failure_type"):
+            blame = str(f.get("asi_blame_set", "")) if f.get("asi_blame_set") else ""
+            key = (f["judge"], f["asi_failure_type"], blame)
+        else:
+            key = (f["judge"], _extract_pattern(f["rationale"]), "")
         pattern_groups[key].append(f)
 
     clusters = []
     long_tail = []
-    for (judge, pattern), items in pattern_groups.items():
+    for group_key, items in pattern_groups.items():
+        judge = group_key[0]
+        pattern = group_key[1]
+        blame = group_key[2] if len(group_key) > 2 else ""
+
+        sample_asi_type = next((i["asi_failure_type"] for i in items if i.get("asi_failure_type")), None)
+
         entry = {
             "cluster_id": f"C{len(clusters) + 1:03d}",
             "root_cause": pattern,
             "question_ids": [i["question_id"] for i in items],
             "affected_judge": judge,
             "confidence": min(0.9, 0.5 + 0.1 * len(items)),
+            "asi_failure_type": sample_asi_type,
+            "asi_blame_set": blame or None,
+            "asi_counterfactual_fixes": [
+                i["asi_counterfactual_fix"] for i in items if i.get("asi_counterfactual_fix")
+            ],
         }
         if len(items) >= 2:
             clusters.append(entry)
@@ -925,8 +970,44 @@ def cluster_failures(eval_results: dict, metadata_snapshot: dict) -> list:
     return clusters
 
 
+_REPEATABILITY_FIX_BY_ASSET = {
+    "TABLE": (
+        "Add structured metadata to reduce ambiguity: "
+        "column comments with business_definition, synonyms, grain, join_keys, do_not_use_when; "
+        "UC tags: preferred_for_genie=true, domain=<domain>, synonyms=[...]. "
+        "If variance persists, consider adding a TVF wrapper."
+    ),
+    "MV": (
+        "Add structured column metadata to underlying tables to disambiguate aggregation routing. "
+        "Include business_definition, preferred_questions[], do_not_use_when[] in column comments. "
+        "If variance persists, convert metric view to TVF."
+    ),
+    "TVF": (
+        "Add instruction clarifying deterministic parameter selection for this TVF. "
+        "Ensure parameter descriptions include allowed_values and default conventions."
+    ),
+    "NONE": (
+        "Add routing instruction and structured table metadata "
+        "(preferred_for_genie=true tag, business_definition in description) "
+        "so Genie can resolve this question."
+    ),
+}
+
+
 def _describe_fix(cluster: dict) -> str:
-    """Describe the fix for a cluster."""
+    """Describe the fix for a cluster.
+
+    Prefers ASI counterfactual_fix when available (precise, evaluator-suggested),
+    falling back to the generic pattern-based description. For repeatability
+    clusters, generates asset-type-specific recommendations.
+    """
+    asi_fixes = cluster.get("asi_counterfactual_fixes", [])
+    if asi_fixes:
+        return asi_fixes[0]
+    if cluster.get("root_cause") == "repeatability_issue":
+        dominant_asset = cluster.get("asi_blame_set") or cluster.get("dominant_asset", "TABLE")
+        base = _REPEATABILITY_FIX_BY_ASSET.get(dominant_asset, _REPEATABILITY_FIX_BY_ASSET["TABLE"])
+        return f"{base} (affects {len(cluster['question_ids'])} questions)"
     return (
         f"Fix {cluster['root_cause']} affecting {len(cluster['question_ids'])} questions. "
         f"Judge: {cluster['affected_judge']}."
@@ -935,7 +1016,11 @@ def _describe_fix(cluster: dict) -> str:
 
 def _dual_persist_paths(cluster: dict) -> dict:
     """Return API and repo paths for dual persistence."""
-    lever = _map_to_lever(cluster["root_cause"])
+    lever = _map_to_lever(
+        cluster["root_cause"],
+        asi_failure_type=cluster.get("asi_failure_type"),
+        blame_set=cluster.get("asi_blame_set"),
+    )
     paths = {
         1: {
             "api": "ALTER TABLE ... SET TBLPROPERTIES / ALTER COLUMN ... COMMENT",
@@ -1009,7 +1094,11 @@ def generate_metadata_proposals(clusters: list, metadata_snapshot: dict, target_
     """
     proposals = []
     for cluster in clusters:
-        lever = _map_to_lever(cluster["root_cause"])
+        lever = _map_to_lever(
+            cluster["root_cause"],
+            asi_failure_type=cluster.get("asi_failure_type"),
+            blame_set=cluster.get("asi_blame_set"),
+        )
         if target_lever is not None and lever != target_lever:
             continue
         proposal = {

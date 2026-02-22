@@ -351,7 +351,7 @@ This will involve the following end-to-end workflow:
 - **Configure SQL Alerts** — set up severity-based alerting (CRITICAL/WARNING/INFO) with notification destinations and scheduling
 - **Deploy via Asset Bundle** — generate bundle configuration for monitor setup jobs, dashboard deployment, and alert creation
 
-Reference the observability plan at plans/phase1-addendum-1.4-monitors.md, plans/phase1-addendum-1.5-dashboards.md, and plans/phase1-addendum-1.7-alerts.md
+Reference the observability plan at plans/phase1-addendum-1.4-lakehouse-monitoring.md, plans/phase1-addendum-1.5-aibi-dashboards.md, and plans/phase1-addendum-1.7-alerting.md
 
 The orchestrator skill automatically loads worker skills for Lakehouse Monitoring, AI/BI Dashboards, SQL Alerting, and Anomaly Detection.
 ```

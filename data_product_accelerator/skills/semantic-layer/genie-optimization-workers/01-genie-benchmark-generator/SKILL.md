@@ -139,6 +139,17 @@ See [golden-queries.yaml](assets/templates/golden-queries.yaml) for the full tem
 
 - `sync_yaml_to_mlflow_dataset()` MUST run when `uc_schema` is available. Skipping leaves the Datasets tab empty.
 
+## Benchmark Correction
+
+When the orchestrator's arbiter detects that Genie produced correct SQL but the benchmark expected_sql was wrong (`genie_correct` verdict), it passes `corrected_questions` to the Generator. This triggers a benchmark correction workflow:
+
+1. **Receive `corrected_questions`** from the orchestrator. Each entry contains `question_id`, `verdict`, `expected_sql` (old), `generated_sql` (Genie's correct SQL), and `rationale`.
+2. **Update the benchmark YAML** -- replace the `expected_sql` for each corrected question with Genie's SQL.
+3. **Re-validate** the updated benchmarks via `sync_yaml_to_mlflow_dataset()` to ensure the new expected SQL is valid.
+4. **Return the updated `eval_dataset_name`** to the orchestrator so the next evaluation uses corrected benchmarks.
+
+This ensures benchmark quality improves over iterations rather than penalizing Genie for correct answers.
+
 ## Scripts
 
 ### [benchmark_generator.py](scripts/benchmark_generator.py)

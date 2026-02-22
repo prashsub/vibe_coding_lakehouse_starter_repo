@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Genie Optimization Orchestrator v3.4.0
+Genie Optimization Orchestrator v3.8.0
 
 Routes to 4 worker skills on demand. Maintains session state in
 optimization-progress.json and MLflow experiment tags.
@@ -365,10 +365,22 @@ def rollback_to_model(model_id: str, space_id: str):
 
 
 def _fetch_space_config(space_id: str) -> dict:
-    """GET Genie Space config via SDK."""
+    """GET Genie Space config with full serialized_space content."""
     if w is None:
         return {}
-    return w.api_client.do("GET", f"/api/2.0/genie/spaces/{space_id}")
+    config = w.api_client.do(
+        "GET",
+        f"/api/2.0/genie/spaces/{space_id}",
+        query={"include_serialized_space": "true"},
+    )
+    data_assets = config.get("data_assets", [])
+    tables = sum(1 for a in data_assets if a.get("type") == "TABLE")
+    mvs = sum(1 for a in data_assets if a.get("type") == "METRIC_VIEW")
+    tvfs = sum(1 for a in data_assets if a.get("type") == "FUNCTION")
+    has_instructions = bool(config.get("general_instructions"))
+    print(f"  Space state: tables={tables}, metric_views={mvs}, tvfs={tvfs}, "
+          f"instructions={'present' if has_instructions else 'absent'}")
+    return config
 
 
 # =========================================================================
@@ -399,6 +411,19 @@ def init_progress(space_id: str, domain: str, max_iterations: int = 5) -> dict:
         "lever_impacts": {},
         "worker_reads": [],
         "eval_dataset_name": None,
+        "use_patch_dsl": True,
+        "repeatability_pct": 0.0,
+        "best_repeatability": 0.0,
+        "repeatability_target": 90.0,
+        "lever_audit": {
+            str(i): {
+                "attempted": False,
+                "proposals_generated": 0,
+                "proposals_applied": 0,
+                "skip_reason": None,
+            }
+            for i in range(1, 7)
+        },
     }
 
 
@@ -436,6 +461,12 @@ def update_progress(progress: dict, iteration_result: dict) -> dict:
             "patches": patches,
         })
 
+    rep_pct = iteration_result.get("repeatability_pct", 0)
+    if rep_pct:
+        progress["repeatability_pct"] = rep_pct
+        if rep_pct > progress.get("best_repeatability", 0):
+            progress["best_repeatability"] = rep_pct
+
     _update_pareto_frontier(progress, iteration_result)
     return progress
 
@@ -456,7 +487,8 @@ def _compute_patch_cost(proposals: list) -> int:
 def _update_pareto_frontier(progress: dict, iteration_result: dict):
     """Track multi-objective Pareto frontier (P6).
 
-    Objectives: correctness up, regressions down, patch_cost down, coverage up.
+    Objectives (higher is better): correctness, repeatability.
+    Objectives (lower is better): regressions, patch_cost.
     """
     scores = iteration_result.get("scores", {})
     if not scores:
@@ -466,6 +498,7 @@ def _update_pareto_frontier(progress: dict, iteration_result: dict):
     vector = {
         "iteration": progress["current_iteration"],
         "correctness": iteration_result.get("overall_accuracy", 0),
+        "repeatability": iteration_result.get("repeatability_pct", 0),
         "regressions": len(iteration_result.get("regressions", [])),
         "patch_cost": _compute_patch_cost(proposals),
         "model_id": iteration_result.get("model_id"),
@@ -476,11 +509,14 @@ def _update_pareto_frontier(progress: dict, iteration_result: dict):
     is_dominated = False
     for i, existing in enumerate(frontier):
         ex_cost = existing.get("patch_cost", existing.get("patch_count", 0))
+        ex_rep = existing.get("repeatability", 0)
         if (vector["correctness"] >= existing["correctness"]
+                and vector["repeatability"] >= ex_rep
                 and vector["regressions"] <= existing["regressions"]
                 and vector["patch_cost"] <= ex_cost):
             dominated.append(i)
         elif (existing["correctness"] >= vector["correctness"]
+              and ex_rep >= vector["repeatability"]
               and existing["regressions"] <= vector["regressions"]
               and ex_cost <= vector["patch_cost"]):
             is_dominated = True
@@ -836,6 +872,7 @@ def trigger_evaluation_job(
     target="dev", job_name="genie_evaluation_job",
     eval_scope=None, model_id=None, patched_objects=None,
     eval_dataset_name: str = None,
+    run_repeatability: bool = False,
 ):
     """Trigger the genie_evaluation_job via bundle run."""
     import subprocess
@@ -852,6 +889,8 @@ def trigger_evaluation_job(
         params_str += f",patched_objects_b64={encoded}"
     if eval_dataset_name:
         params_str += f",eval_dataset_name={eval_dataset_name}"
+    if run_repeatability:
+        params_str += ",run_repeatability=true"
 
     cmd = [
         "databricks", "bundle", "run", "-t", target, job_name,
@@ -929,12 +968,14 @@ def run_evaluation_via_job(
     space_id, experiment_name, iteration, benchmarks_path, domain, target="dev",
     model_id: str = None, eval_scope: str = None, patched_objects: list = None,
     eval_dataset_name: str = None,
+    run_repeatability: bool = False,
 ):
     """Trigger job, poll completion, parse output or fall back to MLflow."""
     trigger = trigger_evaluation_job(
         space_id, experiment_name, iteration, benchmarks_path, domain, target,
         eval_scope=eval_scope, model_id=model_id, patched_objects=patched_objects,
         eval_dataset_name=eval_dataset_name,
+        run_repeatability=run_repeatability,
     )
     if trigger["status"] != "TRIGGERED" or not trigger.get("run_id"):
         return {
@@ -981,17 +1022,74 @@ def run_evaluation_via_job(
     overall_pct = overall * 100 if isinstance(overall, float) and overall <= 1.0 else overall
     raw_scores = job_result.get("per_judge", {})
 
-    return {
+    rows = job_result.get("rows", [])
+    arbiter_actions = job_result.get("arbiter_actions", [])
+    repeatability_pct = job_result.get("repeatability_pct", 0)
+    repeatability_details = job_result.get("repeatability_details", [])
+    failures_rich = []
+
+    mlflow_run_id = job_result.get("run_id")
+    if mlflow_run_id and (not rows or not arbiter_actions):
+        try:
+            import tempfile as _tf
+            artifact_dir = mlflow.artifacts.download_artifacts(
+                run_id=mlflow_run_id, artifact_path="evaluation",
+                dst_path=_tf.mkdtemp(prefix="eval_artifacts_"),
+            )
+            import os as _osmod
+            failures_path = _osmod.path.join(artifact_dir, "failures.json")
+            if _osmod.path.exists(failures_path):
+                with open(failures_path) as f:
+                    failures_rich = json.load(f)
+                print(f"  Downloaded failures.json: {len(failures_rich)} entries")
+
+            arbiter_path = _osmod.path.join(artifact_dir, "arbiter_actions.json")
+            if _osmod.path.exists(arbiter_path) and not arbiter_actions:
+                with open(arbiter_path) as f:
+                    arbiter_actions = json.load(f)
+                print(f"  Downloaded arbiter_actions.json: {len(arbiter_actions)} entries")
+
+            if not rows:
+                results_path = _osmod.path.join(artifact_dir, "eval_results.json")
+                if _osmod.path.exists(results_path):
+                    with open(results_path) as f:
+                        rows = json.load(f)
+                    print(f"  Downloaded eval_results.json: {len(rows)} rows")
+
+            if not repeatability_details:
+                rep_path = _osmod.path.join(artifact_dir, "repeatability.json")
+                if _osmod.path.exists(rep_path):
+                    with open(rep_path) as f:
+                        rep_data = json.load(f)
+                    repeatability_pct = rep_data.get("average_repeatability_pct", 0)
+                    repeatability_details = rep_data.get("results", [])
+                    print(f"  Downloaded repeatability.json: {repeatability_pct:.0f}% avg, "
+                          f"{len(repeatability_details)} questions")
+
+            import shutil as _sh
+            _sh.rmtree(artifact_dir, ignore_errors=True)
+        except Exception as e:
+            print(f"  NOTE: Could not download evaluation artifacts: {e}")
+
+    if not rows and failures_rich:
+        rows = failures_rich
+
+    result = {
         "iteration": iteration,
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "mlflow_run_id": job_result.get("run_id"),
+        "mlflow_run_id": mlflow_run_id,
         "overall_accuracy": overall_pct,
         "failures": job_result.get("failure_question_ids", []),
         "remaining_failures": job_result.get("failure_question_ids", []),
         "scores": _normalize_scores(raw_scores),
-        "total_questions": job_result.get("total_questions", 0),
-        "rows": job_result.get("rows", []),
+        "total_questions": job_result.get("total_questions", job_result.get("questions_total", 0)),
+        "rows": rows,
+        "arbiter_actions": arbiter_actions,
     }
+    if repeatability_pct:
+        result["repeatability_pct"] = repeatability_pct
+        result["repeatability_details"] = repeatability_details
+    return result
 
 
 def query_latest_evaluation(experiment_name, iteration=None):
@@ -1194,7 +1292,7 @@ def run_optimization_loop(
     mode_label = "JOB" if job_mode else "INLINE"
     lever_label = "LEVER-AWARE" if (lever_aware and _WORKERS_AVAILABLE) else "EVAL-ONLY"
     print("=" * 60)
-    print(f"Genie Optimization Orchestrator v3.4.0 [{mode_label}] [{lever_label}]")
+    print(f"Genie Optimization Orchestrator v3.8.0 [{mode_label}] [{lever_label}]")
     print(f"Space ID: {space_id}")
     print(f"Domain: {domain}")
     print(f"Benchmarks: {len(benchmarks)} questions")
@@ -1266,7 +1364,8 @@ def run_optimization_loop(
             print(f"  WARNING: LoggedModel creation failed: {e}")
         return None
 
-    def _run_eval(iter_num, model_id=None, eval_scope="full", patched_objects=None):
+    def _run_eval(iter_num, model_id=None, eval_scope="full", patched_objects=None,
+                   run_repeatability=False):
         if job_mode:
             return run_evaluation_via_job(
                 space_id, exp_name, iter_num,
@@ -1275,6 +1374,7 @@ def run_optimization_loop(
                 eval_scope=eval_scope,
                 patched_objects=patched_objects,
                 eval_dataset_name=eval_dataset_name,
+                run_repeatability=run_repeatability,
             )
         else:
             return run_evaluation_iteration(
@@ -1377,6 +1477,169 @@ def run_optimization_loop(
     return progress
 
 
+def _synthesize_repeatability_failures(repeatability_details: list) -> list:
+    """Convert non-repeatable questions into synthetic failure rows for the optimizer.
+
+    Only questions with CRITICAL_VARIANCE or SIGNIFICANT_VARIANCE are included.
+    These synthetic rows carry ASI metadata so cluster_failures() can group them.
+    Routing depends on asset type: TABLE/MV -> Lever 1 (structured metadata),
+    TVF -> Lever 6 (instructions).
+    """
+    synthetic_rows = []
+    for detail in repeatability_details:
+        classification = detail.get("classification", "IDENTICAL")
+        if classification not in ("CRITICAL_VARIANCE", "SIGNIFICANT_VARIANCE"):
+            continue
+        asset = detail.get("dominant_asset", "TABLE")
+        if asset == "MV":
+            counterfactual = (
+                "Add structured column metadata (business_definition, synonyms, grain) "
+                "to underlying tables; convert to TVF if variance persists"
+            )
+        elif asset == "TVF":
+            counterfactual = "Add instruction clarifying deterministic parameter selection for TVF"
+        else:
+            counterfactual = (
+                "Add structured metadata (business_definition, synonyms, join_keys, "
+                "do_not_use_when) to table/column comments and UC tags "
+                "(preferred_for_genie, domain)"
+            )
+        synthetic_rows.append({
+            "inputs/question_id": detail.get("question_id", ""),
+            "inputs/question": detail.get("question", ""),
+            "feedback/repeatability": "no",
+            "rationale/repeatability": (
+                f"SQL variance: {detail.get('unique_variants', 0)} distinct variants "
+                f"across {len(detail.get('hashes', []))} runs "
+                f"({detail.get('repeatability_pct', 0):.0f}% repeatability, asset={asset})"
+            ),
+            "metadata/repeatability/failure_type": "repeatability_issue",
+            "metadata/repeatability/severity": (
+                "critical" if classification == "CRITICAL_VARIANCE" else "major"
+            ),
+            "metadata/repeatability/blame_set": asset,
+            "metadata/repeatability/counterfactual_fix": counterfactual,
+        })
+    return synthetic_rows
+
+
+def _compute_cross_iteration_repeatability(current_rows: list, previous_rows: list) -> dict:
+    """Compare SQL outputs between two iterations to detect instability.
+
+    Builds question_id -> sql_hash maps for both iterations and checks for
+    matches. Questions whose SQL changed AND were previously correct are flagged
+    as "concerning" (potential side-effect regressions). Questions whose SQL
+    changed AND were previously incorrect are flagged as "expected" (optimization
+    may be working).
+
+    Returns dict with:
+        avg_pct: float (0-100) average match percentage
+        details: list of per-question dicts
+        unstable_details: list of dicts for questions that changed SQL
+    """
+    def _sql_hash(sql: str) -> str:
+        if not sql:
+            return "NONE"
+        return hashlib.md5(sql.strip().lower().encode()).hexdigest()[:8]
+
+    prev_map = {}
+    for row in previous_rows:
+        qid = (
+            row.get("inputs/question_id")
+            or row.get("question_id")
+            or row.get("inputs/question", "")
+        )
+        sql = row.get("outputs/response", "") or row.get("response", "")
+        was_correct = str(row.get("feedback/result_correctness", "")).lower() not in ("no", "false", "0")
+        prev_map[qid] = {"hash": _sql_hash(sql), "was_correct": was_correct}
+
+    details = []
+    unstable = []
+    matched_count = 0
+
+    for row in current_rows:
+        qid = (
+            row.get("inputs/question_id")
+            or row.get("question_id")
+            or row.get("inputs/question", "")
+        )
+        if not qid or qid not in prev_map:
+            continue
+        sql = row.get("outputs/response", "") or row.get("response", "")
+        curr_hash = _sql_hash(sql)
+        prev_entry = prev_map[qid]
+        is_match = curr_hash == prev_entry["hash"]
+        if is_match:
+            matched_count += 1
+
+        asset = detect_asset_type(sql) if sql else "NONE"
+        entry = {
+            "question_id": qid,
+            "question": row.get("inputs/question", ""),
+            "matched": is_match,
+            "current_hash": curr_hash,
+            "prev_hash": prev_entry["hash"],
+            "dominant_asset": asset,
+            "was_previously_correct": prev_entry["was_correct"],
+        }
+        details.append(entry)
+        if not is_match:
+            unstable.append(entry)
+
+    total = len(details)
+    avg_pct = (matched_count / total * 100) if total > 0 else 100.0
+
+    return {
+        "avg_pct": avg_pct,
+        "total_questions": total,
+        "matched": matched_count,
+        "changed": total - matched_count,
+        "details": details,
+        "unstable_details": unstable,
+    }
+
+
+def _synthesize_repeatability_failures_from_cross_iter(unstable_details: list) -> list:
+    """Convert cross-iteration SQL instabilities into synthetic failure rows.
+
+    Only flags questions whose SQL changed AND were previously correct
+    (concerning side-effect regressions). Questions that changed from incorrect
+    are treated as expected optimization effects.
+    """
+    synthetic_rows = []
+    for detail in unstable_details:
+        if detail.get("was_previously_correct") is False:
+            continue
+        asset = detail.get("dominant_asset", "TABLE")
+        if asset == "MV":
+            counterfactual = (
+                "Add structured column metadata (business_definition, synonyms, grain) "
+                "to underlying tables; convert to TVF if variance persists"
+            )
+        elif asset == "TVF":
+            counterfactual = "Add instruction clarifying deterministic parameter selection for TVF"
+        else:
+            counterfactual = (
+                "Add structured metadata (business_definition, synonyms, join_keys, "
+                "do_not_use_when) to table/column comments and UC tags "
+                "(preferred_for_genie, domain)"
+            )
+        synthetic_rows.append({
+            "inputs/question_id": detail.get("question_id", ""),
+            "inputs/question": detail.get("question", ""),
+            "feedback/repeatability": "no",
+            "rationale/repeatability": (
+                f"Cross-iteration SQL change: hash {detail.get('prev_hash', '?')} -> "
+                f"{detail.get('current_hash', '?')} (was previously correct, asset={asset})"
+            ),
+            "metadata/repeatability/failure_type": "repeatability_issue",
+            "metadata/repeatability/severity": "major",
+            "metadata/repeatability/blame_set": asset,
+            "metadata/repeatability/counterfactual_fix": counterfactual,
+        })
+    return synthetic_rows
+
+
 def _run_lever_aware_loop(
     space_id,
     benchmarks,
@@ -1427,6 +1690,17 @@ def _run_lever_aware_loop(
     prev_accuracy = baseline_result.get("overall_accuracy", 0)
     prev_model_id = model_id
 
+    _baseline_arbiter = baseline_result.get("arbiter_actions", [])
+    _baseline_genie_correct = [a for a in _baseline_arbiter if a.get("verdict") == "genie_correct"]
+    if len(_baseline_genie_correct) >= 3:
+        print(f"\n  WARNING: Arbiter found {len(_baseline_genie_correct)} benchmark corrections needed.")
+        print("  ACTION: Load Generator to update benchmark expected SQL.")
+        progress["benchmark_correction_needed"] = True
+        progress["corrected_questions"] = _baseline_genie_correct
+
+    baseline_rep = baseline_result.get("repeatability_pct", 0)
+    if baseline_rep:
+        print(f"  Baseline repeatability: {baseline_rep:.0f}% (target: {progress.get('repeatability_target', 90):.0f}%)")
     print(f"\n  Baseline accuracy: {prev_accuracy:.0f}%")
 
     if all_thresholds_met(prev_scores):
@@ -1472,17 +1746,52 @@ def _run_lever_aware_loop(
                     }
                     for qid in eval_results_for_optimizer.get("failures", [])
                 ]
+
+            # Inject cross-iteration repeatability failures (from iteration 2+)
+            if len(progress["iterations"]) >= 2:
+                prev_rows = progress["iterations"][-2].get("rows", [])
+                curr_rows = eval_results_for_optimizer.get("rows", [])
+                if prev_rows and curr_rows:
+                    cross_rep = _compute_cross_iteration_repeatability(curr_rows, prev_rows)
+                    progress["cross_iteration_repeatability"] = cross_rep["avg_pct"]
+                    print(f"  Cross-iteration repeatability: {cross_rep['avg_pct']:.0f}% "
+                          f"({cross_rep['changed']} questions changed SQL)")
+                    if cross_rep.get("unstable_details"):
+                        synthetic = _synthesize_repeatability_failures_from_cross_iter(
+                            cross_rep["unstable_details"]
+                        )
+                        if synthetic:
+                            rows = eval_results_for_optimizer.get("rows", [])
+                            eval_results_for_optimizer["rows"] = rows + synthetic
+                            print(f"  Injected {len(synthetic)} cross-iteration repeatability "
+                                  "failures into optimizer input")
+
             clusters = cluster_failures(eval_results_for_optimizer, metadata_snapshot)
             proposals = generate_metadata_proposals(clusters, metadata_snapshot, target_lever=lever)
 
+            lever_key = str(lever)
+            progress.setdefault("lever_audit", {})[lever_key] = progress.get("lever_audit", {}).get(lever_key, {})
+            progress["lever_audit"][lever_key]["attempted"] = True
+            progress["lever_audit"][lever_key]["proposals_generated"] = len(proposals) if proposals else 0
+
             if not proposals:
                 print(f"  No proposals for lever {lever}. Skipping.")
+                progress["lever_audit"][lever_key]["skip_reason"] = "no_proposals_generated"
                 continue
 
             print(f"  Generated {len(proposals)} proposals for lever {lever}.")
 
-            # 2b. Apply proposals with dual persistence verification
-            apply_results = apply_proposal_batch(proposals, space_id, domain)
+            # 2b. Apply proposals (Patch DSL preferred, apply_proposal_batch fallback)
+            if progress.get("use_patch_dsl", True):
+                try:
+                    apply_results = _apply_patch_set(proposals, space_id, domain)
+                    lever_result_entry = progress.get("iterations", [{}])[-1] if progress.get("iterations") else {}
+                    lever_result_entry["apply_log"] = apply_results
+                except Exception as e:
+                    print(f"  WARNING: Patch DSL failed ({e}). Falling back to apply_proposal_batch.")
+                    apply_results = apply_proposal_batch(proposals, space_id, domain)
+            else:
+                apply_results = apply_proposal_batch(proposals, space_id, domain)
 
             failed_repos = verify_dual_persistence(apply_results)
             if failed_repos:
@@ -1539,6 +1848,16 @@ def _run_lever_aware_loop(
             lever_scores = lever_result.get("scores", {})
             lever_accuracy = lever_result.get("overall_accuracy", 0)
 
+            # 2c-ii. Arbiter threshold check
+            _arbiter_actions = lever_result.get("arbiter_actions", [])
+            _genie_corrections = [a for a in _arbiter_actions if a.get("verdict") == "genie_correct"]
+            if len(_genie_corrections) >= 3:
+                print(f"  WARNING: Arbiter found {len(_genie_corrections)} questions where "
+                      "Genie was correct but benchmark expected different SQL.")
+                print("  ACTION: Load Generator to update benchmark expected SQL.")
+                progress["benchmark_correction_needed"] = True
+                progress["corrected_questions"] = _genie_corrections
+
             # 2d. Track per-lever impact
             log_lever_impact(progress, lever, prev_scores, lever_scores, proposals)
 
@@ -1551,13 +1870,21 @@ def _run_lever_aware_loop(
                 print(f"  REGRESSION detected after lever {lever}: {regressions}")
                 print("  Rolling back...")
                 rollback_config = rollback_to_model(prev_model_id, space_id)
+                _lever_apply_log = lever_result.get("apply_log")
+                if _lever_apply_log and progress.get("use_patch_dsl", True):
+                    try:
+                        _rollback(_lever_apply_log)
+                        print("  Patch DSL rollback successful.")
+                    except Exception as e:
+                        print(f"  WARNING: Patch DSL rollback failed: {e}")
                 if rollback_config is not None:
-                    print("  Rollback successful. Skipping this lever.")
+                    print("  LoggedModel rollback successful. Skipping this lever.")
                 else:
-                    print("  WARNING: Rollback failed. Continuing with degraded state.")
+                    print("  WARNING: LoggedModel rollback failed. Continuing with degraded state.")
                 continue
 
             print(f"  Lever {lever} result: {lever_accuracy:.0f}% (delta: {lever_accuracy - prev_accuracy:+.0f}%)")
+            progress["lever_audit"][lever_key]["proposals_applied"] = len(proposals)
             prev_scores = lever_scores
             prev_accuracy = lever_accuracy
             prev_model_id = model_id
@@ -1566,6 +1893,22 @@ def _run_lever_aware_loop(
 
         # ── Phase 3: GEPA for Lever 6 ────────────────────────────
         if not all_thresholds_met(prev_scores) and iteration_counter < max_iterations:
+            # Lever exhaustion gate: all levers 1-5 must be attempted or have a skip reason
+            lever_audit = progress.get("lever_audit", {})
+            unattempted = []
+            for lv in range(1, 6):
+                info = lever_audit.get(str(lv), {})
+                if not info.get("attempted") and not info.get("skip_reason"):
+                    unattempted.append(lv)
+            if unattempted:
+                print(f"\n  WARNING: Levers {unattempted} were never attempted before GEPA.")
+                print("  Hard constraint #14 requires levers 1-5 be exhausted before Lever 6.")
+                for lv in unattempted:
+                    lever_audit.setdefault(str(lv), {})["skip_reason"] = "skipped_before_gepa"
+
+            progress["lever_audit"]["6"] = progress.get("lever_audit", {}).get("6", {})
+            progress["lever_audit"]["6"]["attempted"] = True
+
             print("\n" + "=" * 60)
             print("Phase 3: GEPA Lever 6 (Genie Instructions)")
             print("=" * 60)
@@ -1589,10 +1932,21 @@ def _run_lever_aware_loop(
 
                 if gepa_result:
                     print(f"  GEPA produced {len(gepa_result)} patches.")
-                    apply_results = apply_proposal_batch(
-                        [{"proposal_id": f"GEPA_{i}", "lever": 6, "change_description": f"GEPA patch: {p.get('type', 'unknown')}", "dual_persistence": {"api": "PATCH /api/2.0/genie/spaces/{space_id}", "repo": f"src/genie/{domain}_genie_export.json"}} for i, p in enumerate(gepa_result)],
-                        space_id, domain,
-                    )
+                    if progress.get("use_patch_dsl", True):
+                        try:
+                            apply_results = _apply_patch_set(gepa_result, space_id, domain)
+                            progress.setdefault("gepa_apply_log", apply_results)
+                        except Exception as e:
+                            print(f"  WARNING: Patch DSL failed for GEPA ({e}). Using fallback.")
+                            apply_results = apply_proposal_batch(
+                                [{"proposal_id": f"GEPA_{i}", "lever": 6, "change_description": f"GEPA patch: {p.get('type', 'unknown')}", "dual_persistence": {"api": "PATCH /api/2.0/genie/spaces/{space_id}", "repo": f"src/genie/{domain}_genie_export.json"}} for i, p in enumerate(gepa_result)],
+                                space_id, domain,
+                            )
+                    else:
+                        apply_results = apply_proposal_batch(
+                            [{"proposal_id": f"GEPA_{i}", "lever": 6, "change_description": f"GEPA patch: {p.get('type', 'unknown')}", "dual_persistence": {"api": "PATCH /api/2.0/genie/spaces/{space_id}", "repo": f"src/genie/{domain}_genie_export.json"}} for i, p in enumerate(gepa_result)],
+                            space_id, domain,
+                        )
                     print("  Waiting 30s for propagation...")
                     time.sleep(30)
 
@@ -1622,6 +1976,34 @@ def _run_lever_aware_loop(
                     print("  GEPA returned no patches.")
             except Exception as e:
                 print(f"  WARNING: GEPA phase failed: {e}")
+
+    # ── Phase 3b: Final dedicated repeatability test ────────────
+    if job_mode and iteration_counter > 1:
+        print("\n" + "=" * 60)
+        print("Phase 3b: Final Repeatability Test (Cell 9c re-query)")
+        print("=" * 60)
+        try:
+            rep_iter = _next_iter()
+            rep_model_id = _snapshot_fn(rep_iter)
+            rep_result = _run_eval(
+                rep_iter, model_id=rep_model_id, eval_scope="full",
+                run_repeatability=True,
+            )
+            rep_result["model_id"] = rep_model_id
+            update_progress(progress, rep_result)
+            write_progress(progress, progress_path)
+            final_rep_pct = rep_result.get("repeatability_pct", 0)
+            rep_target = progress.get("repeatability_target", 90)
+            print(f"  Final repeatability: {final_rep_pct:.0f}% (target: {rep_target:.0f}%)")
+            if final_rep_pct < rep_target:
+                rep_details = rep_result.get("repeatability_details", [])
+                synthetic = _synthesize_repeatability_failures(rep_details)
+                if synthetic:
+                    print(f"  {len(synthetic)} non-repeatable questions detected. "
+                          "Feed to next optimization cycle if needed.")
+                    progress["final_repeatability_failures"] = synthetic
+        except Exception as e:
+            print(f"  WARNING: Final repeatability test failed: {e}")
 
     # ── Phase 4: Deploy and Verify ────────────────────────────────
     if progress.get("status") not in ("converged", "stalled"):
@@ -1667,7 +2049,7 @@ def _run_lever_aware_loop(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Genie Optimization Orchestrator v3.4.0"
+        description="Genie Optimization Orchestrator v3.8.0"
     )
     parser.add_argument("--space-id", help="Genie Space ID")
     parser.add_argument(
