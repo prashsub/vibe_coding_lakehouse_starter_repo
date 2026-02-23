@@ -262,6 +262,7 @@ FAILURE_TAXONOMY = {
     "wrong_column",
     "wrong_join",
     "missing_filter",
+    "missing_temporal_filter",
     "wrong_aggregation",
     "wrong_measure",
     "missing_instruction",
@@ -958,12 +959,21 @@ def _map_to_lever(root_cause: str, asi_failure_type: str = None, blame_set: str 
             return 6
         return 1
 
+    if ft == "missing_filter":
+        bs = (blame_set or "").upper()
+        if "TVF" in bs or "PARAM" in bs or "NULL" in bs:
+            return 3  # TVF parameter format issue
+        if "TEMPORAL" in bs or "DATE" in bs or "YEAR" in bs or "QUARTER" in bs:
+            return 2  # Temporal filter on MV dimension
+        return 3  # Default: TVF date param / filter syntax
+
     mapping = {
         "wrong_table": 1,
         "wrong_column": 1,
         "wrong_aggregation": 2,
         "wrong_join": 1,
         "wrong_filter": 3,
+        "missing_temporal_filter": 2,
         "monitoring_gap": 4,
         "stale_data": 4,
         "data_freshness": 4,
@@ -1142,20 +1152,47 @@ _REPEATABILITY_FIX_BY_ASSET = {
 }
 
 
+_GENERIC_FIX_PREFIXES = ("review ", "check ", "verify ", "ensure ", "investigate ")
+
+
+def _is_generic_counterfactual(fix: str) -> bool:
+    """Return True if the counterfactual_fix is too generic to drive optimization."""
+    if not fix:
+        return True
+    lower = fix.strip().lower()
+    if any(lower.startswith(p) for p in _GENERIC_FIX_PREFIXES):
+        has_specific_ref = any(
+            tok in lower for tok in (".", "_", "column", "table ", "tvf", "function ")
+            if len(tok) > 1
+        )
+        if not has_specific_ref:
+            return True
+    return False
+
+
 def _describe_fix(cluster: dict) -> str:
     """Describe the fix for a cluster.
 
-    Prefers ASI counterfactual_fix when available (precise, evaluator-suggested),
-    falling back to the generic pattern-based description. For repeatability
+    Prefers ASI counterfactual_fix when available and specific (not generic).
+    Generic fixes (e.g. "Review X in metadata") are skipped in favor of
+    blame_set + wrong_clause pattern-based synthesis. For repeatability
     clusters, generates asset-type-specific recommendations.
     """
-    asi_fixes = cluster.get("asi_counterfactual_fixes", [])
-    if asi_fixes:
-        return asi_fixes[0]
+    asi_fixes = [f for f in cluster.get("asi_counterfactual_fixes", []) if f]
+    specific_fixes = [f for f in asi_fixes if not _is_generic_counterfactual(f)]
+    if specific_fixes:
+        return specific_fixes[0]
     if cluster.get("root_cause") == "repeatability_issue":
         dominant_asset = cluster.get("asi_blame_set") or cluster.get("dominant_asset", "TABLE")
         base = _REPEATABILITY_FIX_BY_ASSET.get(dominant_asset, _REPEATABILITY_FIX_BY_ASSET["TABLE"])
         return f"{base} (affects {len(cluster['question_ids'])} questions)"
+    wrong_clause = cluster.get("asi_wrong_clause") or ""
+    blame = cluster.get("asi_blame_set") or ""
+    if wrong_clause and blame:
+        return (
+            f"Fix {cluster['root_cause']}: wrong clause '{wrong_clause}' "
+            f"in {blame} affecting {len(cluster['question_ids'])} questions."
+        )
     return (
         f"Fix {cluster['root_cause']} affecting {len(cluster['question_ids'])} questions. "
         f"Judge: {cluster['affected_judge']}."
@@ -1271,6 +1308,39 @@ def generate_metadata_proposals(clusters: list, metadata_snapshot: dict, target_
 
     proposals.sort(key=lambda p: p["net_impact"], reverse=True)
     return proposals
+
+
+def _collect_judge_quality_feedback(clusters: list) -> list:
+    """Detect generic counterfactual_fix values that are too vague for optimization.
+
+    Returns a list of per-judge quality feedback dicts that can feed into the
+    SIMBA Tier 3 judge alignment workflow.
+    """
+    from collections import Counter, defaultdict
+    generic_by_judge = defaultdict(list)
+    for c in clusters:
+        judge = c.get("affected_judge", "unknown")
+        for fix in c.get("asi_counterfactual_fixes", []):
+            if fix and _is_generic_counterfactual(fix):
+                generic_by_judge[judge].append(fix)
+
+    feedback = []
+    for judge, fixes in generic_by_judge.items():
+        counts = Counter(fixes)
+        most_common_fix, most_common_count = counts.most_common(1)[0]
+        feedback.append({
+            "judge_name": judge,
+            "feedback_type": "generic_counterfactual_fix",
+            "example": most_common_fix,
+            "desired": (
+                f"Specific fix referencing the exact asset/column/TVF to change, "
+                f"e.g. 'Add WHERE payment_date >= DATE_TRUNC(\"year\", CURRENT_DATE()) "
+                f"filter guidance to payment_date column comment'"
+            ),
+            "count": len(fixes),
+        })
+    feedback.sort(key=lambda f: f["count"], reverse=True)
+    return feedback
 
 
 def detect_conflicts_and_batch(proposals: list) -> list:

@@ -75,6 +75,7 @@ from typing import Union, Any
 
 FAILURE_TAXONOMY = {
     "wrong_table", "wrong_column", "wrong_join", "missing_filter",
+    "missing_temporal_filter",
     "wrong_aggregation", "wrong_measure", "missing_instruction",
     "ambiguous_question", "asset_routing_error", "tvf_parameter_error",
     "compliance_violation", "performance_issue", "repeatability_issue",
@@ -1273,7 +1274,7 @@ def completeness_judge(inputs: dict, outputs: dict, expectations: dict) -> Feedb
         f"User question: {question}\n"
         f"Expected SQL: {gt_sql}\n"
         f"Generated SQL: {genie_sql}\n\n"
-        'Respond with JSON only: {"complete": true/false, "failure_type": "<missing_column|missing_filter|missing_aggregation|partial_answer>", '
+        'Respond with JSON only: {"complete": true/false, "failure_type": "<missing_column|missing_filter|missing_temporal_filter|missing_aggregation|partial_answer>", '
         '"blame_set": ["<missing_element>"], '
         '"rationale": "<brief explanation>"}\n'
         'If complete, set failure_type to "" and blame_set to [].'
@@ -1532,6 +1533,15 @@ for metric_name in eval_result.metrics:
     if "/mean" in metric_name:
         judge_name = metric_name.replace("/mean", "")
         per_judge[judge_name] = eval_result.metrics[metric_name]
+
+_JUDGE_METRIC_NAMES = [
+    "result_correctness", "asset_routing", "syntax_validity",
+    "schema_accuracy", "semantic_equivalence", "completeness",
+    "logical_accuracy",
+]
+for _jname in _JUDGE_METRIC_NAMES:
+    if _jname in per_judge:
+        mlflow.log_metric(f"eval_{_jname}_pct", per_judge[_jname] * 100)
 
 overall_accuracy = per_judge.get("result_correctness", 0.0)
 

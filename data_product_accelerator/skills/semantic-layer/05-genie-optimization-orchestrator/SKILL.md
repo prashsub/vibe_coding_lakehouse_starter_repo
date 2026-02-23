@@ -137,8 +137,8 @@ The MLflow Versions tab becomes the central dashboard showing progression, param
     - The worker SKILL.md
     - At least one reference file loaded via a `Load:` directive
 13. **Dual persistence is verified, not assumed.** After applying any proposal, confirm BOTH the API command succeeded AND the repository file was modified. Run `git diff` on the repo file to verify. If the repo file was not updated, the proposal is NOT complete — stop and fix before proceeding to re-evaluation.
-14. **Proposals MUST be applied in lever priority order (1 → 6).** Re-evaluate after each lever group. Do not invoke GEPA (L2) for Lever 6 until Levers 1-5 are exhausted and scores are still below target. Lever 6 is a last resort with limited character budget (~4000 chars).
-15. **Optimization decisions MUST be based on per-row evaluation data**, not aggregate metrics. The evaluator emits `evaluation/failures.json` and `evaluation/arbiter_actions.json` as MLflow artifacts. Download and parse these before generating proposals. Use `cluster_failures()` with the per-row data, not synthesized fallback rows.
+14. **Proposals MUST be applied in lever priority order (1 → 6).** Re-evaluate after each lever group. Do not invoke GEPA (L2) for Lever 6 until Levers 1-5 are exhausted and scores are still below target. Lever 6 is a last resort with limited character budget (~4000 chars). **Exception:** Non-overlapping lever proposals (targeting completely different question sets with zero intersection) MAY be applied in the same iteration to save evaluation cycles. The optimizer MUST verify zero question overlap before combining. Log: "Combining levers {A, B} -- non-overlapping question sets verified."
+15. **Optimization decisions MUST be based on per-row evaluation data**, not aggregate metrics. **Per-judge scores are also available as top-level MLflow run metrics** (`eval_{judge}_pct` in 0-100 scale) via `mlflow.get_run(run_id).data.metrics`, logged by the evaluator. The evaluator emits `evaluation/failures.json` and `evaluation/arbiter_actions.json` as MLflow artifacts. Download and parse these before generating proposals. Use `cluster_failures()` with the per-row data, not synthesized fallback rows.
 16. **Arbiter verdicts MUST be triaged after every evaluation.** If `genie_correct >= 3`, load the Generator worker to update benchmark expected SQL. All `ground_truth_correct` verdicts are confirmed failures and must be passed to `cluster_failures()`.
 17. **LoggedModel MUST be created via `create_external_model()` inside a creation run.** This ensures: (a) "Logged From" in the UI points to the creation run (`source_run_id`), (b) all artifacts are persisted in the run (not silently dropped), (c) evaluation runs link back via `mlflow.genai.evaluate(model_id=...)`. **Artifact layout per creation run:**
     - `model_state/genie_config.json` — full Genie Space config
@@ -202,6 +202,14 @@ function optimize(space_id, domain):
     Log: tables={N}, metric_views={N}, tvfs={N}, instructions={present/absent}
     If serialized_space is empty → space is genuinely unconfigured, deploy first
     If serialized_space has assets → space is configured, proceed to evaluation
+
+    # ─── Step 0c: Benchmark Temporal Freshness Check ────────────
+    stale = _check_temporal_freshness(benchmarks)
+    for s in stale:
+        WARN: "{s.question_id} has hardcoded dates but temporal phrasing —
+               GT may be stale. Consider dynamic date expressions."
+    if stale:
+        Log: "{len(stale)} benchmarks flagged for potential date staleness"
 
     # ─── Phase 1: Evaluate Baseline ─────────────────────────────
     config = _fetch_space_config(space_id)
@@ -380,6 +388,7 @@ End-to-end integration test script covering the full optimization loop across al
 - [ ] **Judge prompts registered** — `register_prompts_*` run visible
 - [ ] User prompted for benchmarks before synthetic generation
 - [ ] Ground truth SQL validated via `spark.sql()`
+- [ ] Benchmarks with temporal phrasing checked for date staleness (`_check_temporal_freshness()`)
 - [ ] Benchmarks synced to MLflow Evaluation Dataset
 
 ### Per-Iteration Gates
@@ -426,7 +435,7 @@ End-to-end integration test script covering the full optimization loop across al
 | Running lever-aware optimization without `--job-mode` | Inline evaluator only checks routing (1 judge), optimizer gets no ASI, generates empty proposals | Always use `--job-mode --target dev` for optimization (hard constraint #23). Inline is only for quick `--evaluate-only` smoke tests |
 | Running Cell 9c re-query on every iteration | Wastes ~24s per question of API budget per iteration | Cell 9c only fires in the final dedicated test (Phase 3b); during the loop, cross-iteration SQL comparison provides free repeatability signal |
 | Routing all repeatability issues to TVFs (Lever 3) | Misses root cause when unstructured metadata creates ambiguous search space | Route TABLE/MV to Lever 1 (structured metadata: tags, column comments) first; TVF conversion is secondary |
-| Applying Lever 1 + Lever 6 in same iteration | Cannot determine which lever drove improvement — confounded measurement | One lever per iteration, each with its own evaluate-measure-decide cycle |
+| Applying overlapping levers in same iteration | Cannot determine which lever drove improvement — confounded measurement | One lever per iteration unless question sets are non-overlapping (verify zero intersection, log warning). See HC #14 exception |
 | Skipping cross-iteration repeatability in iteration 2+ | SQL-changing regressions go undetected until final Cell 9c test | Compute `_compute_cross_iteration_repeatability()` after every evaluation from iteration 2 onward (hard constraint #19) |
 | Skipping Lever 3 (TVF negative routing) when Lever 1/2 alone don't resolve oscillation | Disambiguation is one-sided — preferred asset has positive routing but competing asset still claims the question | Bilateral: positive routing (Lever 1/2) tells the preferred asset it IS the right choice; negative routing (Lever 3) tells the competing asset it is NOT. Both sides must be addressed. |
 
@@ -458,6 +467,7 @@ During the optimization loop (Phase 2), only cross-iteration comparison is used 
 
 ## Version History
 
+- **v4.2.0** (Feb 23, 2026) - Phase 7: ASI-to-metadata loop gap remediation (13 issues). HC #14 expanded with non-overlapping lever exception (zero question-set intersection allows combining). Phase 0c benchmark temporal freshness check added (`_check_temporal_freshness()` in orchestrator.py). HC #15 expanded with per-judge metric data contract (`eval_{judge}_pct` logged by evaluator). Common Mistake row updated for non-overlapping levers. Validation Checklist updated with date staleness precondition.
 - **v4.1.0** (Feb 23, 2026) - Enrich LoggedModel for cross-model comparison. **Structured Patch DSL:** Patches now logged under `patches/` with both full `patch_set.json` and `patch_summary.json` (breakdowns by type, lever, risk, with target list). New filterable params: `patch_levers`, `patch_targets`. **UC metadata diffs:** `_compute_uc_metadata_diff()` downloads parent model's UC metadata via `source_run_id`, computes added/removed/modified rows for columns, tags, and routines, logs `model_state/uc_metadata_diff.json` + `uc_columns_changed`/`uc_tags_changed`/`uc_routines_changed` metrics. **Model-level judge scores:** `link_eval_scores_to_model()` called after every evaluation to log per-judge scores (`overall_accuracy`, `schema_accuracy`, etc.) and `repeatability_pct` as model-level metrics via `mlflow.log_metrics(model_id=...)`, enabling comparison in the Models tab and `search_logged_models()` filtering. Updated HC #17 with full artifact layout.
 - **v4.0.0** (Feb 23, 2026) - Phase 6 architectural lessons (7 lessons). Added HC #21 (ASI UC table contract: evaluator MUST persist per-row ASI to `genie_eval_asi_results`; optimizer reads via `read_asi_from_uc()`). Added HC #22 (UC trace storage via UCSchemaLocation). Expanded HC #18 with `proposals_to_patches()` bridge for ASI-enriched proposals. Added Common Mistake for bilateral disambiguation (Lever 3 negative routing). Version bumped from v3.9.0.
 - **v3.12.0** (Feb 22, 2026) - Fix LoggedModel creation to use `create_external_model()` inside `mlflow.start_run()`. Previous `set_active_model()` approach left "Logged From" empty (no `source_run_id`), silently dropped artifacts (`log_artifact()` outside a run context is a no-op), and prevented `rollback_to_model()` from downloading config artifacts. Now: creation run persists full UC metadata as artifacts (`model_state/uc_columns.json` with complete `information_schema` rows, not just counts), `source_run_id` links the LoggedModel to its creation run ("Logged From" populated), evaluation runs link via `mlflow.genai.evaluate(model_id=...)` ("Runs linked" populated). `rollback_to_model()` updated to download from `model_state/` artifact path and guard against missing `source_run_id`. Updated HC #17.

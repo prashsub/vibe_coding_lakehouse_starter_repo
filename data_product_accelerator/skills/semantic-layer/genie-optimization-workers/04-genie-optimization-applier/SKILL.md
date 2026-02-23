@@ -86,6 +86,12 @@ Every change must be applied to BOTH the live API/SQL AND the repository file:
 | TVFs | `CREATE OR REPLACE FUNCTION` | `src/semantic/tvfs/*.sql` | No |
 | Genie Instructions | `PATCH /api/2.0/genie/spaces/{id}` | `src/genie/{domain}_genie_export.json` | **Yes** |
 
+> **`description` vs `serialized_space` for instructions:** The Genie Space has TWO places for instructions:
+> 1. **`description`** — a top-level field on the space, separate from `serialized_space`. Updated via `PATCH {"description": "new text"}` directly.
+> 2. **`text_instructions`** — inside `serialized_space.instructions.text_instructions[]`. Updated via `PATCH {"serialized_space": "{...}"}` with the full serialized config.
+>
+> The `description` field is visible in the Genie Space UI header. The `text_instructions` are the structured instruction objects used for routing rules. Both should be kept in sync. When updating routing instructions (Lever 6), update `text_instructions` inside `serialized_space`, not `description`.
+
 ### Asset Type Detection for Lever 1
 
 > **Note:** `detect_asset_type()` is **not implemented in the applier**. Asset type inspection (TABLE vs VIEW) is handled by the **orchestrator's asset inspection** before proposals reach the applier. The applier receives proposals that have already been routed to the correct lever.
@@ -165,6 +171,8 @@ Legacy `apply_proposal_batch()` is only accessible via explicit `--no-patch-dsl`
 | `serialized_space` as nested object in PATCH | API rejects malformed payload | Use `json.dumps(config)` to serialize as JSON string, not nested dict |
 | Human-readable IDs for `example_question_sqls` | `InvalidParameterValue: Invalid ID format` | Use `uuid.uuid4().hex` for all entity IDs (32-hex UUID format) |
 | `ALTER TABLE` on a Metric View | `AnalysisException: Cannot alter a view` | Run `DESCRIBE EXTENDED` first to detect VIEWs; route to Lever 2 (MV YAML + `CREATE OR REPLACE VIEW`) |
+| Using `ALTER COLUMN COMMENT` on Metric View | `[EXPECT_TABLE_NOT_VIEW.NO_ALTERNATIVE]` error | Read MV YAML, update dimension comment, execute full `DROP VIEW IF EXISTS` + `CREATE VIEW ... WITH METRICS LANGUAGE YAML ... AS $$ ... $$` |
+| Attempting `COMMENT ON FUNCTION` or `ALTER FUNCTION SET COMMENT` | `[PARSE_SYNTAX_ERROR] Syntax error at or near 'FUNCTION'` | Execute full `CREATE OR REPLACE FUNCTION` with the updated COMMENT section; read SQL from repo file, modify COMMENT, resolve template vars, execute full CREATE |
 | Leaving `USE_PATCH_DSL=False` (legacy default) | Proposals return `pending_agent_execution` and nothing is actually applied | `USE_PATCH_DSL=True` is the proven, working path. Legacy path only accessible via explicit `--no-patch-dsl` |
 
 ## API Contract Gotchas
@@ -204,5 +212,6 @@ Standalone CLI for applying proposals and deploying bundles.
 
 ## Version History
 
+- **v4.1.0** (Feb 23, 2026) - Phase 7: ASI-to-metadata loop gap remediation. MV column comment requires full VIEW recreation documented in control-levers.md Lever 2 (DROP + CREATE VIEW WITH METRICS LANGUAGE YAML). TVF COMMENT requires full function replacement documented in Lever 3 (no ALTER FUNCTION SET COMMENT). TVF COMMENT Format section with structured bullet-point template. Lever 6 Instruction Specificity Rules with overcorrection prevention. `description` vs `serialized_space` clarified for Genie instructions. `missing_filter` and `missing_temporal_filter` added to `_LEVER_TO_PATCH_TYPE`. 2 new Common Mistakes (ALTER COLUMN on MV, COMMENT ON FUNCTION).
 - **v4.0.0** (Feb 23, 2026) - Phase 6 architectural lessons. Flipped `USE_PATCH_DSL` default to `True`. Added "Patch DSL is Default" section with `proposals_to_patches()` bridge function, `_lever_to_patch_type` mapping, `apply_log.json` sidecar. Added Common Mistake for `USE_PATCH_DSL=False`. Version bumped from v3.1.0.
 - **v3.1.0** (Feb 2026) - API Contract Gotchas, Orchestrator Integration, strip_non_exportable_fields(), risk-gated application, three-phase deployment.

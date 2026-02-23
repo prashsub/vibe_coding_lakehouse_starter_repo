@@ -58,6 +58,7 @@ Optimizer MUST consume the evaluator's per-row failures artifact (with ASI metad
 | `optimized_candidate` | dict | GEPA-optimized metadata (L2) or proposals (L1) |
 | `lever_mapping` | list | Control lever proposals with dual persistence paths |
 | `pareto_stats` | dict | GEPA optimization statistics (L2 only) |
+| `judge_quality_feedback` | list | Per-judge quality signals when counterfactual_fix values are too generic to drive optimization. Each entry: `{judge_name, feedback_type, example, desired, count}`. Feeds into SIMBA Tier 3 judge alignment when judges are the bottleneck. |
 
 ## Optimization Tiers (L1/L2/L3 Maturity Model)
 
@@ -88,7 +89,7 @@ Structured patch language for metadata changes with conflict detection and blast
 
 ASI structures judge feedback for patch synthesis and scoring.
 
-- **FAILURE_TAXONOMY:** 22 failure types (e.g., wrong_table, wrong_column, wrong_aggregation, wrong_filter, hallucination, etc.)
+- **FAILURE_TAXONOMY:** 23 failure types (e.g., wrong_table, wrong_column, wrong_aggregation, wrong_filter, hallucination, etc.)
 - **ASI_SCHEMA:** 12 fields per judge feedback (e.g., question_id, failure_type, blame_set, rationale, suggested_fix, etc.)
 - **propose_patch_set_from_asi()** workflow:
   1. Collect failures from judge feedback
@@ -108,6 +109,8 @@ The optimizer reads structured ASI from the evaluator using a priority chain:
 4. **Regex on rationale (last resort):** `_infer_blame_from_rationale()` parses free-text judge rationale for blame keywords.
 
 **Structured fields consumed by `cluster_failures()`:** `asi_severity`, `asi_confidence`, `asi_wrong_clause`, `asi_expected_value`, `asi_actual_value`, `asi_missing_metadata`, `asi_ambiguity_detected`.
+
+**Generic counterfactual_fix handling:** When `counterfactual_fix` contains only generic guidance (e.g., "Review table/column references in Genie metadata", "Check X in metadata", "Verify Y"), the optimizer SHOULD ignore it and use `blame_set` + `wrong_clause` to synthesize a specific fix. Generic fixes are treated as equivalent to "no fix provided." The `_describe_fix()` function detects these by checking if the fix starts with generic verbs ("Review", "Check", "Verify") without referencing a specific asset, column, or TVF name.
 
 **Proposal enrichment:** Each proposal emitted by `generate_metadata_proposals()` includes an `asi` dict with `failure_type`, `blame_set`, `severity`, `counterfactual_fixes`, `ambiguity_detected` from the source cluster. This enables the applier's `proposals_to_patches()` to generate targeted Patch DSL patches.
 
@@ -139,6 +142,10 @@ Judge `rationale` fields are the primary learning signal. GEPA receives rational
 | Wrong join | 1 (UC Tables) | `ALTER TABLE ... SET TBLPROPERTIES` |
 | Wrong aggregation | 2 (Metric Views) | `CREATE OR REPLACE VIEW` |
 | Wrong filter | 3 (TVFs) | `CREATE OR REPLACE FUNCTION` |
+| Missing filter (TVF param format) | 3 (TVFs) | `CREATE OR REPLACE FUNCTION` — fix COMMENT PARAMS section |
+| Missing filter (temporal on MV) | 2 (Metric Views) | `CREATE OR REPLACE VIEW` — add temporal filtering guidance to date dimension |
+| Missing filter (date param value) | 3 (TVFs) | `CREATE OR REPLACE FUNCTION` — fix COMMENT SYNTAX example |
+| Missing temporal filter | 2 (Metric Views) | `CREATE OR REPLACE VIEW` — add date dimension comment with temporal patterns |
 | Monitoring gap, stale data, data freshness | 4 (Monitoring) | `ALTER TABLE ... SET TBLPROPERTIES (monitoring config)` |
 | ML feature missing, model scoring error, feature store mismatch | 5 (ML Tables) | `ALTER TABLE ... SET TBLPROPERTIES (ML feature metadata)` |
 | Repeatability issue (TABLE/MV) | 1 (UC Tables/Columns) | `ALTER TABLE SET TBLPROPERTIES`, `ALTER COLUMN COMMENT` |
@@ -146,6 +153,26 @@ Judge `rationale` fields are the primary learning signal. GEPA receives rational
 | Wrong asset routing | 6 (Instructions) | `PATCH /api/2.0/genie/spaces/{id}` |
 
 **Repeatability → Lever routing rationale:** Repeatability issues often stem from unstructured metadata creating an ambiguous search space for the LLM. Structured metadata (Lever 1) -- `business_definition`, `synonyms[]`, `grain`, `join_keys[]`, `do_not_use_when[]`, `preferred_questions[]` in column comments, plus UC tags like `preferred_for_genie=true`, `deprecated_for_genie=true`, `domain=<value>` -- narrows the search space and reduces SQL variance. Structured metadata can be added as **tags** (via `TBLPROPERTIES`/`ALTER TABLE SET TAGS`) or within **descriptions/column comments** depending on the situation. When the asset is already a TVF (output is already constrained by function signature), the optimizer falls back to Lever 6 (instructions for deterministic parameter selection). TVF conversion remains a secondary recommendation for TABLE/MV assets when structured metadata alone is insufficient.
+
+### TVF COMMENT Format (Lever 3)
+
+TVF COMMENTs are the primary mechanism for guiding Genie's parameter selection. The COMMENT must follow this structured bullet-point layout — Genie parses these sections to understand when/how to call the function:
+
+```
+• PURPOSE: What this function returns and when to use it
+• BEST FOR: Specific query patterns that should use this TVF
+• NOT FOR: Patterns that should use a different asset (with redirect to preferred asset)
+• RETURNS: Column list (helps Genie understand output schema)
+• PARAMS:
+  - param_name (TYPE): Description. Format: <format_rule>.
+    Pass NULL (not the string 'NULL') to omit this filter.
+  - date_param (STRING): Start date. Format: CAST(DATE_ADD(CURRENT_DATE(), -N) AS STRING).
+    Do NOT use hardcoded dates like '2025-01-01'.
+• SYNTAX: SELECT * FROM schema.tvf_name(CAST(DATE_ADD(CURRENT_DATE(), -365) AS STRING), NULL)
+• NOTE: Additional constraints (e.g., ROW_NUMBER ranking, no GROUP BY needed)
+```
+
+**Critical:** The `PARAMS` and `SYNTAX` sections directly control Genie's parameter handling. Without explicit NULL-handling guidance and dynamic date syntax examples, Genie consistently: (1) passes the string literal `'NULL'` instead of SQL `NULL` for optional parameters, and (2) uses hardcoded dates like `'2025-02-23'` instead of dynamic expressions.
 
 ## Repeatability Failure Clustering
 
@@ -180,14 +207,70 @@ Applying only one side is insufficient -- both assets will continue competing. E
 
 The optimizer MUST auto-detect asset-type oscillation in failure clusters and generate proposals for BOTH the preferred and competing assets.
 
+**Template pair:**
+
+```sql
+-- Positive routing (preferred asset — Lever 1 or 2):
+ALTER TABLE catalog.schema.<preferred_table>
+ALTER COLUMN <dimension> COMMENT '... ALWAYS use this column with MEASURE(<measure>) for <pattern>. Do NOT use <competing_tvf> for this pattern.';
+
+-- Or for Metric Views (Lever 2):
+-- Update MV YAML dimension description: "ALWAYS use this for <pattern>"
+
+-- Negative routing (competing asset — Lever 3):
+-- In the competing TVF's COMMENT, update:
+--   BEST FOR: Remove <pattern> from the list
+--   NOT FOR: "<pattern> (use <preferred_asset> MEASURE(<measure>) instead)"
+```
+
+**Concrete example:**
+
+```sql
+-- Positive: Tell MV it IS the right choice for "revenue by destination country"
+ALTER TABLE catalog.schema.booking_analytics_metrics
+ALTER COLUMN destination_country COMMENT 'Country of destination property. ALWAYS use this dimension with MEASURE(total_revenue) for revenue by country queries.';
+
+-- Negative: Tell TVF it is NOT the right choice for simple country revenue
+-- In get_revenue_summary COMMENT, change:
+--   BEST FOR: "Revenue trends by time period with multi-metric breakdown"
+--   NOT FOR: "Revenue by destination country (use booking_analytics_metrics MEASURE(total_revenue))"
+```
+
 ### 4. Verify
 
 After each lever application, re-run the specific non-repeatable question 3x to confirm oscillation is resolved. Only proceed to the next lever if the question still oscillates.
+
+## Lever 6 Instruction Specificity Rules
+
+Lever 6 (Genie Space instructions) is prone to overcorrection when routing instructions are too broad. An overly generic instruction like "Revenue by destination → MV" can inadvertently redirect TVF-appropriate queries to the MV.
+
+**Rules:**
+
+1. Every routing instruction MUST include both the POSITIVE case and NEGATIVE exclusion
+2. Use the question's exact phrasing or a close paraphrase, not generic patterns
+3. Distinguish simple aggregations (MV) from date-ranged or parameterized detail queries (TVF)
+
+**GOOD:**
+```
+"Revenue by destination country this year" → booking_analytics_metrics (MV).
+"Revenue by destination for last 6 months with breakdown" → get_revenue_summary (TVF).
+```
+
+**BAD:**
+```
+"Revenue by destination" → booking_analytics_metrics (MV).
+```
+The bad example is too broad — it matches "Revenue by destination for last 6 months" which should route to the TVF, causing an overcorrection.
+
+**Overcorrection recovery:** If a Lever 6 instruction causes a regression (a previously correct question now fails), immediately narrow the instruction by adding the negative exclusion, or remove the instruction and rely on Lever 1/2/3 metadata instead.
 
 ## Common Mistakes
 
 | Mistake | Consequence | Fix |
 |---------|-------------|-----|
+| TVF COMMENT missing PARAMS null-handling guidance | Genie passes `'NULL'` string literal for optional params | Add "pass NULL, do NOT pass the string literal 'NULL'" to each optional param in PARAMS section |
+| TVF COMMENT SYNTAX shows hardcoded dates | Genie uses hardcoded dates instead of dynamic expressions | Show `CAST(DATE_ADD(CURRENT_DATE(), -N) AS STRING)` in SYNTAX |
+| Overly broad Lever 6 routing instruction | Overcorrects — redirects TVF-appropriate queries to MV | Include both positive routing AND negative exclusion per instruction; use exact question phrasing |
 | Bare boolean scores (no rationale) | GEPA/introspection can't learn | Always use `Feedback(value=..., rationale=...)` |
 | Batch-applying all proposals at once | Can't isolate regressions | Apply one cluster's proposals per iteration |
 | Running L2 (GEPA) and judge optimization together | Confounding effects | Always separate: metadata first, judge prompts only if judges are bottleneck |
@@ -236,6 +319,7 @@ DABs job definition for deploying GEPA optimization as a Databricks job. Include
 
 ## Version History
 
+- **v4.1.0** (Feb 23, 2026) - Phase 7: ASI-to-metadata loop gap remediation (13 issues). `missing_filter` sub-type routing in `_map_to_lever()` (TVF param -> L3, temporal -> L2, default -> L3). TVF COMMENT Format section with structured bullet-point template (PURPOSE, BEST FOR, NOT FOR, RETURNS, PARAMS, SYNTAX, NOTE). Concrete bilateral disambiguation templates (positive + negative routing SQL examples). Lever 6 Instruction Specificity Rules with overcorrection prevention (GOOD/BAD examples). `missing_temporal_filter` added to FAILURE_TAXONOMY (23 types). Generic counterfactual_fix detection in `_describe_fix()` — skips vague fixes and falls through to `blame_set` + `wrong_clause` synthesis. `judge_quality_feedback` output added to optimizer for SIMBA Tier 3 alignment. 3 new Common Mistakes (TVF COMMENT PARAMS, TVF COMMENT SYNTAX, Lever 6 overcorrection).
 - **v4.0.0** (Feb 23, 2026) - Phase 6 architectural lessons. Added ASI Consumption Contract section with UC-first priority chain (`read_asi_from_uc()` -> columns -> assessments -> regex). Flipped feature flag defaults: `use_asi=True`, `use_patch_dsl=True`. Added bilateral disambiguation to Repeatability Failure Clustering (positive + negative routing mandatory). UC/ASI reading is triggered by the orchestrator (not CLI args). Version bumped from v3.8.0.
 - **v3.8.0** (Feb 22, 2026) - Repeatability v2: structured metadata routing. Changed `_map_to_lever()` for `repeatability_issue`: TABLE/MV now routes to Lever 1 (structured metadata -- tags, column comments with business_definition, synonyms, grain, join_keys, do_not_use_when) instead of Lever 3 (TVFs); TVF routes to Lever 6 (instructions). Added `blame_set` parameter to `_map_to_lever()` for context-aware routing. Rewrote `_REPEATABILITY_FIX_BY_ASSET` with structured metadata recommendations. Fixed `_describe_fix()` bug reading `dominant_asset` instead of `asi_blame_set`. Updated `generate_metadata_proposals()` and `_dual_persist_paths()` to pass `blame_set` through.
 - **v3.7.0** (Feb 22, 2026) - Repeatability judge integration. Added `repeatability_issue` to `_map_to_lever()` mapping (lever 3, TVFs). Enhanced `_describe_fix()` with asset-type-specific recommendations for repeatability clusters: MV-routed questions recommend TVF conversion, TABLE-routed recommend TVF wrappers, TVF-routed recommend deterministic parameter instructions. Updated Root Cause to Lever Mapping table in SKILL.md.

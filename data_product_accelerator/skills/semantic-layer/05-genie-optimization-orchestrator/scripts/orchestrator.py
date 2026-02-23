@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Genie Optimization Orchestrator v4.1.0
+Genie Optimization Orchestrator v4.2.0
 
 Routes to 4 worker skills on demand. Maintains session state in
 optimization-progress.json and MLflow experiment tags.
@@ -25,6 +25,7 @@ Requirements:
     - gepa>=0.1.0 (Tier 1 only)
 """
 
+import re
 import time
 import json
 import yaml
@@ -700,6 +701,40 @@ def rollback_to_model(model_id: str, space_id: str):
     except Exception as e:
         print(f"  WARNING: Rollback from LoggedModel failed: {e}")
         return None
+
+
+_TEMPORAL_PHRASES = re.compile(
+    r"\b(this year|last year|last quarter|this quarter|last \d+ months?|"
+    r"last \d+ days?|this month|last month|year to date|ytd)\b",
+    re.IGNORECASE,
+)
+_HARDCODED_DATE = re.compile(r"'\d{4}-\d{2}-\d{2}'")
+
+
+def _check_temporal_freshness(benchmarks: list) -> list:
+    """Flag benchmarks with temporal phrasing but hardcoded dates in expected SQL.
+
+    Returns list of dicts with question_id, question, and the hardcoded dates found.
+    """
+    stale = []
+    for b in benchmarks:
+        question = b.get("question", "")
+        expected_sql = b.get("expected_sql", "") or b.get("sql", "")
+        if _TEMPORAL_PHRASES.search(question) and _HARDCODED_DATE.search(expected_sql):
+            dates_found = _HARDCODED_DATE.findall(expected_sql)
+            qid = b.get("question_id", b.get("id", "unknown"))
+            print(
+                f"  WARNING: {qid} has temporal phrasing but hardcoded dates "
+                f"{dates_found} in expected SQL — GT may be stale"
+            )
+            stale.append({
+                "question_id": qid,
+                "question": question,
+                "hardcoded_dates": dates_found,
+            })
+    if stale:
+        print(f"  {len(stale)} benchmarks flagged for potential date staleness")
+    return stale
 
 
 def _fetch_space_config(space_id: str) -> dict:
@@ -1554,7 +1589,7 @@ def run_optimization_loop(
     mode_label = "JOB" if job_mode else "INLINE"
     lever_label = "LEVER-AWARE" if (lever_aware and _WORKERS_AVAILABLE) else "EVAL-ONLY"
     print("=" * 60)
-    print(f"Genie Optimization Orchestrator v4.1.0 [{mode_label}] [{lever_label}]")
+    print(f"Genie Optimization Orchestrator v4.2.0 [{mode_label}] [{lever_label}]")
     print(f"Space ID: {space_id}")
     print(f"Domain: {domain}")
     print(f"Benchmarks: {len(benchmarks)} questions")
@@ -2379,7 +2414,7 @@ def _run_lever_aware_loop(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Genie Optimization Orchestrator v4.1.0"
+        description="Genie Optimization Orchestrator v4.2.0"
     )
     parser.add_argument("--space-id", help="Genie Space ID")
     parser.add_argument(

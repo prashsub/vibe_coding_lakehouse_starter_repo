@@ -103,9 +103,13 @@ All 8 Scorers (read outputs, NO SQL execution)
 
 Every judge's `Feedback.metadata` includes structured ASI fields that enable the Optimizer to propose targeted patch sets. The `FAILURE_TAXONOMY` and `ASI_SCHEMA` constants are defined in the evaluation template.
 
-**FAILURE_TAXONOMY:** wrong_table, wrong_column, wrong_join, missing_filter, wrong_aggregation, wrong_measure, missing_instruction, ambiguous_question, asset_routing_error, tvf_parameter_error, compliance_violation, performance_issue, repeatability_issue, missing_synonym, description_mismatch, other.
+**FAILURE_TAXONOMY:** wrong_table, wrong_column, wrong_join, missing_filter, missing_temporal_filter, wrong_aggregation, wrong_measure, missing_instruction, ambiguous_question, asset_routing_error, tvf_parameter_error, compliance_violation, performance_issue, repeatability_issue, missing_synonym, description_mismatch, other.
 
 **ASI_SCHEMA fields:** failure_type, severity, confidence, wrong_clause, blame_set, quoted_metadata_text, missing_metadata, ambiguity_detected, expected_value, actual_value, counterfactual_fix, affected_question_pattern.
+
+### Per-Judge Metric Logging (Data Contract)
+
+The evaluator MUST log `eval_{judge}_pct` as MLflow run metrics for: `result_correctness`, `asset_routing`, `syntax_validity`, `schema_accuracy`, `semantic_equivalence`, `completeness`, `logical_accuracy`. These MUST be accessible via `mlflow.get_run(run_id).data.metrics`. Values are in 0-100 scale (percentage). This enables the orchestrator to read per-judge scores without downloading and parsing evaluation artifacts.
 
 Use `build_asi_metadata()` helper to construct ASI metadata dicts for `Feedback(metadata=...)`.
 
