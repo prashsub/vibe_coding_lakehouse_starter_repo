@@ -3,6 +3,8 @@
 This guide walks you through building a complete Databricks data platform — from a raw schema CSV to production GenAI agents — using one prompt per stage, plus an optional Stage 6b optimization loop.
 
 > **See also:** [AGENTS.md](AGENTS.md) (routing table for AI agents) | [README.md](README.md) (project overview) | [Skill Navigator](skills/skill-navigator/SKILL.md) (full routing system)
+>
+> **Advanced:** See [Parallel Execution Guide](docs/framework-design/09-parallel-execution-guide.md) to run independent stages concurrently and reduce total wall-clock time by 30-40%.
 
 ---
 
@@ -64,6 +66,8 @@ The orchestrator skill will automatically load its worker skills for merge patte
 - YAML schema files in `gold_layer_design/yaml/`
 - Business onboarding guide
 - Column lineage and source table mapping
+
+> **Deep dive:** See [Gold Design Orchestrator Walkthrough](docs/framework-design/13-gold-design-orchestrator-walkthrough.md) for a detailed explanation of how the orchestrator progressively loads worker skills and manages context.
 
 ---
 
@@ -150,6 +154,8 @@ Validate the results in the UI to ensure the DQ rules show up in centralized del
 - Quarantine patterns for failed records
 - Asset Bundle pipeline configuration
 
+> **Deep dive:** See [Silver Orchestrator Walkthrough](docs/framework-design/14-silver-orchestrator-walkthrough.md) for context-aware loading patterns and DLT pipeline generation details.
+
 ---
 
 ## Step 4: Gold Layer Implementation
@@ -177,6 +183,8 @@ Use the gold layer design YAML files as the target destination, and the silver l
 - Silver-to-Gold MERGE notebooks (SCD Type 1/2 dimensions, fact tables)
 - FK constraint application scripts
 - Asset Bundle job configuration
+
+> **Deep dive:** See [Gold Pipeline Orchestrator Walkthrough](docs/framework-design/15-gold-pipeline-orchestrator-walkthrough.md) for YAML-to-implementation patterns and FK constraint ordering.
 
 ### ⚠️ Deployment Checkpoint — Bronze + Silver + Gold
 
@@ -280,6 +288,8 @@ The orchestrator skill automatically loads worker skills for TVFs, Metric Views,
 - Genie Space configuration with agent instructions and benchmark questions
 - Asset Bundle deployment
 
+> **Deep dive:** See [Semantic Layer Orchestrator Walkthrough](docs/framework-design/12-semantic-layer-orchestrator-walkthrough.md) for manifest-driven orchestration and progressive skill loading.
+
 ### ⚠️ Deployment Checkpoint
 
 > **Important:** The semantic layer has multiple interdependent components (TVFs, Metric Views, Genie Spaces). Genie Spaces depend on TVFs and Metric Views being deployed first. Validate the full deployment before proceeding.
@@ -331,6 +341,8 @@ This will involve the following optimization loop:
 - Per-judge accuracy scores and MLflow experiment runs
 - Optimized UC metadata, Metric Views, TVFs, and/or Genie Instructions
 - Optimization report with before/after metrics and levers applied
+
+> **Deep dive:** See [Agent Walkthrough: Genie Optimization](docs/agent-walkthrough.md) for progressive disclosure patterns, long-running session management, and how the agent navigates the 9-step optimization loop.
 
 ---
 
@@ -449,6 +461,7 @@ The orchestrator skill automatically loads worker skills for ResponsesAgent patt
 ## Tips
 
 - **One prompt per stage.** Each orchestrator skill handles the full workflow for its stage.
+- **Parallelize when possible.** See [Parallel Execution Guide](docs/framework-design/09-parallel-execution-guide.md) — Steps 1 & 2 can run concurrently, and Steps 6, 7 & 8 can run in parallel after Planning completes.
 - **New conversation per stage.** Start a fresh agent conversation for each stage to keep context clean.
 - **The skill does the thinking.** You don't need to specify details — the orchestrator reads its worker skills, common skills, and your existing artifacts automatically.
 - **The bullet points help you and the LLM.** Each prompt explains what will happen so you know what to expect, while also priming the LLM with the correct workflow sequence.
