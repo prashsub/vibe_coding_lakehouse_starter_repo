@@ -9,7 +9,7 @@ description: >
   deploying the optimized Genie Space.
 metadata:
   author: prashanth subrahmanyam
-  version: "4.0.0"
+  version: "4.2.0"
   domain: semantic-layer
   role: worker
   called_by:
@@ -174,6 +174,7 @@ Legacy `apply_proposal_batch()` is only accessible via explicit `--no-patch-dsl`
 | Using `ALTER COLUMN COMMENT` on Metric View | `[EXPECT_TABLE_NOT_VIEW.NO_ALTERNATIVE]` error | Read MV YAML, update dimension comment, execute full `DROP VIEW IF EXISTS` + `CREATE VIEW ... WITH METRICS LANGUAGE YAML ... AS $$ ... $$` |
 | Attempting `COMMENT ON FUNCTION` or `ALTER FUNCTION SET COMMENT` | `[PARSE_SYNTAX_ERROR] Syntax error at or near 'FUNCTION'` | Execute full `CREATE OR REPLACE FUNCTION` with the updated COMMENT section; read SQL from repo file, modify COMMENT, resolve template vars, execute full CREATE |
 | Leaving `USE_PATCH_DSL=False` (legacy default) | Proposals return `pending_agent_execution` and nothing is actually applied | `USE_PATCH_DSL=True` is the proven, working path. Legacy path only accessible via explicit `--no-patch-dsl` |
+| TVF optional param receives `'NULL'` string from Genie despite COMMENT guidance | WHERE clause matches no rows (string `'NULL'` ≠ SQL `NULL`) | Add coercion in TVF body: `CASE WHEN param IS NULL OR param = 'NULL' THEN TRUE ELSE col = param END`. This is a known Genie platform limitation (KGL-1 in optimizer skill) — metadata alone does not fix it |
 
 ## API Contract Gotchas
 
@@ -212,6 +213,7 @@ Standalone CLI for applying proposals and deploying bundles.
 
 ## Version History
 
+- **v4.2.0** (Feb 23, 2026) - Phase 8: Optimization loop feedback (Issues 14-16). New Common Mistake for TVF `'NULL'` string literal coercion (KGL-1 cross-ref to optimizer skill).
 - **v4.1.0** (Feb 23, 2026) - Phase 7: ASI-to-metadata loop gap remediation. MV column comment requires full VIEW recreation documented in control-levers.md Lever 2 (DROP + CREATE VIEW WITH METRICS LANGUAGE YAML). TVF COMMENT requires full function replacement documented in Lever 3 (no ALTER FUNCTION SET COMMENT). TVF COMMENT Format section with structured bullet-point template. Lever 6 Instruction Specificity Rules with overcorrection prevention. `description` vs `serialized_space` clarified for Genie instructions. `missing_filter` and `missing_temporal_filter` added to `_LEVER_TO_PATCH_TYPE`. 2 new Common Mistakes (ALTER COLUMN on MV, COMMENT ON FUNCTION).
 - **v4.0.0** (Feb 23, 2026) - Phase 6 architectural lessons. Flipped `USE_PATCH_DSL` default to `True`. Added "Patch DSL is Default" section with `proposals_to_patches()` bridge function, `_lever_to_patch_type` mapping, `apply_log.json` sidecar. Added Common Mistake for `USE_PATCH_DSL=False`. Version bumped from v3.1.0.
 - **v3.1.0** (Feb 2026) - API Contract Gotchas, Orchestrator Integration, strip_non_exportable_fields(), risk-gated application, three-phase deployment.

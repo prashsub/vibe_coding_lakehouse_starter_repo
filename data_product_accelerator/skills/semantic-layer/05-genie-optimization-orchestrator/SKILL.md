@@ -9,7 +9,7 @@ description: >
   generation, or running automated evaluation sessions.
 metadata:
   author: prashanth subrahmanyam
-  version: "4.1.0"
+  version: "4.3.0"
   domain: semantic-layer
   role: orchestrator
   pipeline_stage: 6
@@ -438,6 +438,8 @@ End-to-end integration test script covering the full optimization loop across al
 | Applying overlapping levers in same iteration | Cannot determine which lever drove improvement — confounded measurement | One lever per iteration unless question sets are non-overlapping (verify zero intersection, log warning). See HC #14 exception |
 | Skipping cross-iteration repeatability in iteration 2+ | SQL-changing regressions go undetected until final Cell 9c test | Compute `_compute_cross_iteration_repeatability()` after every evaluation from iteration 2 onward (hard constraint #19) |
 | Skipping Lever 3 (TVF negative routing) when Lever 1/2 alone don't resolve oscillation | Disambiguation is one-sided — preferred asset has positive routing but competing asset still claims the question | Bilateral: positive routing (Lever 1/2) tells the preferred asset it IS the right choice; negative routing (Lever 3) tells the competing asset it is NOT. Both sides must be addressed. |
+| Treating routing regressions as metadata failures when bilateral disambiguation is already applied | Infinite metadata iteration loop with no convergence | Genie routing is probabilistic (KGL-2). After bilateral disambiguation, run 3-5 passes for routing-sensitive questions. If variance > 40%, document as platform limitation and stop iterating. |
+| Repeatedly proposing column comments for complex temporal expressions ("last quarter", "YoY") | Metadata changes have no effect, wasting 2+ iterations | Check optimizer's Metadata Effectiveness table. LOW-effectiveness patterns need escalation: TVF with temporal parameter or pre-computed columns (KGL-3). Column comments only work for simple patterns ("this year", "last N days"). |
 
 ## Repeatability
 
@@ -467,6 +469,7 @@ During the optimization loop (Phase 2), only cross-iteration comparison is used 
 
 ## Version History
 
+- **v4.3.0** (Feb 23, 2026) - Phase 8: Optimization loop feedback (Issues 14-16). 2 new Common Mistakes: probabilistic routing regression loop (KGL-2) and complex temporal expression re-proposal (KGL-3). Cross-references to optimizer's Known Genie Limitations table for escalation.
 - **v4.2.0** (Feb 23, 2026) - Phase 7: ASI-to-metadata loop gap remediation (13 issues). HC #14 expanded with non-overlapping lever exception (zero question-set intersection allows combining). Phase 0c benchmark temporal freshness check added (`_check_temporal_freshness()` in orchestrator.py). HC #15 expanded with per-judge metric data contract (`eval_{judge}_pct` logged by evaluator). Common Mistake row updated for non-overlapping levers. Validation Checklist updated with date staleness precondition.
 - **v4.1.0** (Feb 23, 2026) - Enrich LoggedModel for cross-model comparison. **Structured Patch DSL:** Patches now logged under `patches/` with both full `patch_set.json` and `patch_summary.json` (breakdowns by type, lever, risk, with target list). New filterable params: `patch_levers`, `patch_targets`. **UC metadata diffs:** `_compute_uc_metadata_diff()` downloads parent model's UC metadata via `source_run_id`, computes added/removed/modified rows for columns, tags, and routines, logs `model_state/uc_metadata_diff.json` + `uc_columns_changed`/`uc_tags_changed`/`uc_routines_changed` metrics. **Model-level judge scores:** `link_eval_scores_to_model()` called after every evaluation to log per-judge scores (`overall_accuracy`, `schema_accuracy`, etc.) and `repeatability_pct` as model-level metrics via `mlflow.log_metrics(model_id=...)`, enabling comparison in the Models tab and `search_logged_models()` filtering. Updated HC #17 with full artifact layout.
 - **v4.0.0** (Feb 23, 2026) - Phase 6 architectural lessons (7 lessons). Added HC #21 (ASI UC table contract: evaluator MUST persist per-row ASI to `genie_eval_asi_results`; optimizer reads via `read_asi_from_uc()`). Added HC #22 (UC trace storage via UCSchemaLocation). Expanded HC #18 with `proposals_to_patches()` bridge for ASI-enriched proposals. Added Common Mistake for bilateral disambiguation (Lever 3 negative routing). Version bumped from v3.9.0.

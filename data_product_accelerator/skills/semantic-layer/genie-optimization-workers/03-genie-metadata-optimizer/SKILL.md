@@ -8,7 +8,7 @@ description: >
   Use when evaluation scores are below target and metadata changes are needed.
 metadata:
   author: prashanth subrahmanyam
-  version: "4.0.0"
+  version: "4.2.0"
   domain: semantic-layer
   role: worker
   called_by:
@@ -174,6 +174,27 @@ TVF COMMENTs are the primary mechanism for guiding Genie's parameter selection. 
 
 **Critical:** The `PARAMS` and `SYNTAX` sections directly control Genie's parameter handling. Without explicit NULL-handling guidance and dynamic date syntax examples, Genie consistently: (1) passes the string literal `'NULL'` instead of SQL `NULL` for optional parameters, and (2) uses hardcoded dates like `'2025-02-23'` instead of dynamic expressions.
 
+### Metadata Effectiveness by Complexity
+
+Column comments and Genie Space instructions have varying effectiveness depending on expression complexity. The optimizer MUST factor this into proposal generation — do not waste iterations on metadata changes for patterns with LOW effectiveness.
+
+| Temporal Pattern | Example Phrasing | Required SQL | Metadata Lever | Effectiveness |
+|-----------------|------------------|-------------|----------------|---------------|
+| "this year" | "total revenue this year" | `WHERE YEAR(date_col) = YEAR(CURRENT_DATE())` | Column comment (Lever 1) | **HIGH** — single function, Genie reliably applies |
+| "last N days" | "bookings last 30 days" | `WHERE date_col >= DATE_ADD(CURRENT_DATE(), -30)` | Column comment or TVF SYNTAX (Lever 1/3) | **HIGH** — single function, Genie reliably applies |
+| "last month" | "revenue last month" | `WHERE date_col >= DATE_TRUNC('month', ADD_MONTHS(CURRENT_DATE(), -1)) AND date_col < DATE_TRUNC('month', CURRENT_DATE())` | Genie Space instruction (Lever 6) | **MEDIUM** — range with two boundaries, sometimes partially applied |
+| "last quarter" | "total revenue last quarter" | `WHERE date_col >= ADD_MONTHS(DATE_TRUNC('quarter', CURRENT_DATE()), -3) AND date_col < DATE_TRUNC('quarter', CURRENT_DATE())` | Genie Space instruction (Lever 6) | **LOW** — nested functions, Genie frequently ignores |
+| "YoY comparison" | "revenue growth vs last year" | Window functions with `LAG(..., 12)` | TVF (Lever 3) or pre-computed column | **LOW** — complex logic beyond metadata influence |
+
+**Escalation ladder for LOW-effectiveness patterns:**
+
+1. **Column comment** (try first, expect failure for complex expressions)
+2. **Genie Space instruction** with explicit SQL example (try second)
+3. **TVF with temporal parameter** (absorb complexity into function signature)
+4. **Schema simplification** — pre-computed columns (e.g., `fiscal_quarter`, `is_last_quarter` boolean, `quarter_start_date`) that reduce the expression to a simple equality filter
+
+When the optimizer generates a proposal for a LOW-effectiveness pattern and it fails in the subsequent evaluation, it SHOULD escalate to the next rung instead of re-proposing the same lever.
+
 ## Repeatability Failure Clustering
 
 When cross-iteration repeatability checks detect questions whose SQL changed between iterations (flagged as `repeatability_issue` synthetic failures), the optimizer uses specialized clustering to identify and fix the root cause:
@@ -199,6 +220,8 @@ Based on the oscillation type, apply fixes in this specific order:
 
 ### 3. Bilateral Disambiguation (MANDATORY)
 
+**Genie routing is probabilistic, not deterministic.** Bilateral disambiguation improves routing odds but does not guarantee consistency across runs. A question that routes correctly in iteration N may regress in iteration N+1 when routing remains ambiguous. This is a known platform behavior (KGL-2), and usually indicates metadata authoring needs clearer positive and negative routing guidance to reduce ambiguity.
+
 When a question oscillates between two asset types, **BOTH sides** of the disambiguation must be addressed:
 - **Positive routing** (Lever 1/2): Tell the preferred asset it IS the right choice for this question pattern
 - **Negative routing** (Lever 3): Tell the competing asset it is NOT the right choice
@@ -206,6 +229,8 @@ When a question oscillates between two asset types, **BOTH sides** of the disamb
 Applying only one side is insufficient -- both assets will continue competing. Example: if a TVF COMMENT says "BEST FOR: total revenue last quarter" and the MV has positive routing for the same pattern, the TVF COMMENT must add `NOT FOR: Simple total revenue without destination breakdown (use booking_analytics_metrics MEASURE(total_revenue))`.
 
 The optimizer MUST auto-detect asset-type oscillation in failure clusters and generate proposals for BOTH the preferred and competing assets.
+
+**Routing-sensitive benchmarks require repeatability testing:** For any question where bilateral disambiguation was applied, the evaluator SHOULD run 3-5 passes of the same question and flag inconsistent routing. If routing variance exceeds 40% (e.g., 2 of 5 passes route incorrectly), document the question as routing-sensitive in benchmark metadata and accept the variance as a platform limitation rather than generating additional metadata iterations.
 
 **Template pair:**
 
@@ -264,6 +289,38 @@ The bad example is too broad — it matches "Revenue by destination for last 6 m
 
 **Overcorrection recovery:** If a Lever 6 instruction causes a regression (a previously correct question now fails), immediately narrow the instruction by adding the negative exclusion, or remove the instruction and rely on Lever 1/2/3 metadata instead.
 
+## Known Genie Limitations
+
+Documented platform behaviors that metadata guidance alone cannot resolve. When the optimizer encounters these, it should recommend code-level workarounds instead of additional metadata iterations.
+
+| # | Limitation | Observed Behavior | Metadata Attempted | Outcome | Recommended Workaround |
+|---|-----------|-------------------|-------------------|---------|----------------------|
+| KGL-1 | Optional TVF parameters: `'NULL'` string literal | Genie generates `param => 'NULL'` instead of `NULL` when using named argument syntax | COMMENT with "pass NULL not 'NULL'", SYNTAX with positional NULL, Genie Space instructions to avoid named args | **Not fixed** after 3+ iterations | TVF body coercion: `IF param = 'NULL' THEN NULL ELSE param END`; SYNTAX examples with positional args only |
+| KGL-2 | Probabilistic asset routing | Genie non-deterministically routes questions between competing assets (e.g., MV vs TVF) even with bilateral disambiguation | Positive + negative routing on both assets, Genie Space routing instructions | **Improved** but not guaranteed — routing is probabilistic | Bilateral disambiguation (mandatory), repeatability testing (3-5 passes), accept variance as platform behavior |
+| KGL-3 | Complex temporal expressions ignored | Genie does not apply complex date filters (`ADD_MONTHS(DATE_TRUNC('quarter', CURRENT_DATE()), -3)`) despite column comments and instructions | Column comments with explicit SQL, Genie Space instructions | **Not fixed** for nested date functions | Schema simplification (pre-computed quarter columns), or TVF with temporal parameter |
+
+**Escalation rule:** If the same failure persists for 2+ iterations with targeted metadata changes, check this table before generating another metadata proposal. If the failure matches a known limitation, emit the code-level workaround as the proposal instead of additional COMMENT changes.
+
+**TVF body coercion pattern (KGL-1):**
+
+```sql
+CREATE OR REPLACE FUNCTION schema.my_tvf(
+  start_date STRING,
+  optional_filter STRING
+)
+RETURNS TABLE(...)
+COMMENT '...'
+RETURN
+  SELECT * FROM my_table
+  WHERE date_col >= start_date
+    AND (
+      CASE WHEN optional_filter IS NULL OR optional_filter = 'NULL'
+           THEN TRUE
+           ELSE category = optional_filter
+      END
+    );
+```
+
 ## Common Mistakes
 
 | Mistake | Consequence | Fix |
@@ -276,6 +333,8 @@ The bad example is too broad — it matches "Revenue by destination for last 6 m
 | Running L2 (GEPA) and judge optimization together | Confounding effects | Always separate: metadata first, judge prompts only if judges are bottleneck |
 | Running GEPA before exhausting Levers 1-5 | Optimization budget wasted on lowest-priority lever | Always introspect Levers 1-5 first; GEPA is Lever 6 only |
 | Assuming GEPA is unavailable without checking | L2 tier never attempted | Install `gepa>=0.1.0` and use the GEPA template notebook |
+| Re-proposing column comments for complex temporal patterns after failure | Wasted iterations with no improvement | Check Metadata Effectiveness table — LOW patterns ("last quarter", "YoY") need escalation to TVF or schema simplification, not more comments (KGL-3) |
+| Generating 3+ metadata iterations for same failure without checking Known Genie Limitations | Infinite loop against platform ceiling | After 2 failed iterations on the same failure, check KGL table; if it matches, emit code-level workaround instead |
 
 ## Installation
 
@@ -319,6 +378,7 @@ DABs job definition for deploying GEPA optimization as a Databricks job. Include
 
 ## Version History
 
+- **v4.2.0** (Feb 23, 2026) - Phase 8: Optimization loop feedback (Issues 14-16). Known Genie Limitations table (KGL-1 through KGL-3) with code-level workaround patterns. TVF body coercion pattern for `'NULL'` string literal (KGL-1). Bilateral disambiguation updated with probabilistic routing language and 3-5 pass repeatability testing guidance (KGL-2). Metadata Effectiveness by Complexity table with escalation ladder for temporal patterns (KGL-3). 2 new Common Mistakes (complex temporal re-proposal, infinite iteration loop). Escalation rule: after 2 failed iterations on the same failure, check KGL table before generating more metadata proposals.
 - **v4.1.0** (Feb 23, 2026) - Phase 7: ASI-to-metadata loop gap remediation (13 issues). `missing_filter` sub-type routing in `_map_to_lever()` (TVF param -> L3, temporal -> L2, default -> L3). TVF COMMENT Format section with structured bullet-point template (PURPOSE, BEST FOR, NOT FOR, RETURNS, PARAMS, SYNTAX, NOTE). Concrete bilateral disambiguation templates (positive + negative routing SQL examples). Lever 6 Instruction Specificity Rules with overcorrection prevention (GOOD/BAD examples). `missing_temporal_filter` added to FAILURE_TAXONOMY (23 types). Generic counterfactual_fix detection in `_describe_fix()` — skips vague fixes and falls through to `blame_set` + `wrong_clause` synthesis. `judge_quality_feedback` output added to optimizer for SIMBA Tier 3 alignment. 3 new Common Mistakes (TVF COMMENT PARAMS, TVF COMMENT SYNTAX, Lever 6 overcorrection).
 - **v4.0.0** (Feb 23, 2026) - Phase 6 architectural lessons. Added ASI Consumption Contract section with UC-first priority chain (`read_asi_from_uc()` -> columns -> assessments -> regex). Flipped feature flag defaults: `use_asi=True`, `use_patch_dsl=True`. Added bilateral disambiguation to Repeatability Failure Clustering (positive + negative routing mandatory). UC/ASI reading is triggered by the orchestrator (not CLI args). Version bumped from v3.8.0.
 - **v3.8.0** (Feb 22, 2026) - Repeatability v2: structured metadata routing. Changed `_map_to_lever()` for `repeatability_issue`: TABLE/MV now routes to Lever 1 (structured metadata -- tags, column comments with business_definition, synonyms, grain, join_keys, do_not_use_when) instead of Lever 3 (TVFs); TVF routes to Lever 6 (instructions). Added `blame_set` parameter to `_map_to_lever()` for context-aware routing. Rewrote `_REPEATABILITY_FIX_BY_ASSET` with structured metadata recommendations. Fixed `_describe_fix()` bug reading `dominant_asset` instead of `asi_blame_set`. Updated `generate_metadata_proposals()` and `_dual_persist_paths()` to pass `blame_set` through.
