@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-End-to-end integration test for the Genie Optimization Orchestrator v3.8.0.
+End-to-end integration test for the Genie Optimization Orchestrator v4.1.0.
 
 Exercises the lever-aware loop with mock data and mocked Genie/MLflow APIs.
 No live Genie Space or Databricks workspace required.

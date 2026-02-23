@@ -61,6 +61,10 @@ resources:
               # to measure SQL generation consistency. Adds ~24s per question.
               # The orchestrator enables this only during full-scope evaluations.
               run_repeatability: "false"
+              eval_scope: "full"
+              patched_objects_b64: ""
+              eval_dataset_name: ""
+              min_benchmarks: "10"
           environment_key: default
 
       environments:

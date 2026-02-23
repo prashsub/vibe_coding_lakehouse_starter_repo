@@ -10,7 +10,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: prashanth subrahmanyam
-  version: "1.1.0"
+  version: "1.2.0"
   domain: genai-agents
   role: worker
   pipeline_stage: 9
@@ -387,3 +387,28 @@ Before running agent evaluation:
 ### Related Skills
 - `ml-pipeline-setup` - MLflow model patterns
 - `responses-agent-patterns` - ResponsesAgent implementation patterns
+
+---
+
+## Scorer vs Evaluator Semantics
+
+`make_judge()` returns an **`InstructionsJudge` scorer callable** — an object intended for use inside `mlflow.genai.evaluate(scorers=[...])`. Scorers are **not standalone evaluators**:
+
+- **Scorers** are callables that receive structured inputs from `mlflow.genai.evaluate()` and return `Feedback` objects. They have no `.evaluate()` method.
+- **`mlflow.genai.evaluate()`** is the evaluator — it orchestrates the predict function, passes data through scorers, and logs results to MLflow.
+
+For inline/conditional LLM calls **outside** the `mlflow.genai.evaluate()` harness (e.g., arbiter conditional scoring, ad-hoc quality checks), use direct LLM calls:
+- `_call_llm_for_scoring()` via `w.serving_endpoints.query()` (Databricks SDK)
+- Parse JSON verdicts from the LLM response manually
+
+| Use Case | Correct Approach | Wrong Approach |
+|----------|-----------------|----------------|
+| Running all judges on benchmark suite | `mlflow.genai.evaluate(scorers=[judge1, judge2])` | Calling each judge manually in a loop |
+| Conditional scoring (arbiter fires only on disagreement) | `_call_llm_for_scoring(prompt)` inside a `@scorer` | `make_judge().evaluate(data)` — no `.evaluate()` method |
+| Quick ad-hoc LLM quality check | `w.serving_endpoints.query(...)` | `make_judge()(inputs)` — wrong call signature |
+
+### Common Mistakes
+
+| Mistake | Consequence | Fix |
+|---------|-------------|-----|
+| Calling `make_judge().evaluate()` for standalone scoring | `AttributeError: 'InstructionsJudge' object has no attribute 'evaluate'` | Use `_call_llm_for_scoring()` for inline/conditional LLM calls, or pass scorers to `mlflow.genai.evaluate(scorers=[...])` |

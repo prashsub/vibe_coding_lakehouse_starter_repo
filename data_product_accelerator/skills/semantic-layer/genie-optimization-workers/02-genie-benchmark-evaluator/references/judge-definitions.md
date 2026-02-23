@@ -62,28 +62,35 @@ def genie_predict_fn(question: str, expected_sql: str = "", **kwargs) -> dict:
     Respects 12s rate limit between Genie API calls.
     """
 
-    time.sleep(12)
+    time.sleep(RATE_LIMIT_SECONDS)  # e.g. 12
     result = run_genie_query(space_id, question)
     genie_sql = sanitize_sql(result.get("sql") or "")
-    gt_sql = resolve_sql(expected_sql)
+    gt_sql = resolve_sql(_eff_sql)  # _eff_sql from expected_sql or benchmark lookup
 
     comparison = {"match": False, "match_type": "mismatch", "gt_rows": 0,
-                  "genie_rows": 0, "gt_hash": None, "genie_hash": None, "error": None}
+                  "genie_rows": 0, "gt_hash": None, "genie_hash": None,
+                  "gt_signature": None, "genie_signature": None, "error": None}
     if genie_sql and gt_sql:
         try:
-            gt_df = spark.sql(gt_sql).toPandas()
-            genie_df = spark.sql(genie_sql).toPandas()
+            gt_df = normalize_result_df(spark.sql(gt_sql).toPandas())
+            genie_df = normalize_result_df(spark.sql(genie_sql).toPandas())
             gt_hash = hashlib.md5(gt_df.to_csv(index=False).encode()).hexdigest()[:8]
             genie_hash = hashlib.md5(genie_df.to_csv(index=False).encode()).hexdigest()[:8]
             exact_match = gt_df.shape == genie_df.shape and gt_df.equals(genie_df)
             hash_match = gt_hash == genie_hash
+            gt_sig = result_signature(gt_df)
+            genie_sig = result_signature(genie_df)
+            sig_match = (gt_sig["schema_hash"] == genie_sig["schema_hash"]
+                         and gt_sig["row_count"] == genie_sig["row_count"])
             comparison = {
                 "match": exact_match or hash_match,
-                "match_type": "exact" if exact_match else ("hash" if hash_match else "mismatch"),
+                "match_type": "exact" if exact_match else ("hash" if hash_match else ("signature" if sig_match else "mismatch")),
                 "gt_rows": len(gt_df),
                 "genie_rows": len(genie_df),
                 "gt_hash": gt_hash,
                 "genie_hash": genie_hash,
+                "gt_signature": gt_sig,
+                "genie_signature": genie_sig,
                 "error": None,
             }
         except Exception as e:
@@ -182,26 +189,42 @@ def _extract_response_text(outputs: Union[dict, Any]) -> str:
 
 ## LLM Call Helper for Scorers
 
-Use Databricks SDK (NOT `langchain_databricks`) for LLM calls in custom scorers. Adopted from `mlflow-genai-evaluation` skill — prevents serverless deployment failures and auth issues.
+Use Databricks SDK (NOT `langchain_databricks`) for LLM calls in custom scorers. Adopted from `mlflow-genai-evaluation` skill — prevents serverless deployment failures and auth issues. All LLM judges use `_call_llm_for_scoring()` with retry + backoff; `make_judge()` is NOT used.
 
 ```python
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
 import json
 
-def _call_llm_for_scoring(prompt: str, endpoint: str = "databricks-claude-sonnet-4-6") -> dict:
-    """Call LLM using Databricks SDK for scorer evaluation.
+def _call_llm_for_scoring(prompt: str, max_retries: int = 3) -> dict:
+    """Call LLM using Databricks SDK with retry + backoff (HC #14).
 
-    Returns parsed JSON with 'score' and 'rationale' keys.
-    Uses temperature=0 for deterministic judge consistency.
+    Returns parsed JSON. Uses temperature=0 for deterministic judge consistency.
+    Expects LLM to return valid JSON; strips markdown code blocks if present.
     """
+    import time as _time
     w = WorkspaceClient()
-    response = w.serving_endpoints.query(
-        name=endpoint,
-        messages=[ChatMessage(role=ChatMessageRole.USER, content=prompt)],
-        temperature=0,
-    )
-    return json.loads(response.choices[0].message.content)
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            response = w.serving_endpoints.query(
+                name=LLM_ENDPOINT,  # e.g. "databricks-claude-sonnet-4-6"
+                messages=[ChatMessage(role=ChatMessageRole.USER, content=prompt)],
+                temperature=0,
+            )
+            content = response.choices[0].message.content
+            if not content or not content.strip():
+                raise ValueError(f"Empty LLM response on attempt {attempt + 1}")
+            content = content.strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[1] if "\n" in content else content[3:]
+                content = content.rsplit("```", 1)[0]
+            return json.loads(content)
+        except Exception as e:
+            last_err = e
+            if attempt < max_retries - 1:
+                _time.sleep(2 ** attempt)
+    raise last_err
 ```
 
 ---
@@ -248,16 +271,19 @@ def check_genie_thresholds(metrics: dict, thresholds: dict = None) -> bool:
 Apply these helpers to ALL SQL before execution. Genie can return multi-statement SQL (compound questions) and ground truth SQL uses `${catalog}` / `${gold_schema}` template variables from `golden-queries.yaml`.
 
 ```python
-def resolve_sql(sql: str, catalog: str, gold_schema: str) -> str:
+def resolve_sql(sql: str, cat: str = None, schema: str = None) -> str:
     """Substitute ${catalog} and ${gold_schema} template variables.
 
     Ground truth SQL in golden-queries.yaml uses template variables that must
     be resolved before spark.sql() or EXPLAIN. Without this, Spark throws
     PARSE_SYNTAX_ERROR: Syntax error at or near '$'.
+    Uses cat/schema params or falls back to global catalog/gold_schema.
     """
     if not sql:
         return sql
-    return sql.replace("${catalog}", catalog).replace("${gold_schema}", gold_schema)
+    cat = cat or catalog
+    schema = schema or gold_schema
+    return sql.replace("${catalog}", cat).replace("${gold_schema}", schema)
 
 
 def sanitize_sql(sql: str) -> str:
@@ -282,99 +308,56 @@ def sanitize_sql(sql: str) -> str:
 - `sanitize_sql()` → apply to all Genie-returned SQL before EXPLAIN or spark.sql()
 - `resolve_sql()` → apply to all ground truth SQL before spark.sql()
 - Order: `sanitize_sql()` first (Genie SQL), then `resolve_sql()` (GT SQL)
+- Example: `resolve_sql(expectations.get("expected_response", ""))` or `resolve_sql(sql, catalog, gold_schema)` with explicit args
 
 ---
 
-## Judge Suite
+## Judge Suite (all_scorers)
 
-All judges organized into the 3-layer architecture. LLM judges load prompts from the Prompt Registry via alias.
+All judges are `@scorer`-decorated functions. LLM judges use `_call_llm_for_scoring()` with inline prompts (or prompts from `loaded_prompts`). **`make_judge()` is NOT used** — the template uses custom `@scorer` + `_call_llm_for_scoring()` for structured ASI output.
 
 **IMPORTANT:** Do NOT stack `@mlflow.trace` on `@scorer`. The `mlflow.genai.evaluate()` harness traces scorer execution automatically. Stacking `@mlflow.trace` wraps the scorer in a generic wrapper that strips `.register()`, leaving the Judges tab empty. Keep `@mlflow.trace` only on the predict function.
 
 ```python
-import mlflow
-from mlflow.genai.judges import make_judge
 from mlflow.genai.scorers import scorer
 from mlflow.entities import Feedback, AssessmentSource
 
 CODE_SOURCE = AssessmentSource(source_type="CODE", source_id="genie-optimizer-v2")
-LLM_SOURCE = AssessmentSource(
-    source_type="LLM_JUDGE",
-    source_id="databricks:/databricks-claude-sonnet-4-6",
-)
+LLM_SOURCE = AssessmentSource(source_type="LLM_JUDGE", source_id=f"databricks:/{LLM_ENDPOINT}")
 
+# Flat list passed to mlflow.genai.evaluate(scorers=all_scorers)
+all_scorers = [
+    syntax_validity_scorer,
+    schema_accuracy_judge,
+    logical_accuracy_judge,
+    semantic_equivalence_judge,
+    completeness_judge,
+    asset_routing_scorer,
+    result_correctness,
+    arbiter_scorer,
+]
 
-def create_judge_suite(uc_schema: str = None, alias: str = "production") -> dict:
-    """Create all judges organized by layer.
-
-    Args:
-        uc_schema: Unity Catalog schema for Prompt Registry. If None, uses inline prompts.
-        alias: Prompt alias to load ("production" or "staging").
-
-    Returns:
-        dict with keys: layer1, layer2, layer3_fn
-    """
-    prompts = load_judge_prompts(uc_schema, alias) if uc_schema else {}
-
-    schema_accuracy_judge = make_judge(
-        name="schema_accuracy",
-        instructions=prompts.get("schema_accuracy", (
-            "You are a SQL schema expert. Determine if the generated SQL references "
-            "the correct tables, columns, and joins for the given question. Consider "
-            "the expected tables and columns in the expectations."
-        )),
-        model="databricks:/databricks-claude-sonnet-4-6",
+# Example: schema_accuracy_judge uses _call_llm_for_scoring (NOT make_judge)
+@scorer
+def schema_accuracy_judge(inputs: dict, outputs: dict, expectations: dict) -> Feedback:
+    """LLM judge: schema correctness with structured ASI output."""
+    genie_sql = sanitize_sql(_extract_response_text(outputs))
+    gt_sql = resolve_sql(expectations.get("expected_response", ""))
+    question = inputs.get("question", "")
+    prompt = (
+        f"You are a SQL schema expert...\n"
+        f"User question: {question}\n"
+        f"Expected SQL: {gt_sql}\n"
+        f"Generated SQL: {genie_sql}\n\n"
+        'Respond with JSON only: {"correct": true/false, "failure_type": "...", ...}'
     )
-
-    logical_accuracy_judge = make_judge(
-        name="logical_accuracy",
-        instructions=prompts.get("logical_accuracy", (
-            "You are a SQL logic expert. Determine if the generated SQL applies correct "
-            "aggregations, filters, GROUP BY, ORDER BY, and WHERE clauses for the question. "
-            "Compare against the expected SQL logic."
-        )),
-        model="databricks:/databricks-claude-sonnet-4-6",
-    )
-
-    semantic_equivalence_judge = make_judge(
-        name="semantic_equivalence",
-        instructions=prompts.get("semantic_equivalence", (
-            "You are a SQL semantics expert. Determine if two SQL queries are measuring "
-            "the SAME business metric despite syntactic differences. Two queries are "
-            "semantically equivalent if they would answer the same business question "
-            "with the same result, even if written differently. Consider column aliases, "
-            "join order, filter phrasing, and aggregation approach."
-        )),
-        model="databricks:/databricks-claude-sonnet-4-6",
-    )
-
-    completeness_judge = make_judge(
-        name="completeness",
-        instructions=prompts.get("completeness", (
-            "You are a SQL completeness expert. Determine if the generated SQL fully "
-            "answers the user's question. Check that all requested dimensions, measures, "
-            "filters, and sorting are present. A partial answer is not complete."
-        )),
-        model="databricks:/databricks-claude-sonnet-4-6",
-    )
-
-    return {
-        "layer1": [
-            syntax_validity_scorer,
-            schema_accuracy_judge,
-            logical_accuracy_judge,
-            semantic_equivalence_judge,
-            completeness_judge,
-            asset_routing_scorer,
-        ],
-        "layer2": [result_correctness],
-        "layer3": [arbiter_scorer],
-    }
-
-
-def get_all_scorers(judge_suite: dict) -> list:
-    """Flatten judge suite into a single list for mlflow.genai.evaluate(scorers=...)."""
-    return judge_suite["layer1"] + judge_suite["layer2"] + judge_suite["layer3"]
+    try:
+        result = _call_llm_for_scoring(prompt)
+    except Exception as e:
+        return Feedback(name="schema_accuracy", value="unknown", ...)
+    if result.get("correct", False):
+        return Feedback(name="schema_accuracy", value="yes", ...)
+    return Feedback(name="schema_accuracy", value="no", ...)
 
 
 @scorer
@@ -408,7 +391,7 @@ def syntax_validity_scorer(inputs: dict, outputs: dict) -> Feedback:
 @scorer
 def asset_routing_scorer(inputs: dict, outputs: dict, expectations: dict) -> Feedback:
     """Layer 1: Check if Genie selected the correct asset type."""
-    sql = (_extract_response_text(outputs) or "").lower()
+    sql = sanitize_sql(_extract_response_text(outputs) or "").lower()
     expected_asset = expectations.get("expected_asset", "").upper()
 
     uses_mv = "mv_" in sql or "measure(" in sql
@@ -484,68 +467,71 @@ def arbiter_scorer(inputs: dict, outputs: dict, expectations: dict) -> Feedback:
     gt_sql = resolve_sql(expectations.get("expected_response", ""))
     question = inputs.get("question", "")
 
-    arbiter = make_judge(
-        name="arbiter",
-        instructions=loaded_prompts.get("arbiter", JUDGE_PROMPTS["arbiter"]),
-        model="databricks:/databricks-claude-sonnet-4-6",
-    )
-
-    context = (
+    _arbiter_instructions = loaded_prompts.get("arbiter", JUDGE_PROMPTS.get("arbiter", ""))
+    prompt = (
+        f"{_arbiter_instructions}\n\n"
         f"Question: {question}\n"
         f"Ground Truth SQL: {gt_sql}\n"
         f"Genie SQL: {genie_sql}\n"
-        f"Result comparison: {json.dumps(cmp)}"
+        f"Result comparison: {json.dumps(cmp)}\n\n"
+        'Respond with JSON only: {"verdict": "<genie_correct|ground_truth_correct|both_correct|neither_correct>", '
+        '"failure_type": "<wrong_aggregation|wrong_filter|wrong_table|other>", '
+        '"blame_set": ["<blamed_object>"], '
+        '"rationale": "<brief explanation>"}'
     )
-    feedback = arbiter.evaluate(
-        request=context,
-        response=genie_sql,
-        expected_response=gt_sql,
-    )
-
-    verdict = _parse_arbiter_verdict(feedback)
-    return Feedback(
-        name="arbiter", value=verdict,
-        rationale=feedback.rationale if hasattr(feedback, "rationale") else str(feedback),
-        source=AssessmentSource(source_type="LLM_JUDGE",
-                                source_id="databricks:/databricks-claude-sonnet-4-6"),
-    )
+    try:
+        result = _call_llm_for_scoring(prompt)
+        verdict = result.get("verdict", "ground_truth_correct")
+        if verdict not in ("genie_correct", "ground_truth_correct", "both_correct", "neither_correct"):
+            verdict = _parse_arbiter_verdict(type("F", (), {"rationale": result.get("rationale", str(result))})())
+        _meta = None
+        if verdict in ("ground_truth_correct", "neither_correct"):
+            _meta = build_asi_metadata(
+                failure_type=result.get("failure_type", "other"),
+                severity="major", confidence=0.85,
+                blame_set=result.get("blame_set", []),
+                counterfactual_fix=result.get("rationale", ""))
+        return Feedback(
+            name="arbiter", value=verdict,
+            rationale=result.get("rationale", verdict),
+            source=LLM_SOURCE, metadata=_meta)
+    except Exception as e:
+        verdict = "ground_truth_correct"
+        return Feedback(
+            name="arbiter", value=verdict,
+            rationale=f"Arbiter LLM call failed, defaulting to ground_truth_correct: {e}",
+            source=LLM_SOURCE,
+            metadata=build_asi_metadata(
+                failure_type="other", severity="info", confidence=0.0,
+                counterfactual_fix="LLM judge unavailable — retry or check endpoint"))
 ```
 
 ---
 
 ## Judge Registration Lifecycle (REQUIRED for Judges Tab)
 
-After creating judges with `make_judge()` / `@scorer`, call `.register(name=...)` on each to make them visible in the MLflow Judges tab. Without registration, the Judges tab shows "Add a judge to your experiment" with zero scorers — even if evaluation runs 8 judges across all benchmarks.
+After defining scorers with `@scorer`, call `.register(name=...)` on each to make them visible in the MLflow Judges tab. Without registration, the Judges tab shows "Add a judge to your experiment" with zero scorers — even if evaluation runs 8 judges across all benchmarks.
 
 **CRITICAL:** Do NOT stack `@mlflow.trace` on `@scorer`. This wraps the scorer in a generic trace wrapper that strips the `.register()` method, causing silent failures in the registration loop.
 
 The three-step scorer lifecycle:
 
-1. **Create** — `make_judge()` or `@scorer` defines the judge (NO `@mlflow.trace`)
+1. **Create** — `@scorer` defines the judge (NO `@mlflow.trace`)
 2. **Register** — `.register(name=...)` makes the experiment aware of it (Judges tab). Use `try/except` with explicit error logging, NOT silent catch.
 3. **Start** (optional) — `.start(sampling_config=...)` enables continuous monitoring on future traces
 
 ```python
-from mlflow.genai.scorers import ScorerSamplingConfig
-
-def register_judges_to_experiment(judge_suite: dict) -> dict:
-    """Register all judges to the current MLflow experiment for UI visibility.
-
-    Call AFTER mlflow.set_experiment() and BEFORE mlflow.genai.evaluate().
-    Returns dict of {name: registered_scorer} for lifecycle management.
-
-    Without this call:
-    - Judges tab is empty
-    - Cannot use backfill_scorers() for historical traces
-    - Cannot enable production monitoring
-    - Cannot share judge definitions across experiments
-    """
-    registered = {}
-    for scorer_obj in get_all_scorers(judge_suite):
-        name = getattr(scorer_obj, "name", getattr(scorer_obj, "__name__", str(scorer_obj)))
-        reg = scorer_obj.register(name=name)
-        registered[name] = reg
-    return registered
+registered_judges = {}
+_registration_failures = []
+for s in all_scorers:
+    name = getattr(s, "name", getattr(s, "__name__", str(s)))
+    try:
+        reg = s.register(name=name)
+        registered_judges[name] = reg
+        print(f"  [Registered] {name}")
+    except Exception as e:
+        _registration_failures.append((name, e))
+        print(f"  [FAILED to register] {name}: {type(e).__name__}: {e}")
 ```
 
 Optionally enable continuous monitoring on registered judges:
@@ -571,7 +557,7 @@ import mlflow
 from datetime import datetime
 
 def run_mlflow_evaluation(dataset_name: str, space_id: str,
-                          experiment_name: str, judge_suite: dict,
+                          experiment_name: str,
                           iteration: int = 1,
                           model_id: str = None) -> dict:
     """Run a full MLflow evaluation with the 3-layer judge suite.
@@ -585,7 +571,6 @@ def run_mlflow_evaluation(dataset_name: str, space_id: str,
         dataset_name: MLflow Evaluation Dataset name in UC.
         space_id: Genie Space ID (injected into predict fn).
         experiment_name: MLflow experiment name.
-        judge_suite: Output from create_judge_suite().
         iteration: Current optimization iteration number.
         model_id: Optional LoggedModel ID from create_genie_model_version().
 
@@ -594,11 +579,7 @@ def run_mlflow_evaluation(dataset_name: str, space_id: str,
     """
     mlflow.set_experiment(experiment_name)
 
-    def predict_fn(inputs):
-        inputs["space_id"] = space_id
-        return genie_predict_fn(inputs)
-
-    all_scorers = get_all_scorers(judge_suite)
+    # all_scorers is the flat list defined above
     run_name = f"genie_eval_iter{iteration}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     with mlflow.start_run(run_name=run_name) as run:
@@ -607,12 +588,12 @@ def run_mlflow_evaluation(dataset_name: str, space_id: str,
             "iteration": iteration,
             "dataset": dataset_name,
             "num_scorers": len(all_scorers),
-            "scorer_names": ",".join(s.__name__ if hasattr(s, '__name__') else str(s) for s in all_scorers),
+            "scorer_names": ",".join(getattr(s, "name", getattr(s, "__name__", str(s))) for s in all_scorers),
         })
 
         evaluate_kwargs = {
-            "predict_fn": predict_fn,
-            "data": dataset_name,
+            "predict_fn": genie_predict_fn,
+            "data": eval_data,  # pd.DataFrame of eval_records
             "scorers": all_scorers,
         }
         if model_id:
@@ -819,16 +800,9 @@ Default prompt templates for each LLM judge. These are registered to the MLflow 
 | System | Allowed Variable Names | Validation |
 |--------|----------------------|------------|
 | MLflow Prompt Registry (`register_prompt()`) | Any `{{ variable }}` | No validation — any name accepted |
-| MLflow `make_judge(instructions=...)` | Only `{{ inputs }}`, `{{ outputs }}`, `{{ trace }}`, `{{ expectations }}`, `{{ conversation }}` | Strict — raises `MlflowException` on unknown variables |
+| Inline prompt construction (used by `@scorer` judges) | Any — prompts are built with f-strings | No validation |
 
-Since judge prompts pass through both systems (registered first, then loaded into `make_judge()`), they MUST use only the 5 allowed variables.
-
-### Template Variable Rules for `make_judge()`
-
-1. `make_judge()` instructions MUST contain **at least one** of: `{{ inputs }}`, `{{ outputs }}`, `{{ trace }}`, `{{ expectations }}`, `{{ conversation }}`
-2. `make_judge()` instructions MUST NOT contain any other `{{ variable }}` names — custom variables like `{{question}}`, `{{genie_sql}}` raise `MlflowException`
-3. Plain text without any template variables is also rejected
-4. Use `_sanitize_prompt_for_make_judge()` as a safety net when loading prompts from the Prompt Registry
+The template does NOT use `make_judge()`. LLM judges build prompts inline (or from `loaded_prompts`) and call `_call_llm_for_scoring(prompt)`. The `_sanitize_prompt_for_make_judge()` helper exists for compatibility if prompts are ever passed to systems that require the 5 allowed variables.
 
 ```python
 JUDGE_PROMPTS = {

@@ -22,9 +22,9 @@ from pathlib import Path
 # Module 3: Patch DSL, ASI integration, and validation
 # -----------------------------------------------------------------------------
 
-# Feature flags (defaults: fallback to legacy introspection)
-USE_ASI = False
-USE_PATCH_DSL = False
+# Feature flags (defaults: ASI-enabled, Patch DSL enabled)
+USE_ASI = True
+USE_PATCH_DSL = True
 
 # 31 patch types: type, scope, risk_level, affects
 PATCH_TYPES = {
@@ -498,12 +498,117 @@ def score_patch_set(patch_set: list, metadata_snapshot: dict) -> float:
     return predicted_improvement
 
 
-def _extract_judge_feedbacks_from_eval(eval_results: dict) -> list[dict]:
-    """Extract judge feedback dicts from eval results for ASI path."""
+def read_asi_from_uc(catalog: str, schema: str, run_id: str, warehouse_id: str) -> list[dict]:
+    """Query genie_eval_asi_results UC Delta table via Databricks SQL Statement API.
+
+    Returns list of ASI dicts, one per (question, judge) pair.
+    """
+    import requests
+    table = f"{catalog}.{schema}.genie_eval_asi_results"
+    query = f"""
+        SELECT run_id, iteration, question_id, judge, value,
+               failure_type, severity, confidence, blame_set,
+               counterfactual_fix, wrong_clause, expected_value,
+               actual_value, missing_metadata, ambiguity_detected
+        FROM {table}
+        WHERE run_id = '{run_id}'
+        ORDER BY question_id, judge
+    """
+    try:
+        from databricks.sdk import WorkspaceClient
+        w = WorkspaceClient()
+        result = w.statement_execution.execute_statement(
+            warehouse_id=warehouse_id,
+            statement=query,
+            wait_timeout="30s",
+        )
+        if not result.result or not result.result.data_array:
+            return []
+        columns = [c.name for c in result.manifest.schema.columns]
+        rows = []
+        for data_row in result.result.data_array:
+            row_dict = dict(zip(columns, data_row))
+            if row_dict.get("blame_set"):
+                try:
+                    row_dict["blame_set"] = json.loads(row_dict["blame_set"])
+                except (json.JSONDecodeError, TypeError):
+                    row_dict["blame_set"] = [row_dict["blame_set"]]
+            rows.append(row_dict)
+        return rows
+    except Exception as e:
+        print(f"WARNING: read_asi_from_uc() failed: {e}")
+        return []
+
+
+def _extract_asi_from_assessments(assessments: list) -> list[dict]:
+    """Parse ASI metadata from mlflow assessments list."""
+    feedbacks = []
+    for a in assessments:
+        if not isinstance(a, dict):
+            continue
+        meta = a.get("metadata", {})
+        if not isinstance(meta, dict):
+            continue
+        feedbacks.append({
+            "value": a.get("value", ""),
+            "judge": a.get("name", ""),
+            "question_id": a.get("question_id", ""),
+            "failure_type": meta.get("failure_type", ""),
+            "blame_set": meta.get("blame_set", []),
+            "counterfactual_fix": [meta.get("counterfactual_fix", "")],
+            "confidence": float(meta.get("confidence", 0.5)),
+            "asi_severity": meta.get("severity", ""),
+            "asi_wrong_clause": meta.get("wrong_clause", ""),
+            "asi_expected_value": meta.get("expected_value", ""),
+            "asi_actual_value": meta.get("actual_value", ""),
+            "asi_missing_metadata": meta.get("missing_metadata", ""),
+            "asi_ambiguity_detected": meta.get("ambiguity_detected", False),
+        })
+    return feedbacks
+
+
+def _extract_judge_feedbacks_from_eval(eval_results: dict,
+                                       catalog: str = "",
+                                       schema: str = "",
+                                       warehouse_id: str = "") -> list[dict]:
+    """Extract judge feedback dicts from eval results using UC-first priority chain.
+
+    Priority: UC table -> direct feedbacks -> {judge}/metadata columns -> regex fallback.
+    """
+    # Priority 1: UC table (primary source)
+    run_id = eval_results.get("run_id", "")
+    if catalog and schema and run_id and warehouse_id:
+        uc_rows = read_asi_from_uc(catalog, schema, run_id, warehouse_id)
+        if uc_rows:
+            feedbacks = []
+            for row in uc_rows:
+                if str(row.get("value", "")).lower() in ("no", "false", "0"):
+                    feedbacks.append({
+                        "value": row.get("value", ""),
+                        "judge": row.get("judge", ""),
+                        "question_id": row.get("question_id", ""),
+                        "failure_type": row.get("failure_type", ""),
+                        "blame_set": row.get("blame_set", []),
+                        "counterfactual_fix": [row.get("counterfactual_fix", "")],
+                        "confidence": float(row.get("confidence", 0.5)),
+                        "asi_severity": row.get("severity", ""),
+                        "asi_wrong_clause": row.get("wrong_clause", ""),
+                        "asi_expected_value": row.get("expected_value", ""),
+                        "asi_actual_value": row.get("actual_value", ""),
+                        "asi_missing_metadata": row.get("missing_metadata", ""),
+                        "asi_ambiguity_detected": row.get("ambiguity_detected", False),
+                        "feedback_id": f"uc_{row.get('question_id', '')}_{row.get('judge', '')}",
+                    })
+            if feedbacks:
+                print(f"  ASI source: UC table ({len(feedbacks)} failure rows)")
+                return feedbacks
+
+    # Priority 2: Direct feedbacks list
     direct = eval_results.get("judge_feedbacks") or eval_results.get("feedbacks")
     if isinstance(direct, list) and direct:
         return direct
 
+    # Priority 3: eval_results rows with {judge}/metadata columns
     rows = (
         eval_results.get("eval_results")
         or eval_results.get("rows")
@@ -517,6 +622,28 @@ def _extract_judge_feedbacks_from_eval(eval_results: dict) -> list[dict]:
         if not isinstance(row, dict):
             continue
         for col, val in list(row.items()):
+            if col.endswith("/value") and str(val).lower() in ("no", "false"):
+                judge = col.replace("/value", "")
+                meta_col = f"{judge}/metadata"
+                meta = row.get(meta_col, {})
+                if isinstance(meta, dict) and meta.get("failure_type"):
+                    feedbacks.append({
+                        "value": val,
+                        "judge": judge,
+                        "failure_type": meta.get("failure_type", ""),
+                        "blame_set": meta.get("blame_set", []),
+                        "counterfactual_fix": [meta.get("counterfactual_fix", "")],
+                        "confidence": float(meta.get("confidence", 0.7)),
+                        "question_id": row.get("inputs/question_id",
+                                              (row.get("inputs", {}) or {}).get("question_id", f"q{i}")),
+                        "feedback_id": f"r{i}_{judge}",
+                        "asi_severity": meta.get("severity", ""),
+                        "asi_wrong_clause": meta.get("wrong_clause", ""),
+                        "asi_ambiguity_detected": meta.get("ambiguity_detected", False),
+                    })
+                    continue
+
+            # Priority 4: Regex fallback
             if col.startswith("feedback/") and "no" in str(val).lower():
                 judge = col.replace("feedback/", "")
                 rationale_col = f"rationale/{judge}"
@@ -865,7 +992,7 @@ def cluster_failures(eval_results: dict, metadata_snapshot: dict) -> list:
 
     Returns:
         list of cluster dicts with: cluster_id, root_cause, question_ids,
-        affected_judge, confidence, proposed_lever
+        affected_judge, confidence, asi_failure_type, asi_blame_set, asi_counterfactual_fixes
     """
     failures = []
     table = None
@@ -901,16 +1028,24 @@ def cluster_failures(eval_results: dict, metadata_snapshot: dict) -> list:
     except ImportError:
         rows_iter = table if isinstance(table, list) else []
 
-    # Collect failures from judge feedback columns, enriching with ASI metadata when present
+    # Collect failures from judge feedback columns, enriching with ASI metadata when present.
+    # Supports both "feedback/<judge>" and "<judge>/value" layouts from evaluator artifacts.
     for row in rows_iter:
         if not isinstance(row, dict):
             continue
         row_dict = dict(row) if hasattr(row, "items") else row
         for col_name, val in list(row_dict.items()):
-            if col_name.startswith("feedback/") and "no" in str(val).lower():
+            judge = None
+            if col_name.startswith("feedback/"):
                 judge = col_name.replace("feedback/", "")
-                rationale_col = f"rationale/{judge}"
-                rationale = row_dict.get(rationale_col, row_dict.get("rationale", ""))
+            elif col_name.endswith("/value"):
+                judge = col_name.replace("/value", "")
+            if judge and "no" in str(val).lower():
+                rationale = (
+                    row_dict.get(f"{judge}/rationale")
+                    or row_dict.get(f"rationale/{judge}")
+                    or row_dict.get("rationale", "")
+                )
                 question_id = (
                     row_dict.get("inputs/question_id")
                     or row_dict.get("inputs/question")
@@ -918,9 +1053,22 @@ def cluster_failures(eval_results: dict, metadata_snapshot: dict) -> list:
                     or row_dict.get("question", "unknown")
                 )
 
-                asi_failure_type = row_dict.get(f"metadata/{judge}/failure_type", row_dict.get("metadata/failure_type"))
-                asi_blame_set = row_dict.get(f"metadata/{judge}/blame_set", row_dict.get("metadata/blame_set"))
-                asi_counterfactual = row_dict.get(f"metadata/{judge}/counterfactual_fix", row_dict.get("metadata/counterfactual_fix"))
+                judge_meta = row_dict.get(f"{judge}/metadata", {})
+                asi_failure_type = (
+                    row_dict.get(f"metadata/{judge}/failure_type")
+                    or (judge_meta.get("failure_type") if isinstance(judge_meta, dict) else None)
+                    or row_dict.get("metadata/failure_type")
+                )
+                asi_blame_set = (
+                    row_dict.get(f"metadata/{judge}/blame_set")
+                    or (judge_meta.get("blame_set") if isinstance(judge_meta, dict) else None)
+                    or row_dict.get("metadata/blame_set")
+                )
+                asi_counterfactual = (
+                    row_dict.get(f"metadata/{judge}/counterfactual_fix")
+                    or (judge_meta.get("counterfactual_fix") if isinstance(judge_meta, dict) else None)
+                    or row_dict.get("metadata/counterfactual_fix")
+                )
 
                 failures.append({
                     "question_id": question_id,
@@ -1111,6 +1259,13 @@ def generate_metadata_proposals(clusters: list, metadata_snapshot: dict, target_
             "questions_fixed": len(cluster["question_ids"]),
             "questions_at_risk": 0,
             "net_impact": len(cluster["question_ids"]) * cluster["confidence"],
+            "asi": {
+                "failure_type": cluster.get("asi_failure_type") or cluster.get("root_cause", "other"),
+                "blame_set": cluster.get("asi_blame_set") or [],
+                "severity": "major",
+                "counterfactual_fixes": cluster.get("asi_counterfactual_fixes", []),
+                "ambiguity_detected": cluster.get("root_cause") == "repeatability_issue",
+            },
         }
         proposals.append(proposal)
 
@@ -1249,7 +1404,7 @@ def main():
                 print("ERROR: --metadata-snapshot is required for GEPA tier.")
                 return 1
 
-            from metadata_optimizer import build_seed_candidate, score_patch_set
+            from metadata_optimizer import score_patch_set
 
             def _gepa_metric(candidate: dict) -> float:
                 """GEPA metric: score candidate patch set against metadata."""

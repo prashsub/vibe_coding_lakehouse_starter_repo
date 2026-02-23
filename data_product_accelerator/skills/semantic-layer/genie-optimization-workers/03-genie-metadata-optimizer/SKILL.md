@@ -8,7 +8,7 @@ description: >
   Use when evaluation scores are below target and metadata changes are needed.
 metadata:
   author: prashanth subrahmanyam
-  version: "3.0.0"
+  version: "4.0.0"
   domain: semantic-layer
   role: worker
   called_by:
@@ -39,8 +39,8 @@ Analyzes evaluation failures and generates metadata change proposals using GEPA 
 | `judge_feedback` | list | Judge rationales per question |
 | `metadata_snapshot` | dict | Current Genie metadata snapshot (for GEPA or introspection) |
 | `space_id` | str | Genie Space ID |
-| `use_asi` | bool | Enable ASI-grounded patch proposals (default: False) |
-| `use_patch_dsl` | bool | Enable Patch DSL validation and conflict checking (default: False) |
+| `use_asi` | bool | Enable ASI-grounded patch proposals (default: True) |
+| `use_patch_dsl` | bool | Enable Patch DSL validation and conflict checking (default: True) |
 | `use_gepa` | bool | Enable GEPA evaluation of candidate patch sets (default: False) |
 | `target_lever` | int or None | When provided, filter proposals to this lever only (1-6). Used by the orchestrator for per-lever optimization (default: None = all levers) |
 
@@ -79,16 +79,16 @@ Optimizer MUST consume the evaluator's per-row failures artifact (with ASI metad
 
 Structured patch language for metadata changes with conflict detection and blast radius enforcement.
 
-- **31 PATCH_TYPES** with defined scopes and risk levels (e.g., `ALTER_TABLE_COMMENT`, `ALTER_COLUMN_COMMENT`, `CREATE_METRIC_VIEW`, etc.)
+- **32 PATCH_TYPES** with defined scopes and risk levels (e.g., `ALTER_TABLE_COMMENT`, `ALTER_COLUMN_COMMENT`, `CREATE_METRIC_VIEW`, etc.)
 - **16 CONFLICT_RULES** pairs: patches that cannot be applied together (e.g., same table + different descriptions)
 - **validate_patch_set()** for conflict checking and blast radius enforcement (max 5 objects per patch set)
-- **Feature flag:** `use_patch_dsl=True` / `False` (default: False)
+- **Feature flag:** `use_patch_dsl=True` / `False` (default: True)
 
 ## Actionable Side Information (ASI) (P4)
 
 ASI structures judge feedback for patch synthesis and scoring.
 
-- **FAILURE_TAXONOMY:** 16 failure types (e.g., wrong_table, wrong_column, wrong_aggregation, wrong_filter, hallucination, etc.)
+- **FAILURE_TAXONOMY:** 22 failure types (e.g., wrong_table, wrong_column, wrong_aggregation, wrong_filter, hallucination, etc.)
 - **ASI_SCHEMA:** 12 fields per judge feedback (e.g., question_id, failure_type, blame_set, rationale, suggested_fix, etc.)
 - **propose_patch_set_from_asi()** workflow:
   1. Collect failures from judge feedback
@@ -96,7 +96,20 @@ ASI structures judge feedback for patch synthesis and scoring.
   3. Synthesize patches per group
   4. Score patches (impact, blast radius)
   5. Select best patch set
-- **Feature flag:** `use_asi=True` / `False` (default: False)
+- **Feature flag:** `use_asi=True` / `False` (default: True)
+
+### ASI Consumption Contract
+
+The optimizer reads structured ASI from the evaluator using a priority chain:
+
+1. **UC table (primary):** `read_asi_from_uc(catalog, schema, run_id, warehouse_id)` queries `genie_eval_asi_results` via Databricks SQL Statement API. Returns one dict per (question, judge) pair with all ASI fields.
+2. **`{judge}/metadata` columns:** Fall back to reading metadata columns from `eval_result.tables["eval_results"]` DataFrame.
+3. **Assessments list:** Parse the `assessments` list from evaluation results via `_extract_asi_from_assessments()`.
+4. **Regex on rationale (last resort):** `_infer_blame_from_rationale()` parses free-text judge rationale for blame keywords.
+
+**Structured fields consumed by `cluster_failures()`:** `asi_severity`, `asi_confidence`, `asi_wrong_clause`, `asi_expected_value`, `asi_actual_value`, `asi_missing_metadata`, `asi_ambiguity_detected`.
+
+**Proposal enrichment:** Each proposal emitted by `generate_metadata_proposals()` includes an `asi` dict with `failure_type`, `blame_set`, `severity`, `counterfactual_fixes`, `ambiguity_detected` from the source cluster. This enables the applier's `proposals_to_patches()` to generate targeted Patch DSL patches.
 
 ## Blast Radius Tracking (P13)
 
@@ -109,7 +122,7 @@ Penalizes patch sets that touch too many objects to limit regression risk.
 
 When L2 (GEPA) is not used, the optimizer clusters failures and generates proposals:
 
-1. **Cluster failures** by systemic root cause (>=2 questions per cluster)
+1. **Cluster failures** by systemic root cause (>=2 questions per cluster). `cluster_failures()` returns cluster dicts with: `cluster_id`, `root_cause`, `question_ids`, `affected_judge`, `confidence`, `asi_failure_type`, `asi_blame_set`, `asi_counterfactual_fixes`.
 2. **Map** each cluster to a control lever (1-6)
 3. **Generate proposals** with dual persistence paths and net impact scores
 4. **Detect conflicts** and batch non-conflicting proposals together
@@ -123,13 +136,53 @@ Judge `rationale` fields are the primary learning signal. GEPA receives rational
 |------------|-------|-------------|
 | Wrong table | 1 (UC Tables) | `ALTER TABLE ... SET TBLPROPERTIES` |
 | Wrong column | 1 (UC Columns) | `ALTER COLUMN ... COMMENT` |
+| Wrong join | 1 (UC Tables) | `ALTER TABLE ... SET TBLPROPERTIES` |
 | Wrong aggregation | 2 (Metric Views) | `CREATE OR REPLACE VIEW` |
 | Wrong filter | 3 (TVFs) | `CREATE OR REPLACE FUNCTION` |
+| Monitoring gap, stale data, data freshness | 4 (Monitoring) | `ALTER TABLE ... SET TBLPROPERTIES (monitoring config)` |
+| ML feature missing, model scoring error, feature store mismatch | 5 (ML Tables) | `ALTER TABLE ... SET TBLPROPERTIES (ML feature metadata)` |
 | Repeatability issue (TABLE/MV) | 1 (UC Tables/Columns) | `ALTER TABLE SET TBLPROPERTIES`, `ALTER COLUMN COMMENT` |
 | Repeatability issue (TVF) | 6 (Instructions) | `PATCH /api/2.0/genie/spaces/{id}` |
 | Wrong asset routing | 6 (Instructions) | `PATCH /api/2.0/genie/spaces/{id}` |
 
 **Repeatability → Lever routing rationale:** Repeatability issues often stem from unstructured metadata creating an ambiguous search space for the LLM. Structured metadata (Lever 1) -- `business_definition`, `synonyms[]`, `grain`, `join_keys[]`, `do_not_use_when[]`, `preferred_questions[]` in column comments, plus UC tags like `preferred_for_genie=true`, `deprecated_for_genie=true`, `domain=<value>` -- narrows the search space and reduces SQL variance. Structured metadata can be added as **tags** (via `TBLPROPERTIES`/`ALTER TABLE SET TAGS`) or within **descriptions/column comments** depending on the situation. When the asset is already a TVF (output is already constrained by function signature), the optimizer falls back to Lever 6 (instructions for deterministic parameter selection). TVF conversion remains a secondary recommendation for TABLE/MV assets when structured metadata alone is insufficient.
+
+## Repeatability Failure Clustering
+
+When cross-iteration repeatability checks detect questions whose SQL changed between iterations (flagged as `repeatability_issue` synthetic failures), the optimizer uses specialized clustering to identify and fix the root cause:
+
+### 1. Detect Asset-Type Oscillation
+
+Examine the SQL variants across iterations for each non-repeatable question. Look for oscillation patterns:
+- **TABLE ↔ MV oscillation:** Genie alternates between querying a base table and its metric view (e.g., `SELECT ... FROM dim_product` vs `SELECT ... FROM mv_product_summary`)
+- **TVF ↔ TABLE/MV oscillation:** Genie alternates between calling a TVF and direct table/MV queries
+- **Parameter oscillation:** TVF calls with different parameter values across runs
+
+### 2. Map to Lever Sequence
+
+Based on the oscillation type, apply fixes in this specific order:
+
+1. **Lever 1 (Structured Metadata):** Add decisive metadata to disambiguate:
+   - `preferred_for_genie=true` UC tag on the canonical asset
+   - `deprecated_for_genie=true` tag on the non-canonical asset
+   - `business_definition` in column comments with synonym phrases
+   - `do_not_use_when[]` in column comments for the non-preferred asset
+2. **Lever 2 (MV YAML + negative routing):** If oscillation involves metric views, add measure-level comments with negative routing (e.g., "Use this MV for aggregated KPIs, NOT for row-level lists")
+3. **Lever 6 (Instructions, last resort):** If structured metadata alone is insufficient, add explicit routing instructions to the Genie Space instructions
+
+### 3. Bilateral Disambiguation (MANDATORY)
+
+When a question oscillates between two asset types, **BOTH sides** of the disambiguation must be addressed:
+- **Positive routing** (Lever 1/2): Tell the preferred asset it IS the right choice for this question pattern
+- **Negative routing** (Lever 3): Tell the competing asset it is NOT the right choice
+
+Applying only one side is insufficient -- both assets will continue competing. Example: if a TVF COMMENT says "BEST FOR: total revenue last quarter" and the MV has positive routing for the same pattern, the TVF COMMENT must add `NOT FOR: Simple total revenue without destination breakdown (use booking_analytics_metrics MEASURE(total_revenue))`.
+
+The optimizer MUST auto-detect asset-type oscillation in failure clusters and generate proposals for BOTH the preferred and competing assets.
+
+### 4. Verify
+
+After each lever application, re-run the specific non-repeatable question 3x to confirm oscillation is resolved. Only proceed to the next lever if the question still oscillates.
 
 ## Common Mistakes
 
@@ -161,6 +214,8 @@ The GEPA template job YAML ([gepa-optimization-job-template.yml](assets/template
 
 Standalone introspection and proposal generation CLI.
 
+**Note:** UC/ASI reading (`read_asi_from_uc(catalog, schema, run_id, warehouse_id)`) is triggered by the orchestrator when passing `eval_results` with `run_id` and UC connection params — not via CLI args. The CLI uses `--eval-results`, `--metadata-snapshot`, `--output`, `--tier`, `--use-asi`, `--use-patch-dsl`, `--use-gepa`, `--space-id`, `--target-lever`, and `--recommended`.
+
 ### [run_gepa_optimization.py](assets/templates/run_gepa_optimization.py) (template)
 
 Databricks notebook for GEPA L2 optimization. All helper functions are inlined (self-contained). Includes `strip_non_exportable_fields()`, `build_seed_candidate()`, `evaluate_genie()`, `apply_candidate_to_space()`, and `score_genie_response()`.
@@ -181,6 +236,7 @@ DABs job definition for deploying GEPA optimization as a Databricks job. Include
 
 ## Version History
 
+- **v4.0.0** (Feb 23, 2026) - Phase 6 architectural lessons. Added ASI Consumption Contract section with UC-first priority chain (`read_asi_from_uc()` -> columns -> assessments -> regex). Flipped feature flag defaults: `use_asi=True`, `use_patch_dsl=True`. Added bilateral disambiguation to Repeatability Failure Clustering (positive + negative routing mandatory). UC/ASI reading is triggered by the orchestrator (not CLI args). Version bumped from v3.8.0.
 - **v3.8.0** (Feb 22, 2026) - Repeatability v2: structured metadata routing. Changed `_map_to_lever()` for `repeatability_issue`: TABLE/MV now routes to Lever 1 (structured metadata -- tags, column comments with business_definition, synonyms, grain, join_keys, do_not_use_when) instead of Lever 3 (TVFs); TVF routes to Lever 6 (instructions). Added `blame_set` parameter to `_map_to_lever()` for context-aware routing. Rewrote `_REPEATABILITY_FIX_BY_ASSET` with structured metadata recommendations. Fixed `_describe_fix()` bug reading `dominant_asset` instead of `asi_blame_set`. Updated `generate_metadata_proposals()` and `_dual_persist_paths()` to pass `blame_set` through.
 - **v3.7.0** (Feb 22, 2026) - Repeatability judge integration. Added `repeatability_issue` to `_map_to_lever()` mapping (lever 3, TVFs). Enhanced `_describe_fix()` with asset-type-specific recommendations for repeatability clusters: MV-routed questions recommend TVF conversion, TABLE-routed recommend TVF wrappers, TVF-routed recommend deterministic parameter instructions. Updated Root Cause to Lever Mapping table in SKILL.md.
 - **v3.5.0** (Feb 22, 2026) - ASI-aware clustering (Phase 3). `cluster_failures()` now prefers `failure_type`/`blame_set` from ASI metadata over keyword extraction; `_describe_fix()` uses `counterfactual_fix`; `_map_to_lever()` accepts optional `asi_failure_type` parameter for precise routing.

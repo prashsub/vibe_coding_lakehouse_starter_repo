@@ -405,6 +405,19 @@ When the introspection engine (or GEPA) generates a metadata change proposal, it
 | Ambiguous terms | 6 (Instructions) | `PATCH /api/2.0/genie/spaces/{id}` | `src/genie/{domain}_genie_export.json` |
 | Missing sample queries | 6 (Instructions) | `PATCH /api/2.0/genie/spaces/{id}` | `src/genie/{domain}_genie_export.json` |
 
+### Template Variable Substitution in Repo Paths
+
+Repo paths in `dual_persistence.repo` may contain template placeholders that are substituted at apply time:
+
+| Placeholder | Substituted With |
+|-------------|------------------|
+| `{domain}` | Domain name (e.g., `cost`) |
+| `{space_id}` | Genie Space ID |
+
+Example: `gold_layer_design/yaml/{domain}/fact_usage.yaml` becomes `gold_layer_design/yaml/cost/fact_usage.yaml` when `domain=cost`. The applier script performs this substitution via `.replace("{domain}", domain).replace("{space_id}", space_id)` before resolving repo paths.
+
+---
+
 ### Dual Persistence per Proposal
 
 Every proposal includes a `dual_persistence` field with explicit paths:

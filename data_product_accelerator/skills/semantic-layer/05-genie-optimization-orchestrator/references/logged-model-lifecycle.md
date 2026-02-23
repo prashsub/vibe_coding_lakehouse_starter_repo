@@ -37,29 +37,33 @@ Orchestrator                  Evaluator Job                MLflow
 
 ## Implementation in `orchestrator.py`
 
-### `create_genie_model_version()` (~line 224)
+### `create_genie_model_version()`
 
-Creates a LoggedModel for this iteration's Genie Space configuration.
+Creates a LoggedModel for this iteration's Genie Space configuration using `create_external_model()` inside `mlflow.start_run()`.
 Called BEFORE evaluation so `mlflow.genai.evaluate(model_id=...)` links correctly.
 
 ```python
 def create_genie_model_version(space_id, config, iteration, domain,
                                 patch_set=None, parent_model_id=None,
-                                prompt_versions=None) -> str:
-    config_hash = hashlib.sha256(
-        json.dumps(config, sort_keys=True, default=str).encode()
-    ).hexdigest()[:12]
+                                prompt_versions=None, uc_schema=None) -> str:
+    # Fetches UC metadata (columns, tags, routines) via SQL Statement API
+    config_hash = hashlib.sha256(...).hexdigest()[:12]
     model_name = f"genie-{domain}-iter{iteration}-{config_hash}"
-    active_model = mlflow.set_active_model(name=model_name)
-    # Logs params: space_id, iteration, config_hash, patch info, parent lineage
-    mlflow.log_model_params(model_id=active_model.model_id, params={...})
-    # Logs config JSON as artifact under genie_config/
-    mlflow.log_artifact(config_json_path, artifact_path="genie_config")
-    # Logs patch set as artifact under config_diffs/ (if any)
-    return active_model.model_id
+
+    with mlflow.start_run(run_name=f"create_model_iter{iteration}_{config_hash}") as creation_run:
+        logged_model = mlflow.create_external_model(
+            name=model_name,
+            source_run_id=creation_run.info.run_id,
+            params=model_params,
+            tags={"domain": domain, "space_id": space_id, ...},
+            model_type="genie-space",
+        )
+        # Logs model_state/ artifacts (genie_config, UC columns/tags/routines, metadata diff)
+        # Logs patches/ artifacts (patch_set.json, patch_summary.json) if patch_set
+    return logged_model.model_id
 ```
 
-### `promote_best_model()` (~line 302)
+### `promote_best_model()`
 
 Tags the best-performing LoggedModel after the optimization loop converges.
 
@@ -73,23 +77,26 @@ def promote_best_model(session):
     })
 ```
 
-### `rollback_to_model()` (~line 335)
+### `rollback_to_model()`
 
-Restores Genie Space config from a LoggedModel's artifact when P0 gate fails.
+Restores Genie Space config from a LoggedModel's creation run artifacts when P0 gate fails.
+Downloads `model_state/genie_config.json` via `source_run_id`. Guards against missing `source_run_id`.
 
 ```python
 def rollback_to_model(model_id, space_id):
     model = mlflow.get_logged_model(model_id=model_id)
-    config_artifact = mlflow.artifacts.download_artifacts(
-        run_id=model.source_run_id, artifact_path="genie_config"
+    if not model.source_run_id:
+        return None  # WARNING: cannot download artifacts
+    artifact_dir = mlflow.artifacts.download_artifacts(
+        run_id=model.source_run_id, artifact_path="model_state"
     )
-    # Reads the config JSON and returns it for re-application
+    # Reads model_state/genie_config.json and returns config dict
     return config
 ```
 
 ## Orchestrator Loop Integration
 
-The `_snapshot_and_get_model_id()` wrapper (~line 1252) calls `create_genie_model_version()`:
+The `_snapshot_and_get_model_id()` closure wraps `create_genie_model_version()`:
 
 ```python
 def _snapshot_and_get_model_id(iter_num, patch_set=None, prompt_versions=None):
@@ -100,6 +107,7 @@ def _snapshot_and_get_model_id(iter_num, patch_set=None, prompt_versions=None):
             patch_set=patch_set,
             parent_model_id=_prev_model_id,
             prompt_versions=prompt_versions,
+            uc_schema=uc_schema,
         )
         _prev_model_id = mid
         return mid
@@ -107,14 +115,14 @@ def _snapshot_and_get_model_id(iter_num, patch_set=None, prompt_versions=None):
 ```
 
 Called at:
-- **Baseline** (line ~1287): `model_id = _snapshot_fn(1)`
-- **Per-lever** (line ~1319): `model_id = _snapshot_fn(iter_num, patch_set=proposals)`
+- **Baseline**: `model_id = _snapshot_fn(1)`
+- **Per-lever**: `model_id = _snapshot_fn(iter_num, patch_set=proposals)`
 
 ## Evaluator Integration
 
 The evaluator receives `model_id` as a job parameter and uses it at:
-- **Line ~346**: `mlflow.set_active_model(model_id=model_id)` -- activates model context
-- **Line ~980**: `mlflow.genai.evaluate(model_id=model_id)` -- links evaluation run to model
+- `mlflow.set_active_model(model_id=model_id)` — activates model context
+- `mlflow.genai.evaluate(model_id=model_id)` — links evaluation run to model
 
 If `model_id` is None (creation failed), the evaluator logs a WARNING and continues
 without config version tracking.
@@ -123,7 +131,8 @@ without config version tracking.
 
 | Pitfall | Consequence | Prevention |
 |---------|-------------|------------|
-| `_fetch_space_config()` returns None | `model_id` is None, tracking disabled | Verify `?include_serialized_space=true` |
+| `_fetch_space_config()` returns empty dict | `model_id` is None, tracking disabled | Verify `?include_serialized_space=true` |
 | Exception in `create_genie_model_version()` | Silently caught, `model_id` is None | Check for WARNING in orchestrator output |
 | Job YAML `model_id: ""` not overridden | Evaluator skips `set_active_model()` | Orchestrator passes model_id in params_str |
 | `promote_best_model()` called with no iterations | Prints warning, no-op | Only call after successful iterations |
+| Using `set_active_model()` for creation | No `source_run_id`, artifacts silently dropped | Use `create_external_model()` inside `start_run()` |
